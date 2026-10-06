@@ -41,6 +41,8 @@ interface MpGradeGroup {
   periodGrade: any;
   subjects: MpSubject[];
   mpSection: { id: number; name: string };
+  /** Distinct students with at least one pending subject in this grade. */
+  totalStudents?: number;
 }
 
 interface MpStructureResponse {
@@ -852,7 +854,10 @@ const PendingSubjectManagement: React.FC = () => {
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         {structure.grades.map(group => {
           const isActive = expandedGradeId === group.grade.id;
-          const totalStudents = group.subjects.reduce((sum, s) => sum + s.studentCount, 0);
+          // Prefer the backend's distinct-student count; summing per-subject
+          // counts would count a student once per pending subject.
+          const totalStudents = group.totalStudents
+            ?? group.subjects.reduce((sum, s) => sum + s.studentCount, 0);
           const activeSubjects = group.subjects.filter(s => s.studentCount > 0).length;
           return (
             <Col key={group.grade.id} xs={24} sm={12} md={8} lg={6}>

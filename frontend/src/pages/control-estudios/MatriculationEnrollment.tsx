@@ -45,6 +45,7 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { parseDateLocal } from '@/utils/dateHelpers';
+import { guardianHasPersonData, sameGuardianPerson } from '@/utils/personFields';
 import { useNavigate } from 'react-router-dom';
 import api from '@/services/api';
 import type { EnrollmentQuestionResponse } from '@/services/enrollmentQuestions';
@@ -146,6 +147,21 @@ interface StudentData {
 }
 
 type EscolaridadStatus = 'regular' | 'repitiente' | 'materia_pendiente';
+
+/** The backend PATCH rebuilds every StudentGuardian link from the buckets sent,
+ *  so any guardian write must include ALL populated buckets plus the vínculo
+ *  (which decides each link's isRepresentative flag). The generic
+ *  `representative` bucket is only sent for non-parent vínculos — the backend
+ *  always marks it as the representative, which would otherwise create a
+ *  phantom second rep link when a parent holds that role. */
+const guardianSavePayload = (td: TempData): Record<string, unknown> => {
+  const payload: Record<string, unknown> = { representativeType: td.representativeType };
+  if (guardianHasPersonData(td.mother)) payload.mother = td.mother;
+  if (guardianHasPersonData(td.father)) payload.father = td.father;
+  const parentIsRep = td.representativeType === 'mother' || td.representativeType === 'father';
+  if (!parentIsRep && guardianHasPersonData(td.representative)) payload.representative = td.representative;
+  return payload;
+};
 
 interface SchoolPeriod {
   id: number;
@@ -689,16 +705,15 @@ const MatriculationEnrollment: React.FC = () => {
     field: K,
     value: GuardianProfile[K]
   ) => {
-    let updatedProfile: GuardianProfile = {};
-    setMatriculations(prev => prev.map(row => {
-      if (row.id !== rowId) return row;
-      const guardian = { ...(row.tempData[parentKey] || {}) } as GuardianProfile;
-      guardian[field] = value;
-      updatedProfile = guardian;
-      return { ...row, tempData: { ...row.tempData, [parentKey]: guardian } };
-    }));
-    saveFieldChange(rowId, { [parentKey]: updatedProfile });
-  }, [saveFieldChange]);
+    const row = matriculations.find(r => r.id === rowId);
+    if (!row) return;
+    const guardian = { ...(row.tempData[parentKey] || {}), [field]: value } as GuardianProfile;
+    const nextTempData = { ...row.tempData, [parentKey]: guardian };
+    setMatriculations(prev => prev.map(r => (r.id === rowId ? { ...r, tempData: nextTempData } : r)));
+    // Send the full guardian set: the backend recreates every link from the
+    // buckets sent, so sending only this one would wipe the other vínculos.
+    saveFieldChange(rowId, guardianSavePayload(nextTempData));
+  }, [matriculations, saveFieldChange]);
 
   // Batch update of multiple guardian fields (used by cascading location selects)
   const handleUpdateGuardianFields = useCallback((
@@ -706,16 +721,57 @@ const MatriculationEnrollment: React.FC = () => {
     parentKey: 'mother' | 'father' | 'representative',
     changes: Partial<GuardianProfile>
   ) => {
-    let updatedProfile: GuardianProfile = {};
-    setMatriculations(prev => prev.map(row => {
-      if (row.id !== rowId) return row;
-      const guardian = { ...(row.tempData[parentKey] || {}) } as GuardianProfile;
-      Object.assign(guardian, changes);
-      updatedProfile = guardian;
-      return { ...row, tempData: { ...row.tempData, [parentKey]: guardian } };
-    }));
-    saveFieldChange(rowId, { [parentKey]: updatedProfile });
-  }, [saveFieldChange]);
+    const row = matriculations.find(r => r.id === rowId);
+    if (!row) return;
+    const guardian = { ...(row.tempData[parentKey] || {}), ...changes } as GuardianProfile;
+    const nextTempData = { ...row.tempData, [parentKey]: guardian };
+    setMatriculations(prev => prev.map(r => (r.id === rowId ? { ...r, tempData: nextTempData } : r)));
+    saveFieldChange(rowId, guardianSavePayload(nextTempData));
+  }, [matriculations, saveFieldChange]);
+
+  // Changing the vínculo moves the current representative's data to the bucket
+  // the new vínculo points to (the same person keeps being the rep). When the
+  // destination already holds a different person, the user decides whether to
+  // overwrite it. Madre ↔ Padre never copy — they are different real people.
+  const handleRepresentativeTypeChange = useCallback((rowId: number, newType: RepresentativeType) => {
+    const row = matriculations.find(r => r.id === rowId);
+    if (!row) return;
+    const td = row.tempData;
+    const sourceKey = (td.representativeType === 'mother' || td.representativeType === 'father'
+      ? td.representativeType : 'representative') as 'mother' | 'father' | 'representative';
+    const targetKey = (newType === 'mother' || newType === 'father'
+      ? newType : 'representative') as 'mother' | 'father' | 'representative';
+
+    const apply = (carryProfile?: GuardianProfile) => {
+      const nextTempData: TempData = { ...td, representativeType: newType };
+      if (carryProfile) nextTempData[targetKey] = { ...carryProfile };
+      setMatriculations(prev => prev.map(r => (r.id === rowId ? { ...r, tempData: nextTempData } : r)));
+      saveFieldChange(rowId, guardianSavePayload(nextTempData));
+    };
+
+    if (sourceKey === targetKey
+      || (sourceKey !== 'representative' && targetKey !== 'representative')) {
+      apply();
+      return;
+    }
+    const source = td[sourceKey];
+    if (!guardianHasPersonData(source)) { apply(); return; }
+    const target = td[targetKey];
+    if (!guardianHasPersonData(target) || sameGuardianPerson(source, target)) {
+      apply(source);
+      return;
+    }
+    const name = (g?: GuardianProfile) => `${g?.firstName ?? ''} ${g?.lastName ?? ''}`.trim() || 'la persona registrada';
+    const targetLabel = targetKey === 'mother' ? 'La Madre' : targetKey === 'father' ? 'El Padre' : 'El Representante';
+    Modal.confirm({
+      title: 'Cambiar vínculo del representante',
+      content: `${targetLabel} ya tiene datos de ${name(target)}. ¿Reemplazarlos con los datos de ${name(source)}?`,
+      okText: 'Reemplazar',
+      cancelText: 'Conservar existentes',
+      onOk: () => apply(source),
+      onCancel: () => apply(),
+    });
+  }, [matriculations, saveFieldChange]);
 
   const handleUpdateAnswer = useCallback((
     rowId: number,
@@ -1224,33 +1280,14 @@ const MatriculationEnrollment: React.FC = () => {
     if (isMother) newType = 'mother';
     else if (isFather) newType = 'father';
 
-    const changes: Record<string, unknown> = { representativeType: newType };
+    const nextTempData: TempData = { ...row.tempData, representativeType: newType };
     if (newType === 'other') {
-      changes.representative = {
-        firstName: guardian.firstName,
-        lastName: guardian.lastName,
-        documentType: guardian.documentType,
-        document: guardian.document,
-        phone: guardian.phone,
-        email: guardian.email,
-        residenceState: guardian.residenceState,
-        residenceMunicipality: guardian.residenceMunicipality,
-        residenceParish: guardian.residenceParish,
-        address: guardian.address,
-        id: guardian.id
-      };
+      nextTempData.representative = { ...guardian, id: guardian.id };
     }
 
-    setMatriculations(prev => prev.map(r => {
-      if (r.id !== rowId) return r;
-      const updatedTempData = { ...r.tempData, representativeType: newType };
-      if (newType === 'other') {
-        updatedTempData.representative = { ...guardian, id: guardian.id };
-      }
-      return { ...r, tempData: updatedTempData };
-    }));
+    setMatriculations(prev => prev.map(r => (r.id === rowId ? { ...r, tempData: nextTempData } : r)));
 
-    saveFieldChange(rowId, changes);
+    saveFieldChange(rowId, guardianSavePayload(nextTempData));
     message.success('Representante actualizado');
   }, [contextMenuState.rowId, matriculations, saveFieldChange]);
 
@@ -1709,7 +1746,7 @@ const MatriculationEnrollment: React.FC = () => {
         </Space>
       </div>
       <div className="flex flex-col gap-4">
-        {COLUMN_GROUPS.map(group => {
+        {[...COLUMN_GROUPS, 'Preguntas Personalizadas'].map(group => {
           const groupOptions = AG_BASE_COLUMN_OPTIONS.filter(o => o.group === group);
           const groupKeys = group === 'Preguntas Personalizadas'
             ? questions.map(q => agGetQuestionColumnKey(q.id))
@@ -1737,8 +1774,15 @@ const MatriculationEnrollment: React.FC = () => {
               <div className="grid grid-cols-1 gap-1.5 pl-1">
                 <Checkbox.Group
                   style={{ width: '100%' }}
-                  value={visibleColumnKeys}
-                  onChange={(checked) => setVisibleColumnKeys(checked as string[])}
+                  // Each group manages only its own keys: merging keeps the
+                  // selections made in the other groups instead of wiping them.
+                  value={groupKeys.filter(k => visibleColumnKeys.includes(k))}
+                  onChange={(checked) =>
+                    setVisibleColumnKeys(prev => [
+                      ...prev.filter(k => !groupKeys.includes(k)),
+                      ...(checked as string[]),
+                    ])
+                  }
                 >
                   <div className="flex flex-col gap-1">
                     {group === 'Preguntas Personalizadas' ? (
@@ -2253,6 +2297,7 @@ const MatriculationEnrollment: React.FC = () => {
           onUpdateFields={handleUpdateFields}
           onUpdateGuardianField={handleUpdateGuardianField}
           onUpdateGuardianFields={handleUpdateGuardianFields}
+          onRepresentativeTypeChange={handleRepresentativeTypeChange}
           onUpdateAnswer={handleUpdateAnswer}
           onToggleInscription={handleToggleInscription}
           onContextMenu={handleGridContextMenu}

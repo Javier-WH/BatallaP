@@ -1,6 +1,15 @@
 import React, { useEffect, useMemo } from 'react';
-import { Modal, Form, Input, Select, Row, Col, Radio, DatePicker, Divider, Tabs, Checkbox } from 'antd';
+import { Modal, Form, Input, Select, Row, Col, Radio, DatePicker, Tabs, Checkbox, Collapse } from 'antd';
 import dayjs from 'dayjs';
+import DocumentField from '@/components/shared/DocumentField';
+import PhoneInput from '@/components/shared/PhoneInput';
+import {
+  DOCUMENT_TYPE_OPTIONS,
+  GUARDIAN_DOCUMENT_TYPE_OPTIONS,
+  formatPhoneInput,
+  guardianHasPersonData,
+  sameGuardianPerson,
+} from '@/utils/personFields';
 
 export interface EditStudentGuardian {
   id?: number;
@@ -75,19 +84,6 @@ interface EditStudentModalProps {
   documentsDisabled?: boolean;
 }
 
-const DOCUMENT_TYPES = [
-  { value: 'Venezolano', label: 'Venezolano' },
-  { value: 'Extranjero', label: 'Extranjero' },
-  { value: 'Pasaporte', label: 'Pasaporte' },
-  { value: 'Cedula Escolar', label: 'Cédula Escolar' },
-];
-
-const GUARDIAN_DOC_TYPES = [
-  { value: 'Venezolano', label: 'Venezolano' },
-  { value: 'Extranjero', label: 'Extranjero' },
-  { value: 'Pasaporte', label: 'Pasaporte' },
-];
-
 const REP_TYPES = [
   { value: 'mother', label: 'La Madre' },
   { value: 'father', label: 'El Padre' },
@@ -97,16 +93,26 @@ const REP_TYPES = [
   { value: 'other', label: 'Otra persona' },
 ];
 
+const PARENT_KEYS = ['mother', 'father'] as const;
+type GuardianBucket = 'mother' | 'father' | 'representative';
+
 const PHONE_RULE = { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX' };
 
-// Auto-inserts the hyphen while typing/pasting: 04121234567 → 0412-1234567
-const formatPhoneInput = (value: string | undefined): string => {
-  const digits = (value ?? '').replace(/\D/g, '').slice(0, 11);
-  return digits.length > 4 ? `${digits.slice(0, 4)}-${digits.slice(4)}` : digits;
+/** Which guardian bucket stores the representative's data for a given vínculo. */
+const bucketOf = (type?: string): GuardianBucket =>
+  type === 'mother' || type === 'father' ? type : 'representative';
+
+const guardianLabel: Record<GuardianBucket, string> = {
+  mother: 'La Madre',
+  father: 'El Padre',
+  representative: 'el representante',
 };
 
+const personName = (g?: EditStudentGuardian | null) =>
+  `${g?.firstName ?? ''} ${g?.lastName ?? ''}`.trim() || 'la persona registrada';
+
 interface GuardianFieldsProps {
-  prefix: 'mother' | 'father' | 'representative';
+  prefix: GuardianBucket;
   required: boolean;
   locations: VenezuelaLocation[];
 }
@@ -147,22 +153,24 @@ const GuardianFields: React.FC<GuardianFieldsProps> = ({ prefix, required, locat
         </Col>
       </Row>
       <Row gutter={12}>
-        <Col span={6}>
-          <Form.Item name={[prefix, 'documentType']} label="Tipo Doc">
-            <Select options={GUARDIAN_DOC_TYPES} />
-          </Form.Item>
+        <Col span={10}>
+          <DocumentField
+            label="Documento"
+            required={required}
+            typeName={[prefix, 'documentType']}
+            numberName={[prefix, 'document']}
+            typeOptions={GUARDIAN_DOCUMENT_TYPE_OPTIONS}
+            typeRules={required ? [{ required: true, message: 'Requerido' }] : []}
+            numberRules={required ? [{ required: true, message: 'Requerido' }] : []}
+            allowClearType={!required}
+          />
         </Col>
-        <Col span={6}>
-          <Form.Item name={[prefix, 'document']} label="Cédula" rules={required ? [{ required: true, message: 'Requerido' }] : []}>
-            <Input />
-          </Form.Item>
-        </Col>
-        <Col span={6}>
+        <Col span={7}>
           <Form.Item name={[prefix, 'birthdate']} label="Fecha de nacimiento">
             <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
           </Form.Item>
         </Col>
-        <Col span={6}>
+        <Col span={7}>
           <Form.Item name={[prefix, 'occupation']} label="Ocupación">
             <Input />
           </Form.Item>
@@ -173,15 +181,14 @@ const GuardianFields: React.FC<GuardianFieldsProps> = ({ prefix, required, locat
           <Form.Item
             name={[prefix, 'whatsapp']}
             label="WhatsApp / Teléfono"
-            normalize={formatPhoneInput}
             rules={required ? [{ required: true, message: 'Requerido' }, PHONE_RULE] : [PHONE_RULE]}
           >
-            <Input />
+            <PhoneInput />
           </Form.Item>
         </Col>
         <Col span={8}>
           <Form.Item name={[prefix, 'phone2']} label="Teléfono secundario" normalize={formatPhoneInput} rules={[PHONE_RULE]}>
-            <Input placeholder="Opcional" />
+            <Input placeholder="Opcional (cualquier código)" />
           </Form.Item>
         </Col>
         <Col span={8}>
@@ -284,17 +291,51 @@ const EditStudentModal: React.FC<EditStudentModalProps> = ({
     }
   }, [visible, initialData, form]);
 
+  // When the vínculo moves between the generic "representative" bucket and a
+  // parent bucket, the current representative's data travels with it (the same
+  // person keeps being the rep under the new label). If the destination already
+  // holds a different person, ask before overwriting.
+  const handleRepTypeChange = (newType: string) => {
+    const sourceKey = bucketOf(repType);
+    const targetKey = bucketOf(newType);
+    if (sourceKey === targetKey) return;
+    // Madre ↔ Padre are different real people: the vínculo just repoints.
+    if (sourceKey !== 'representative' && targetKey !== 'representative') return;
+
+    const source = form.getFieldValue(sourceKey) as EditStudentGuardian | undefined;
+    if (!guardianHasPersonData(source)) return;
+
+    const target = form.getFieldValue(targetKey) as EditStudentGuardian | undefined;
+    if (!guardianHasPersonData(target) || sameGuardianPerson(source, target)) {
+      form.setFieldValue(targetKey, { ...(target ?? {}), ...source });
+      return;
+    }
+    Modal.confirm({
+      title: 'Reemplazar datos',
+      content:
+        `El campo de ${guardianLabel[targetKey]} ya tiene datos de ${personName(target)}. ` +
+        `¿Reemplazarlos con los de ${personName(source)}?`,
+      okText: 'Reemplazar',
+      cancelText: 'Conservar existentes',
+      onOk: () => form.setFieldValue(targetKey, { ...source }),
+    });
+  };
+
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
       const fromGuardian = (g?: EditStudentGuardian | null): EditStudentGuardian | null | undefined =>
         g ? { ...g, birthdate: g.birthdate ? dayjs(g.birthdate as dayjs.ConfigType).format('YYYY-MM-DD') : null } : g;
+      // The backend always links the generic `representative` payload as the
+      // legal representative; when a parent is the rep the bucket must not be
+      // sent or a phantom second representative link would be created.
+      const parentIsRep = values.representativeType === 'mother' || values.representativeType === 'father';
       const payload: Partial<EditStudentData> = {
         ...values,
         birthdate: values.birthdate ? (values.birthdate as dayjs.Dayjs) : null,
         mother: fromGuardian(values.mother),
         father: fromGuardian(values.father),
-        representative: fromGuardian(values.representative),
+        representative: parentIsRep ? null : fromGuardian(values.representative),
       };
       onSave(payload);
     } catch {
@@ -302,20 +343,40 @@ const EditStudentModal: React.FC<EditStudentModalProps> = ({
     }
   };
 
-  const motherRequired = repType === 'mother';
-  const fatherRequired = repType === 'father';
-  const representativeRequired = repType === 'other' || repType === 'sibling' || repType === 'grandparent' || repType === 'uncle_aunt';
+  const handleCancel = () => {
+    if (!form.isFieldsTouched()) {
+      onCancel();
+      return;
+    }
+    Modal.confirm({
+      title: 'Descartar cambios',
+      content: 'Hay datos modificados sin guardar. ¿Cerrar y perderlos?',
+      okText: 'Descartar',
+      okType: 'danger',
+      cancelText: 'Seguir editando',
+      onOk: onCancel,
+    });
+  };
+
+  const repBucket = bucketOf(repType);
+  const repCardTitle = repType === 'mother'
+    ? 'Datos de la Madre'
+    : repType === 'father'
+      ? 'Datos del Padre'
+      : 'Datos del Representante';
+  const repTypeLabel = REP_TYPES.find(r => r.value === repType)?.label;
 
   return (
     <Modal
       open={visible}
-      onCancel={onCancel}
+      onCancel={handleCancel}
       onOk={handleSave}
       title={`Editar estudiante — ${studentName}`}
       width={900}
       okText="Guardar"
       cancelText="Cancelar"
       destroyOnClose
+      maskClosable={false}
     >
       <Form form={form} layout="vertical" size="small">
         <Tabs
@@ -339,17 +400,17 @@ const EditStudentModal: React.FC<EditStudentModalProps> = ({
                     </Col>
                   </Row>
                   <Row gutter={12}>
-                    <Col span={6}>
-                      <Form.Item name="documentType" label="Tipo Doc" rules={[{ required: true }]}>
-                        <Select options={DOCUMENT_TYPES} />
-                      </Form.Item>
+                    <Col span={10}>
+                      <DocumentField
+                        label="Documento"
+                        required
+                        typeName="documentType"
+                        numberName="document"
+                        typeOptions={DOCUMENT_TYPE_OPTIONS}
+                        typeRules={[{ required: true, message: 'Requerido' }]}
+                      />
                     </Col>
-                    <Col span={6}>
-                      <Form.Item name="document" label="Cédula / Documento">
-                        <Input />
-                      </Form.Item>
-                    </Col>
-                    <Col span={6}>
+                    <Col span={7}>
                       <Form.Item name="gender" label="Género">
                         <Select>
                           <Select.Option value="M">Masculino</Select.Option>
@@ -357,7 +418,7 @@ const EditStudentModal: React.FC<EditStudentModalProps> = ({
                         </Select>
                       </Form.Item>
                     </Col>
-                    <Col span={6}>
+                    <Col span={7}>
                       <Form.Item name="birthdate" label="Fecha de nacimiento">
                         <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
                       </Form.Item>
@@ -418,10 +479,9 @@ const EditStudentModal: React.FC<EditStudentModalProps> = ({
                       </Form.Item>
                     </Col>
                   </Row>
-                  <Divider titlePlacement="left" plain>Residencia</Divider>
                   <Row gutter={12}>
                     <Col span={8}>
-                      <Form.Item name="residenceState" label="Estado">
+                      <Form.Item name="residenceState" label="Estado de residencia">
                         <Select
                           showSearch
                           options={stateOptions}
@@ -459,21 +519,41 @@ const EditStudentModal: React.FC<EditStudentModalProps> = ({
               label: 'Representantes',
               children: (
                 <>
-                  <Form.Item name="representativeType" label="Representante legal">
-                    <Radio.Group>
+                  <Form.Item
+                    name="representativeType"
+                    label="¿Quién ejerce la representación?"
+                    rules={[{ required: true, message: 'Seleccione el representante' }]}
+                  >
+                    <Radio.Group buttonStyle="solid" onChange={(e) => handleRepTypeChange(e.target.value)}>
                       {REP_TYPES.map(r => <Radio.Button key={r.value} value={r.value}>{r.label}</Radio.Button>)}
                     </Radio.Group>
                   </Form.Item>
-                  <Divider titlePlacement="left" plain>Datos de la Madre {motherRequired ? '(Obligatorio)' : '(Opcional)'}</Divider>
-                  <GuardianFields prefix="mother" required={motherRequired} locations={locations} />
-                  <Divider titlePlacement="left" plain>Datos del Padre {fatherRequired ? '(Obligatorio)' : '(Opcional)'}</Divider>
-                  <GuardianFields prefix="father" required={fatherRequired} locations={locations} />
-                  {representativeRequired && (
-                    <>
-                      <Divider titlePlacement="left" plain>Datos del Representante (Obligatorio)</Divider>
-                      <GuardianFields prefix="representative" required={true} locations={locations} />
-                    </>
-                  )}
+
+                  {/* The selected representative's card, first and required — same
+                      pattern as the enrollment form. */}
+                  <div style={{
+                    background: '#fff7e6',
+                    padding: 16,
+                    borderRadius: 8,
+                    marginBottom: 16,
+                    border: '1px solid #ffd591',
+                  }}>
+                    <h4 style={{ color: '#d46b08', marginTop: 0, marginBottom: 16 }}>
+                      {repCardTitle}{repTypeLabel && repBucket === 'representative' ? ` (${repTypeLabel})` : ''} (Obligatorio)
+                    </h4>
+                    <GuardianFields prefix={repBucket} required locations={locations} />
+                  </div>
+
+                  {/* The other parent stays editable in a closed accordion, like
+                      enrollment. The generic "representative" bucket only exists
+                      when the rep is a non-parent, so it never appears here. */}
+                  <Collapse
+                    items={PARENT_KEYS.filter(k => k !== repBucket).map(k => ({
+                      key: k,
+                      label: `${k === 'mother' ? 'Datos de la Madre' : 'Datos del Padre'} (Opcional)`,
+                      children: <GuardianFields prefix={k} required={false} locations={locations} />,
+                    }))}
+                  />
                 </>
               ),
             },

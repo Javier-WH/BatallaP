@@ -120,6 +120,7 @@ export const getMpStructure = async (req: Request, res: Response) => {
           periodGrade: null,
           subjects: [],
           mpSection: null,
+          totalStudents: 0,
         });
         continue;
       }
@@ -134,7 +135,7 @@ export const getMpStructure = async (req: Request, res: Response) => {
           })()
         : await Section.findOne({ where: { isMateriaPendiente: true } });
       if (!mpSection) {
-        result.push({ grade, periodGrade: pg, subjects: [], mpSection: null });
+        result.push({ grade, periodGrade: pg, subjects: [], mpSection: null, totalStudents: 0 });
         continue;
       }
 
@@ -175,11 +176,33 @@ export const getMpStructure = async (req: Request, res: Response) => {
         });
       }
 
+      // Distinct students in this grade's MP section — a student with several
+      // pending subjects counts once, not once per subject. Only inscriptions
+      // holding at least one subject count.
+      const mpStudents = await Inscription.findAll({
+        where: {
+          schoolPeriodId: viewPeriod.id,
+          gradeId: grade.id,
+          sectionId: mpSection.id,
+        },
+        attributes: ['personId'],
+        include: [
+          {
+            model: InscriptionSubject,
+            as: 'inscriptionSubjects',
+            required: true,
+            attributes: [],
+          },
+        ],
+      });
+      const totalStudents = new Set(mpStudents.map(i => i.personId)).size;
+
       result.push({
         grade,
         periodGrade: pg,
         subjects: subjectsWithCount,
         mpSection,
+        totalStudents,
       });
     }
 

@@ -262,14 +262,13 @@ export const BASE_COLUMN_OPTIONS: ColumnOption[] = [
   { key: 'representativeDocument', label: 'Cédula Representante', group: 'Representante' },
   { key: 'representativeFirstName', label: 'Nombres Representante', group: 'Representante' },
   { key: 'representativeLastName', label: 'Apellidos Representante', group: 'Representante' },
-  { key: 'representativePhone', label: 'Teléfono Representante', group: 'Representante' },
+  { key: 'representativePhone', label: 'Teléfono / WhatsApp Rep.', group: 'Representante' },
   { key: 'representativeEmail', label: 'Email Representante', group: 'Representante' },
   { key: 'representativeOccupation', label: 'Ocupación Representante', group: 'Representante' },
   { key: 'representativeAddress', label: 'Dirección Representante', group: 'Representante' },
   { key: 'representativeResidenceState', label: 'Estado Representante', group: 'Representante' },
   { key: 'representativeResidenceMunicipality', label: 'Municipio Representante', group: 'Representante' },
   { key: 'representativeResidenceParish', label: 'Parroquia Representante', group: 'Representante' },
-  { key: 'phone1', label: 'Teléfono / WhatsApp', group: 'Representante' },
   { key: 'motherDocumentType', label: 'Tipo Doc. Madre', group: 'Representante' },
   { key: 'motherDocument', label: 'Cédula Madre', group: 'Representante' },
   { key: 'motherFirstName', label: 'Nombres Madre', group: 'Representante' },
@@ -307,7 +306,10 @@ function getRepProfile(row: MatriculationRow): GuardianProfile | undefined {
 }
 
 function isRepEditable(row: MatriculationRow): boolean {
-  return row.tempData.representativeType === 'other';
+  // The generic "representative" bucket backs every non-parent vínculo
+  // (other, sibling, grandparent, uncle_aunt) — all of them are editable here.
+  const t = row.tempData.representativeType;
+  return t !== 'mother' && t !== 'father';
 }
 
 // Callbacks interface
@@ -328,6 +330,9 @@ export interface ColumnCallbacks {
     changes: Partial<GuardianProfile>
   ) => void;
   onUpdateAnswer: (rowId: number, questionId: number, value: string | string[] | undefined) => void;
+  /** Vínculo change moves the rep's data between guardian buckets — handled by
+   *  the parent, not by a plain field write. */
+  onRepresentativeTypeChange: (rowId: number, newType: RepresentativeType) => void;
   onToggleInscription: (id: number, hidden: boolean) => void;
   onContextMenu: (rowId: number, colId: string, rowIndex: number, x: number, y: number) => void;
   onOpenMissingEditor: (rowId: number) => void;
@@ -1255,7 +1260,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       valueGetter: (p) => p.data?.tempData.representativeType ?? 'other',
       valueSetter: (p) => {
         if (p.newValue !== p.oldValue && p.data) {
-          callbacks.onUpdateField(p.data.id, 'representativeType', p.newValue as RepresentativeType);
+          callbacks.onRepresentativeTypeChange(p.data.id, p.newValue as RepresentativeType);
           return true;
         }
         return false;
@@ -1267,7 +1272,32 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
     });
   }
 
-  if (isCol('representativePhone')) representanteCols.push(repCol('phone', 'Teléfono Rep.', 130, callbacks));
+  // Single representative phone column: shows the rep's WhatsApp (the primary
+  // number captured at enrollment) falling back to `phone` for legacy rows.
+  // Editing writes both fields so they never diverge.
+  if (isCol('representativePhone')) {
+    representanteCols.push({
+      colId: 'representativePhone',
+      field: 'representative_phone' as any,
+      headerName: 'Teléfono / WhatsApp',
+      width: 150,
+      sortable: true,
+      resizable: true,
+      editable: (p) => !!p.data && isRepEditable(p.data),
+      ...textEditorParams('04XX-XXXXXXX'),
+      valueGetter: (p) => {
+        const profile = p.data ? getRepProfile(p.data) : undefined;
+        return (profile?.whatsapp || profile?.phone || '') as string;
+      },
+      valueSetter: (p) => {
+        if (p.newValue !== p.oldValue && p.data && isRepEditable(p.data)) {
+          callbacks.onUpdateGuardianFields(p.data.id, 'representative', { phone: p.newValue, whatsapp: p.newValue });
+          return true;
+        }
+        return false;
+      },
+    });
+  }
 
   // Remaining representative fields
   if (isCol('representativeDocumentType')) representanteCols.push(repCol('documentType', 'Tipo Doc. Rep.', 100, callbacks));
@@ -1278,9 +1308,6 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
   if (isCol('representativeResidenceState')) representanteCols.push(repLocationCol('state', 'Estado Rep.', 120, callbacks, locations));
   if (isCol('representativeResidenceMunicipality')) representanteCols.push(repLocationCol('municipality', 'Municipio Rep.', 120, callbacks, locations));
   if (isCol('representativeResidenceParish')) representanteCols.push(repLocationCol('parish', 'Parroquia Rep.', 120, callbacks, locations));
-
-  // Contact columns
-  if (isCol('phone1')) representanteCols.push(textCol('phone1', 'Teléfono / WhatsApp', 140, callbacks));
 
   // Mother columns
   if (isCol('motherDocumentType')) representanteCols.push(guardianTextCol('mother', 'documentType', 'Tipo Doc. Madre', 100, callbacks));

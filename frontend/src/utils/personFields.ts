@@ -52,3 +52,32 @@ export function joinPhone(prefix: string, number: string): string {
   if (!prefix) return number;
   return `${prefix}-${number}`;
 }
+
+export interface PersonIdentityLike {
+  firstName?: string | null;
+  lastName?: string | null;
+  document?: string | null;
+}
+
+const normalizeText = (value: string) =>
+  value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+/** A guardian bucket holds a real person when any identity field is filled. */
+export function guardianHasPersonData(g?: PersonIdentityLike | null): boolean {
+  return !!g && [g.firstName, g.lastName, g.document]
+    .some(v => typeof v === 'string' && v.trim() !== '');
+}
+
+/** Two guardian buckets describe the same person when the cédulas match, or
+ *  (without usable documents) the full names match. */
+export function sameGuardianPerson(
+  a?: PersonIdentityLike | null,
+  b?: PersonIdentityLike | null
+): boolean {
+  const da = String(a?.document ?? '').replace(/\D/g, '');
+  const db = String(b?.document ?? '').replace(/\D/g, '');
+  if (da.length >= 5 && db.length >= 5) return da === db;
+  const na = normalizeText(`${a?.firstName ?? ''} ${a?.lastName ?? ''}`);
+  const nb = normalizeText(`${b?.firstName ?? ''} ${b?.lastName ?? ''}`);
+  return na !== '' && na === nb;
+}
