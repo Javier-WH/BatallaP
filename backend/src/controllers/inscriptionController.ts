@@ -64,6 +64,70 @@ const normalizeEscolaridad = (value?: unknown): EscolaridadStatus => {
   throw new Error('Valor de escolaridad inválido. Debe ser regular, repitiente o materia_pendiente.');
 };
 
+// "Notas certificadas" is only required when the student has school years
+// below their current grade that were NOT studied in this institution —
+// catalog grade orders below the current one with no in-system inscription.
+// A certificate delivered at grade K covers every external year below K, so
+// the flag stays on only when an external year exists at or after the
+// highest grade at which a certificate was ever delivered.
+const computeNotasCertificadasPending = async (
+  rows: Array<{ personId: number | null | undefined; gradeOrder: number | null | undefined }>
+): Promise<boolean[]> => {
+  const personIds = [...new Set(rows.map(r => r.personId).filter((id): id is number => typeof id === 'number'))];
+  if (personIds.length === 0) return rows.map(() => false);
+
+  const [coveredRows, certDocs, gradeRows] = await Promise.all([
+    Inscription.findAll({
+      attributes: ['personId', 'gradeId'],
+      where: { personId: { [Op.in]: personIds } },
+      include: [{ model: Grade, as: 'grade', attributes: ['order'] }],
+    }),
+    EnrollmentDocument.findAll({
+      where: { receivedNotasCertificadas: true },
+      attributes: ['id'],
+      include: [{
+        model: Matriculation,
+        as: 'matriculation',
+        required: true,
+        where: { personId: { [Op.in]: personIds } },
+        attributes: ['personId', 'gradeId'],
+        include: [{ model: Grade, as: 'grade', attributes: ['order'] }],
+      }],
+    }),
+    Grade.findAll({ attributes: ['id', 'order'] }),
+  ]);
+
+  const orderByGradeId = new Map(gradeRows.map(g => [g.id, (g as any).order as number | null]));
+  const coveredOrdersByPerson = new Map<number, Set<number>>();
+  for (const row of coveredRows as any[]) {
+    const order = row.grade?.order ?? orderByGradeId.get(row.gradeId) ?? null;
+    if (row.personId == null || order == null) continue;
+    if (!coveredOrdersByPerson.has(row.personId)) coveredOrdersByPerson.set(row.personId, new Set());
+    coveredOrdersByPerson.get(row.personId)!.add(order);
+  }
+  const maxCertOrderByPerson = new Map<number, number>();
+  for (const doc of certDocs as any[]) {
+    const matriculation = doc.matriculation;
+    const order = matriculation?.grade?.order ?? (matriculation ? orderByGradeId.get(matriculation.gradeId) ?? null : null);
+    if (matriculation?.personId == null || order == null) continue;
+    maxCertOrderByPerson.set(matriculation.personId, Math.max(maxCertOrderByPerson.get(matriculation.personId) ?? -Infinity, order));
+  }
+  const catalogOrders = [...new Set(
+    gradeRows.map(g => (g as any).order).filter((o): o is number => typeof o === 'number')
+  )];
+
+  return rows.map(({ personId, gradeOrder }) => {
+    if (personId == null || gradeOrder == null || gradeOrder < 2) return false;
+    const covered = coveredOrdersByPerson.get(personId) ?? new Set<number>();
+    const maxCertOrder = maxCertOrderByPerson.get(personId);
+    return catalogOrders.some(order =>
+      order < gradeOrder &&
+      !covered.has(order) &&
+      (maxCertOrder === undefined || order >= maxCertOrder)
+    );
+  });
+};
+
 type GuardianInput = {
   firstName?: string;
   lastName?: string;
@@ -374,6 +438,11 @@ export const getMatriculations = async (req: Request, res: Response) => {
       }
       return json;
     });
+
+    const pendingFlags = await computeNotasCertificadasPending(
+      result.map((json: any) => ({ personId: json.personId, gradeOrder: json.grade?.order }))
+    );
+    result.forEach((json: any, i: number) => { json.notasCertificadasPending = pendingFlags[i]; });
 
     // When paginated, order is already canonical from step 1.
     // When unpaginated, preserve the exact legacy behavior (JS sort) so
@@ -991,6 +1060,11 @@ export const getInscriptions = async (req: Request, res: Response) => {
         return json;
       })
     );
+
+    const pendingFlags = await computeNotasCertificadasPending(
+      result.map((json: any) => ({ personId: json.personId, gradeOrder: json.grade?.order }))
+    );
+    result.forEach((json: any, i: number) => { json.notasCertificadasPending = pendingFlags[i]; });
 
     // When paginated, the hidden filter is already in SQL and the order is
     // already canonical from step 1, so we skip the in-memory sort/filter.

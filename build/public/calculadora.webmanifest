@@ -4,7 +4,7 @@
   "description": "Conversión Bs ⇄ USD/EUR con tasas BCV",
   "id": "/calculadora.html",
   "start_url": "/calculadora.html",
-  "scope": "/",
+  "scope": "/calculadora.html",
   "display": "standalone",
   "orientation": "portrait",
   "lang": "es",

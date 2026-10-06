@@ -306,8 +306,9 @@ const startServer = async () => {
       logger.info(`🚀 Backend iniciado en:`);
       urls.forEach(u => logger.info(`   → ${u}`));
 
-      // Cron: scraping BCV a medianoche (hora de Venezuela, UTC-4)
-      cron.schedule('0 0 * * *', async () => {
+      // Cron: scraping BCV a medianoche y a las 4:20 pm (hora de Venezuela,
+      // UTC-4) — el BCV suele publicar la tasa del día siguiente por la tarde.
+      const runBcvScrape = async () => {
         logger.info('[Cron] Ejecutando scraping BCV...');
         try {
           const result = await scrapeBcvRates();
@@ -319,8 +320,11 @@ const startServer = async () => {
         } catch (error) {
           logger.error('[Cron] Error scraping BCV:', { error });
         }
-      }, { timezone: 'America/Caracas' });
-      logger.info('⏰ Cron de scraping BCV programado (00:00 Venezuela)');
+      };
+      for (const expr of ['0 0 * * *', '20 16 * * *']) {
+        cron.schedule(expr, runBcvScrape, { timezone: 'America/Caracas' });
+      }
+      logger.info('⏰ Cron de scraping BCV programado (00:00 y 16:20 Venezuela)');
 
       // Scrape al iniciar: por si el servidor estuvo apagado a medianoche
       setTimeout(async () => {

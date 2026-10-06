@@ -213,6 +213,7 @@ interface MatriculationRow {
   hiddenFromControlEstudios?: boolean;
   documents?: EnrollmentDocumentInfo | null;
   matriculation?: { documents?: EnrollmentDocumentInfo | null } | null;
+  notasCertificadasPending?: boolean;
 }
 
 interface EnrollmentDocumentInfo {

@@ -28,13 +28,59 @@ function parseBcvRate(raw: string): number | null {
   return isNaN(n) ? null : n;
 }
 
+const SPANISH_MONTHS: Record<string, string> = {
+  enero: '01', febrero: '02', marzo: '03', abril: '04',
+  mayo: '05', junio: '06', julio: '07', agosto: '08',
+  septiembre: '09', octubre: '10', noviembre: '11', diciembre: '12',
+};
+
+/**
+ * Extract the "Fecha Valor" the BCV publishes next to the rates — the date the
+ * rate is effective for, which can be a future date (BCV publishes the next
+ * day's rate ahead of time). Returns YYYY-MM-DD or null.
+ *
+ * The BCV site is Drupal: the date renders inside a `span.date-display-single`
+ * whose `content` attribute carries the ISO datetime — that is the preferred
+ * source since it avoids parsing Spanish month names. Falls back to the
+ * visible "Fecha Valor: Miércoles, 07 Octubre 2026" text.
+ */
+function extractFechaValor($: cheerio.CheerioAPI): string | null {
+  // The page has several `date-display-single` spans (INPC, reservas,
+  // prestaciones); the right one is the span inside the "Fecha Valor:" label.
+  const fvSpan = $('span.date-display-single').filter((_, el) =>
+    /Fecha\s+Valor/i.test($(el).parent().text())
+  ).first();
+  const iso = fvSpan.attr('content')?.slice(0, 10);
+  if (iso && /^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+
+  const textMatch = $('body').text().match(
+    /Fecha\s+Valor:?\s*\w+,?\s*(\d{1,2})\s+([A-Za-záéíóúñ]+)\s+(\d{4})/i
+  );
+  if (textMatch) {
+    const month = SPANISH_MONTHS[textMatch[2].toLowerCase()];
+    if (month) return `${textMatch[3]}-${month}-${textMatch[1].padStart(2, '0')}`;
+  }
+  return null;
+}
+
+// Guard against a wrong selector/format producing a garbage date: the Fecha
+// Valor should never be more than ~2 months away from today in either
+// direction. Out of range → fall back to the server date.
+function isSaneRateDate(date: string, today: string): boolean {
+  const ms = Date.parse(date) - Date.parse(today);
+  const days = ms / 86400000;
+  return days >= -60 && days <= 60;
+}
+
 /**
  * Scrape USD and EUR rates from the BCV website and upsert them into exchange_rates.
  *
  * - Fetches https://www.bcv.org.ve with a 15s timeout.
  * - Parses #dolar .strong-tb and #euro .strong-tb.
+ * - Stores each rate under the "Fecha Valor" published by the BCV (which may
+ *   be a future date), falling back to the server date if it can't be read.
  * - Uses findOrCreate on (exchangeRateTypeId, date) to avoid duplicates.
- * - If the rate already exists for today, it updates the value.
+ * - If the rate already exists for that date, it updates the value.
  * - All errors are caught and returned — never throws.
  */
 export async function scrapeBcvRates(): Promise<BcvScrapeResult> {
@@ -79,6 +125,13 @@ export async function scrapeBcvRates(): Promise<BcvScrapeResult> {
       return result;
     }
 
+    // Store the rate under the "Fecha Valor" the BCV publishes, not the
+    // scrape date: on weekends the page keeps showing Friday's rate and BCV
+    // often publishes the next day's rate ahead of time.
+    const fechaValor = extractFechaValor($);
+    const rateDate = fechaValor && isSaneRateDate(fechaValor, today) ? fechaValor : today;
+    result.rates.date = rateDate;
+
     // Find exchange rate types by code
     const usdType = await ExchangeRateType.findOne({ where: { code: 'USD_BCV' } });
     const eurType = await ExchangeRateType.findOne({ where: { code: 'EUR_BCV' } });
@@ -88,8 +141,8 @@ export async function scrapeBcvRates(): Promise<BcvScrapeResult> {
     // Upsert USD
     if (usd !== null && usdType) {
       const [entry, created] = await ExchangeRate.findOrCreate({
-        where: { exchangeRateTypeId: usdType.id, date: today },
-        defaults: { exchangeRateTypeId: usdType.id, rate: usd, date: today },
+        where: { exchangeRateTypeId: usdType.id, date: rateDate },
+        defaults: { exchangeRateTypeId: usdType.id, rate: usd, date: rateDate },
       });
       if (!created) {
         await entry.update({ rate: usd });
@@ -101,8 +154,8 @@ export async function scrapeBcvRates(): Promise<BcvScrapeResult> {
     // Upsert EUR
     if (eur !== null && eurType) {
       const [entry, created] = await ExchangeRate.findOrCreate({
-        where: { exchangeRateTypeId: eurType.id, date: today },
-        defaults: { exchangeRateTypeId: eurType.id, rate: eur, date: today },
+        where: { exchangeRateTypeId: eurType.id, date: rateDate },
+        defaults: { exchangeRateTypeId: eurType.id, rate: eur, date: rateDate },
       });
       if (!created) {
         await entry.update({ rate: eur });
@@ -112,7 +165,7 @@ export async function scrapeBcvRates(): Promise<BcvScrapeResult> {
     }
 
     result.success = true;
-    result.message = `Tasas guardadas: ${saved.join(', ')}`;
+    result.message = `Tasas guardadas: ${saved.join(', ')} · Fecha Valor: ${rateDate}`;
     return result;
   } catch (error: any) {
     if (error?.code === 'ECONNABORTED' || error?.code === 'ETIMEDOUT') {

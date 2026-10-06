@@ -216,6 +216,9 @@ export interface MatriculationRow {
   hiddenFromControlEstudios?: boolean;
   documents?: EnrollmentDocumentInfo | null;
   matriculation?: { documents?: EnrollmentDocumentInfo | null } | null;
+  // Backend-computed: the student has grade years studied outside this
+  // institution that were never covered by a delivered notas certificadas.
+  notasCertificadasPending?: boolean;
 }
 
 export interface EnrollStructureEntry {
@@ -780,7 +783,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
       if (!docs?.receivedCartaBuenaConducta) missing.push('Documento: Carta de buena conducta');
       const gradeOrder = structure.find(s => s.gradeId === row.gradeId)?.grade?.order
         ?? structure.find(s => s.gradeId === row.gradeId)?.order ?? null;
-      if (gradeOrder != null && gradeOrder >= 2 && !docs?.receivedNotasCertificadas) {
+      if (gradeOrder != null && gradeOrder >= 2 && !docs?.receivedNotasCertificadas && row.notasCertificadasPending !== false) {
         missing.push('Documento: Notas certificadas (2do año en adelante)');
       }
 
