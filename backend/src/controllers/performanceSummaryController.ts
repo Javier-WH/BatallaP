@@ -1170,22 +1170,12 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       const ref = findRef('subj_' + subjIdx);
       if (!ref) break;
       const subj = sortedAcademicSubjects[subjIdx - 1];
-      if (subj && (!isMpSection || (subj as any).hasMpStudents)) {
+      if (subj) {
         const abbrText = subj.subjectGroupId
           ? (subj.subjectGroupShortAbbr || subj.subjectGroupLongAbbr || subj.name)
           : (subj.abbreviation || subj.name);
         const headerText = abbrText.toUpperCase();
         sheet!.getCell(ref.cell).value = headerText;
-        subjectColList.push({ col: ref.col, abbr: abbrText.toUpperCase(), subjIdx, subjectId: subj.id });
-        subjectToSubjIndex.set(subjIdx, subj.id);
-        // Also write the full subject name into subjname_i if defined
-        const nameRef = findRef('subjname_' + subjIdx);
-        const nameText = (subj.subjectGroupId
-          ? 'Participación en Grupos de \r\nCreación, Recreación y Producción'
-          : subj.name).toUpperCase();
-        if (nameRef) {
-          sheet!.getCell(nameRef.cell).value = nameText;
-        }
         // The area table needs its own named ranges because Excel does not
         // allow the global subj_N name to point to two different cells.
         const areaRef = findRef('area_subj_' + subjIdx);
@@ -1196,8 +1186,22 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         if (areaRef) {
           sheet!.getCell(areaRef.cell).value = areaHeaderText;
         }
+        const nameText = (subj.subjectGroupId
+          ? 'Participación en Grupos de \r\nCreación, Recreación y Producción'
+          : subj.name).toUpperCase();
         if (areaNameRef) {
           sheet!.getCell(areaNameRef.cell).value = nameText;
+        }
+        if (isMpSection && !(subj as any).hasMpStudents) {
+          subjIdx++;
+          continue;
+        }
+        subjectColList.push({ col: ref.col, abbr: abbrText.toUpperCase(), subjIdx, subjectId: subj.id });
+        subjectToSubjIndex.set(subjIdx, subj.id);
+        // Also write the full subject name into subjname_i if defined
+        const nameRef = findRef('subjname_' + subjIdx);
+        if (nameRef) {
+          sheet!.getCell(nameRef.cell).value = nameText;
         }
         // Write enrolled-student count per subject in the same column
         const countVal = studentCountBySubject.get(subj.id) || 0;
@@ -1371,7 +1375,7 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         const zeroRef = findRef('subj_zero_' + i);
         const unenrolledRef = findRef('subj_unenrolled_' + i);
         const subj = sortedAcademicSubjects[i - 1];
-        if (subj && (!isMpSection || (subj as any).hasMpStudents)) {
+        if (subj) {
           const abbrText = subj.subjectGroupId
             ? (subj.subjectGroupShortAbbr || subj.subjectGroupLongAbbr || subj.name)
             : (subj.abbreviation || subj.name);
@@ -1380,9 +1384,6 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
           const nameText = (subj.subjectGroupId
             ? 'Participación en Grupos de \r\nCreación, Recreación y Producción'
             : subj.name).toUpperCase();
-          if (nameRef) {
-            ws.getCell(nameRef.cell).value = nameText;
-          }
           const areaRef = findRef('area_subj_' + i);
           const areaNameRef = findRef('area_subjname_' + i);
           const areaHeaderText = (subj.subjectGroupId
@@ -1390,6 +1391,10 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
             : (subj.abbreviation || '-')).toUpperCase();
           if (areaRef) ws.getCell(areaRef.cell).value = areaHeaderText;
           if (areaNameRef) ws.getCell(areaNameRef.cell).value = nameText;
+          if (isMpSection && !(subj as any).hasMpStudents) continue;
+          if (nameRef) {
+            ws.getCell(nameRef.cell).value = nameText;
+          }
           if (countRef) {
             ws.getCell(countRef.cell).value = studentCountBySubject.get(subj.id) || 0;
           }
@@ -2253,8 +2258,7 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
         const zeroRef = findRef('subj_zero_' + i);
         const unenrolledRef = findRef('subj_unenrolled_' + i);
         const subj = sortedAcademicSubjects[i - 1];
-        const hasPageRevision = Boolean(subj && (subj as any).hasRevisionStudents && (pgStCount.get(subj.id) || 0) > 0);
-        if (hasPageRevision) {
+        if (subj) {
           const abbrText = subj.subjectGroupId
             ? (subj.subjectGroupShortAbbr || subj.subjectGroupLongAbbr || subj.name)
             : (subj.abbreviation || subj.name);
@@ -2263,7 +2267,6 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
           const nameText = (subj.subjectGroupId
             ? 'Participación en Grupos de \r\nCreación, Recreación y Producción'
             : subj.name).toUpperCase();
-          if (nameRef) ws.getCell(nameRef.cell).value = nameText;
           const areaRef = findRef('area_subj_' + i);
           const areaNameRef = findRef('area_subjname_' + i);
           const areaHeaderText = (subj.subjectGroupId
@@ -2271,6 +2274,9 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
             : (subj.abbreviation || '-')).toUpperCase();
           if (areaRef) ws.getCell(areaRef.cell).value = areaHeaderText;
           if (areaNameRef) ws.getCell(areaNameRef.cell).value = nameText;
+          const hasPageRevision = Boolean((subj as any).hasRevisionStudents && (pgStCount.get(subj.id) || 0) > 0);
+          if (!hasPageRevision) continue;
+          if (nameRef) ws.getCell(nameRef.cell).value = nameText;
           if (countRef) ws.getCell(countRef.cell).value = pgStCount.get(subj.id) || 0;
           if (failedRef) ws.getCell(failedRef.cell).value = pgFailCount.get(subj.id) || 0;
           if (passedRef) ws.getCell(passedRef.cell).value = pgPassCount.get(subj.id) || 0;
