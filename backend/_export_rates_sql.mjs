@@ -66,6 +66,27 @@ async function main() {
   emit('USD_BCV', usd);
   emit('EUR_BCV', eur);
 
+  // Cleanup: the old scraper saved rates under the scrape date instead of the
+  // BCV "Fecha Valor", which created rows for dates the BCV never published
+  // (weekends/holidays carry the previous business day's rate). Delete any
+  // USD_BCV/EUR_BCV row whose date is not a real BCV publication date, within
+  // the xlsx coverage range — rows beyond the max date are legitimate
+  // future-dated Fecha Valor entries from the new scraper and are kept.
+  const validDates = [...new Set([...usd.keys(), ...eur.keys()])].sort();
+  const dateTuples = validDates.map((d) => `('${d}')`).join(',\n');
+  lines.push(
+    '',
+    '-- Cleanup: drop rows for dates the BCV never published (see comment above).',
+    'CREATE TEMPORARY TABLE _bcv_valid_dates (d DATE PRIMARY KEY);',
+    `INSERT INTO _bcv_valid_dates (d) VALUES\n${dateTuples};`,
+    'DELETE er FROM exchange_rates er',
+    'JOIN exchange_rate_types t ON er.exchangeRateTypeId = t.id',
+    "WHERE t.code IN ('USD_BCV','EUR_BCV')",
+    '  AND er.date BETWEEN (SELECT MIN(d) FROM _bcv_valid_dates) AND (SELECT MAX(d) FROM _bcv_valid_dates)',
+    '  AND er.date NOT IN (SELECT d FROM _bcv_valid_dates);',
+    'DROP TEMPORARY TABLE _bcv_valid_dates;',
+  );
+
   fs.writeFileSync(OUT, lines.join('\n'));
   console.log(`Wrote ${OUT}`);
   console.log(`USD dates: ${usd.size} (${[...usd.keys()].sort()[0]} → ${[...usd.keys()].sort().slice(-1)[0]})`);
