@@ -171,6 +171,7 @@ const todayWeekdayIdx = (): number => {
 };
 
 const SYNC_INTERVAL_MS = 5 * 60 * 1000;
+const DAY_NAMES_ES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const pad2 = (n: number) => String(n).padStart(2, '0');
 const surnameOf = (fullName: string) => fullName.split(',')[0].trim() || fullName;
 
@@ -200,6 +201,20 @@ function showSyncReport(reports: SyncReport[]) {
                     <li key={`c${s.listNumber}${s.fullName}`}>
                       <span className="tabular-nums">{pad2(s.listNumber)}</span> · {surnameOf(s.fullName)}
                       <span className="text-slate-500"> — quedó: {s.serverStatus ? STATUS_LABELS[s.serverStatus] : 'sin registro'}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            {r.blockedStudents.length > 0 && (
+              <>
+                <p className="m-0 mt-1 text-xs text-slate-600">
+                  Están bloqueados (jubilados o expulsados). Sus marcas no se aplicaron; desbloquéalos desde el sistema:
+                </p>
+                <ul className="m-0 mt-1 pl-4 text-xs">
+                  {r.blockedStudents.map(s => (
+                    <li key={`b${s.listNumber}${s.fullName}`}>
+                      <span className="tabular-nums">{pad2(s.listNumber)}</span> · {surnameOf(s.fullName)}
                     </li>
                   ))}
                 </ul>
@@ -1203,7 +1218,7 @@ function RosterOverview({ roster, title, subtitle, onClose, onPick }: {
                 </span>
                 {blocked ? (
                   <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800">
-                    Bloqueado
+                    {student.priorBlock?.kind === 'retired' ? 'Jubilado' : 'Bloqueado'}
                   </span>
                 ) : (
                   <StatusBadges student={student} />
@@ -1244,7 +1259,7 @@ function StudentListRow({ student, index, onClick }: {
       )}
       {blocked ? (
         <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800">
-          Bloqueado
+          {student.priorBlock?.kind === 'retired' ? 'Jubilado' : 'Bloqueado'}
         </span>
       ) : (
         <StatusBadges student={student} />
@@ -1323,7 +1338,10 @@ function SelectedStudentEditor({
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
           <p className="m-0 flex items-start gap-2 text-xs leading-relaxed text-amber-800">
             <StopOutlined className="mt-0.5 shrink-0" />
-            {prior.status === 'absent' ? 'Ausente' : 'Expulsado'} en {prior.subjectName || 'clase anterior'}, {prior.periodId.toUpperCase()}. Debe desbloquearse antes de registrar asistencia.
+            {prior.kind === 'retired'
+              ? `Jubilado el ${DAY_NAMES_ES[dayjs(prior.sessionDate).day()]} en ${prior.shift === 'm' ? 'la mañana' : 'la tarde'}. `
+              : `Expulsado en ${prior.subjectName || 'clase anterior'}, ${prior.periodId.toUpperCase()}. `}
+            Debe desbloquearse antes de registrar asistencia.
           </p>
           {!clearing ? (
             <button

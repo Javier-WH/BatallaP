@@ -69,6 +69,8 @@ export interface SyncReport {
   periodLabel: string;
   conflicts: SyncStudent[];
   notInRoster: SyncStudent[];
+  /** Skipped because an active block (retired/kicked) rejects non-absent writes. */
+  blockedStudents: SyncStudent[];
 }
 
 export interface SyncOutcome {
@@ -247,6 +249,7 @@ async function doSync(personId: number): Promise<SyncOutcome> {
       const res = await api.post<{
         conflicts: { inscriptionId: number; listNumber: number; fullName: string; serverStatus: AttendanceStatus | null }[];
         notInRoster: number[];
+        blockedStudents: { inscriptionId: number; listNumber: number; fullName: string }[];
       }>('/attendance/offline-sync', {
         scheduleEntryId: item.scheduleEntryId,
         sessionDate: item.sessionDate,
@@ -261,8 +264,8 @@ async function doSync(personId: number): Promise<SyncOutcome> {
       removePending(personId, item.key);
       outcome.synced++;
       const byId = new Map(item.records.map(r => [r.inscriptionId, r]));
-      const { conflicts, notInRoster } = res.data;
-      if (conflicts.length > 0 || notInRoster.length > 0) {
+      const { conflicts, notInRoster, blockedStudents } = res.data;
+      if (conflicts.length > 0 || notInRoster.length > 0 || blockedStudents.length > 0) {
         outcome.reports.push({
           subjectName: item.subjectName,
           sectionLabel: item.sectionLabel,
@@ -273,6 +276,7 @@ async function doSync(personId: number): Promise<SyncOutcome> {
             listNumber: byId.get(id)?.listNumber ?? 0,
             fullName: byId.get(id)?.fullName ?? `Inscripción ${id}`,
           })),
+          blockedStudents: blockedStudents.map(s => ({ listNumber: s.listNumber, fullName: s.fullName })),
         });
       }
     } catch (err) {

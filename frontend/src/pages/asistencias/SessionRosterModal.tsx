@@ -277,11 +277,11 @@ const SessionRosterModal: React.FC<SessionRosterModalProps> = ({
           </div>
         </div>
 
-        {roster.some(r => r.blocked) && (
+        {roster.some(r => r.blocked || r.priorBlock) && (
           <Alert
             type="warning"
             showIcon
-            message="Hay estudiantes bloqueados por inasistencia en una sesión anterior de hoy. Desbloquee con un motivo para dejar el registro auditable."
+            message="Hay estudiantes bloqueados (jubilados en el turno anterior o expulsados en este turno). Desbloquee con un motivo para dejar el registro auditable."
           />
         )}
 
@@ -376,13 +376,13 @@ const SessionRosterModal: React.FC<SessionRosterModalProps> = ({
                     ) : null}
                   </div>
                   <div style={{ width: 130, flexShrink: 0, paddingRight: 12 }}>
-                    {r.blocked && (
+                    {(r.blocked || r.priorBlock) && (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         <span style={{
                           display: 'inline-block', padding: '2px 8px', borderRadius: 6,
                           background: '#fef0c7', color: '#b54708', fontSize: 12, fontWeight: 600,
                         }}>
-                          Bloqueado
+                          {r.priorBlock?.kind === 'retired' ? 'Jubilado' : 'Bloqueado'}
                         </span>
                         {canEdit && r.recordId && (
                           <Button size="small" type="text" icon={<UnlockOutlined />} onClick={() => { setClearing(r); setClearCode(null); setClearNote(''); }} />

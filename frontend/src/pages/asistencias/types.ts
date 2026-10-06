@@ -54,7 +54,19 @@ export interface RosterEntry {
   clearedAt: string | null;
   clearanceReasonCode: string | null;
   clearanceReasonNote: string | null;
-  priorBlock: { subjectName: string | null; periodId: string; status: 'absent' | 'kicked' } | null;
+  /**
+   * Active block: 'retired' = left school early in the previous shift with
+   * records (jubilado), 'kicked' = expelled earlier this same shift.
+   * sessionDate/shift locate the trigger's shift.
+   */
+  priorBlock: {
+    kind: 'retired' | 'kicked';
+    subjectName: string | null;
+    periodId: string;
+    status: 'absent' | 'kicked';
+    sessionDate: string;
+    shift: 'm' | 't';
+  } | null;
   recordId: number | null;
 }
 

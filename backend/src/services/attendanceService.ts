@@ -26,7 +26,6 @@ import { compareStudents } from './studentSortService';
 export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused' | 'kicked';
 
 const ATTENDANCE_STATUSES: AttendanceStatus[] = ['present', 'absent', 'late', 'excused', 'kicked'];
-const BLOCKING_STATUSES: AttendanceStatus[] = ['absent', 'kicked'];
 
 // Spanish day names used by ScheduleEntry.day (Lunes..Viernes)
 const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
@@ -387,6 +386,26 @@ function sortBlocksByPeriod<T extends { periodId: string }>(blocks: T[]): T[] {
     periodSortKey(a.periodId.split('-')[0]) - periodSortKey(b.periodId.split('-')[0]));
 }
 
+/**
+ * Active block against a student in the session being viewed.
+ *  - 'retired' (jubilado): in the student's most recent earlier shift WITH
+ *    records, a presence (present/late/kicked) was followed by an unjustified
+ *    absence — they came to school and left early. Blocks the whole next
+ *    shift-with-records until cleared once.
+ *  - 'kicked' (expulsado): an un-cleared expulsion in an earlier class block of
+ *    the same day and shift. Blocks the rest of that shift.
+ */
+export interface PriorBlock {
+  kind: 'retired' | 'kicked';
+  subjectName: string | null;
+  /** Period id of the class where the block was triggered. */
+  periodId: string;
+  status: 'absent' | 'kicked';
+  /** Date and shift ('m'/'t') of the shift containing the trigger. */
+  sessionDate: string;
+  shift: 'm' | 't';
+}
+
 export interface SessionRosterEntry {
   inscriptionId: number;
   personId: number;
@@ -401,7 +420,7 @@ export interface SessionRosterEntry {
   clearedAt: Date | null;
   clearanceReasonCode: string | null;
   clearanceReasonNote: string | null;
-  priorBlock: { subjectName: string | null; periodId: string; status: AttendanceStatus } | null;
+  priorBlock: PriorBlock | null;
   recordId: number | null;
 }
 
@@ -592,50 +611,18 @@ export async function getSessionDetail(sessionId: number): Promise<SessionDetail
     }
   }
 
-  // Cross-session prior blocks: un-cleared absent/kicked in an EARLIER session
-  // of the same day. Records inside this same class block never self-block.
-  // Suppressed when the student was already cleared in THIS session's record
-  // (the clearance lives on the current record).
+  // Blocks are computed live from the record timeline — never inferred from the
+  // stored `blocked` flag, so fixing or clearing an earlier record takes effect
+  // immediately. See computeSessionBlocks for the two rules (retired/kicked).
   const rosterInscriptionIds = rosterInscriptions.map(i => i.id);
   const clusterEntryIds = new Set(clusterEntries.map(e => e.id));
   const blockStartKey = Math.min(...clusterEntries.map(e => periodSortKey(e.periodId)));
-  const clearedInCurrent = new Set(
-    (records as any[]).filter(r => r.clearedAt != null).map(r => r.inscriptionId)
+  const priorByInscription = await computeSessionBlocks(
+    (session as any).sessionDate,
+    blockStartKey,
+    clusterEntryIds,
+    rosterInscriptionIds
   );
-
-  const priorByInscription = new Map<number, { subjectName: string | null; periodId: string; status: AttendanceStatus }>();
-  if (rosterInscriptionIds.length > 0) {
-    const priorRecords = await AttendanceRecord.findAll({
-      where: {
-        inscriptionId: rosterInscriptionIds,
-        status: { [Op.in]: BLOCKING_STATUSES },
-        clearedAt: null,
-      },
-      include: [
-        {
-          model: AttendanceSession,
-          as: 'session',
-          where: { sessionDate: (session as any).sessionDate },
-          include: [{ model: ScheduleEntry, as: 'scheduleEntry', include: [{ model: Subject, as: 'subject' }] }],
-        },
-      ],
-    });
-    for (const r of priorRecords as any[]) {
-      const entry = r.session?.scheduleEntry;
-      if (!entry) continue;
-      if (clusterEntryIds.has(r.session.scheduleEntryId)) continue; // same class block
-      if (periodSortKey(entry.periodId) >= blockStartKey) continue;
-      if (clearedInCurrent.has(r.inscriptionId)) continue;
-      const existing = priorByInscription.get(r.inscriptionId);
-      if (!existing || periodSortKey(entry.periodId) < periodSortKey(existing.periodId)) {
-        priorByInscription.set(r.inscriptionId, {
-          subjectName: entry.subject?.name ?? null,
-          periodId: entry.periodId,
-          status: r.status,
-        });
-      }
-    }
-  }
 
   const roster: SessionRosterEntry[] = rosterInscriptions.map(ins => {
     const record = byInscription.get(ins.id) || null;
@@ -678,9 +665,10 @@ export interface SaveRecordsResult {
 
 /**
  * Bulk upsert attendance records for a session. Writes an append-only audit
- * entry for every creation and status change. Computes the cross-session
- * block flag: a student absent/kicked (not cleared) in an earlier session of
- * the same day is blocked in this session.
+ * entry for every creation and status change. Students under an active block
+ * (retired from a previous shift, or kicked earlier this shift) cannot be
+ * given a non-absent status: they must be cleared first. 'absent' writes are
+ * allowed so a blocked student who simply did not come can still be marked.
  */
 export async function saveSessionRecords(
   sessionId: number,
@@ -705,6 +693,13 @@ export async function saveSessionRecords(
     // Resolve this session's class block once: records saved in sibling
     // sessions of the same block must not self-block the student.
     const { blockEntryIds, blockStartKey } = await resolveSessionBlock(session, t);
+    const blockMap = await computeSessionBlocks(
+      (session as any).sessionDate,
+      blockStartKey,
+      blockEntryIds,
+      records.map(r => r.inscriptionId),
+      t
+    );
 
     const existing = await AttendanceRecord.findAll({
       where: { sessionId, inscriptionId: records.map(r => r.inscriptionId) },
@@ -713,11 +708,36 @@ export async function saveSessionRecords(
     const byInscription = new Map<number, any>();
     for (const r of existing as any[]) byInscription.set(r.inscriptionId, r);
 
+    // A blocked student's write is rejected only when it would create or
+    // CHANGE the record — re-saving an identical value stays a harmless no-op.
+    const blockedIds = records
+      .filter(input => {
+        if (!blockMap.has(input.inscriptionId) || input.status === 'absent') return false;
+        const current = byInscription.get(input.inscriptionId);
+        const same = current && current.status === input.status
+          && (current.reason ?? null) === (input.reason?.trim() || null);
+        return !same;
+      })
+      .map(input => input.inscriptionId);
+    if (blockedIds.length > 0) {
+      const inscriptions = await Inscription.findAll({
+        where: { id: blockedIds },
+        include: [{ model: Person, as: 'student' }],
+        transaction: t,
+      });
+      const names = inscriptions.map((i: any) =>
+        `${i.student?.lastName ?? ''}, ${i.student?.firstName ?? ''}`.trim() || `#${i.id}`);
+      throw new Error(
+        `${names.join('; ')} ${blockedIds.length === 1 ? 'está bloqueado' : 'están bloqueados'} `
+        + '(jubilado o expulsado): debe desbloquearse antes de registrar asistencia.'
+      );
+    }
+
     for (const input of records) {
       const current = byInscription.get(input.inscriptionId) || null;
 
       if (!current) {
-        const blocked = await computeBlockedFlag(session, input.inscriptionId, t, blockEntryIds, blockStartKey);
+        const blocked = blockMap.has(input.inscriptionId);
         const record = await AttendanceRecord.create({
           sessionId,
           inscriptionId: input.inscriptionId,
@@ -760,6 +780,8 @@ export async function saveSessionRecords(
             reason: input.reason?.trim() || null,
             teacherId: performedByPersonId,
             markedAt: new Date(),
+            // Keep the flag honest: cleared/lifted blocks must not linger.
+            blocked: blockMap.has(input.inscriptionId),
           }, { transaction: t });
 
           const newValue: Record<string, unknown> = { status: input.status };
@@ -848,6 +870,11 @@ export interface OfflineSyncResult extends SaveRecordsResult {
   conflicts: OfflineSyncConflict[];
   /** Students no longer in the block's roster (withdrawn, moved section…). */
   notInRoster: number[];
+  /**
+   * Students skipped because they are under an active block (retired/kicked):
+   * only 'absent' writes apply to them; they must be cleared online.
+   */
+  blockedStudents: { inscriptionId: number; listNumber: number; fullName: string }[];
 }
 
 /** Teacher of a schedule entry (null when the entry does not exist). */
@@ -890,9 +917,15 @@ export async function saveOfflineRecords(
   const { roster } = await getSessionDetail(session.id);
   const indexById = new Map(roster.map((r, i) => [r.inscriptionId, i]));
 
+  const { blockEntryIds, blockStartKey } = await resolveSessionBlock(session);
+  const blockMap = await computeSessionBlocks(
+    sessionDate, blockStartKey, blockEntryIds, records.map(r => r.inscriptionId)
+  );
+
   const norm = (reason: string | null | undefined) => reason?.trim() || null;
   const conflicts: OfflineSyncConflict[] = [];
   const notInRoster: number[] = [];
+  const blockedStudents: OfflineSyncResult['blockedStudents'] = [];
   const accepted: AttendanceRecordInput[] = [];
   for (const input of records) {
     const idx = indexById.get(input.inscriptionId);
@@ -913,13 +946,23 @@ export async function saveOfflineRecords(
       });
       continue;
     }
+    // A live block (appeared while the phone was offline) rejects non-absent
+    // writes; 'absent' and no-op rewrites still go through.
+    if (blockMap.has(input.inscriptionId) && input.status !== 'absent' && !alreadyApplied) {
+      blockedStudents.push({
+        inscriptionId: current.inscriptionId,
+        listNumber: idx + 1,
+        fullName: current.fullName,
+      });
+      continue;
+    }
     accepted.push({ inscriptionId: input.inscriptionId, status: input.status, reason: input.reason ?? null });
   }
 
   const result = accepted.length > 0
     ? await saveSessionRecords(session.id, accepted, performedByPersonId)
     : { created: 0, updated: 0, unchanged: 0 };
-  return { sessionId: session.id, ...result, conflicts, notInRoster };
+  return { sessionId: session.id, ...result, conflicts, notInRoster, blockedStudents };
 }
 
 /** Resolve the class block of a session: entry ids and earliest period key. */
@@ -940,44 +983,147 @@ async function resolveSessionBlock(
   return { blockEntryIds, blockStartKey };
 }
 
+/** 'm' (morning) periods sort below 1000; 't' (afternoon) at 1000+. */
+const shiftOfKey = (key: number): 'm' | 't' => (key < 1000 ? 'm' : 't');
+
+/** Statuses that count as "the student was there" for the retirement rule. */
+const PRESENCE_STATUSES: AttendanceStatus[] = ['present', 'late', 'kicked'];
+
+/** An absent mark is justified when it carries one of these reasons. */
+const JUSTIFYING_ABSENT_REASONS = new Set(['justificado', 'enfermo']);
+const isUnjustifiedAbsence = (status: AttendanceStatus, reason: string | null) =>
+  status === 'absent' && !JUSTIFYING_ABSENT_REASONS.has((reason ?? '').trim().toLowerCase());
+
+/** Add days to a YYYY-MM-DD string (noon UTC keeps the day stable). */
+const shiftDays = (dateStr: string, days: number): string =>
+  new Date(Date.parse(`${dateStr}T12:00:00Z`) + days * 86400000).toISOString().slice(0, 10);
+
+/** One attendance record flattened to what the block rules need. */
+interface DayRecord {
+  date: string;
+  shift: 'm' | 't';
+  /** periodSortKey of the record's class block (its session's canonical entry). */
+  key: number;
+  status: AttendanceStatus;
+  reason: string | null;
+  clearedAt: Date | null;
+  /** True when the record's session belongs to the class block being viewed. */
+  inCluster: boolean;
+  subjectName: string | null;
+  periodId: string;
+}
+
 /**
- * A student is blocked in this session if they have an un-cleared absent/kicked
- * record in an earlier session of the same day (same enrollment). Records in
- * the same class block (blockEntryIds) do not count as prior.
+ * Compute the active block of each student for one session, live from their
+ * attendance records (last 45 days). Two independent rules:
+ *
+ *  - 'kicked': an un-cleared expulsion in an EARLIER class block of the same
+ *    day+shift blocks the rest of the shift. Records inside the same class
+ *    block never self-block. A clearance recorded in a LATER class of the
+ *    same shift (or in this very block) lifts it.
+ *  - 'retired' (jubilado): in the student's most recent earlier shift WITH
+ *    records — afternoon of the same day, or a previous day's shift — a
+ *    presence followed later by an unjustified absence means they left school
+ *    early. The whole following shift is blocked until cleared once; a
+ *    clearance in any class of the blocked shift lifts it for the rest.
+ *
+ * The block waits for the student: if they produce no records in the blocked
+ * shift (nobody could mark them), the NEXT shift with records still sees it.
  */
-async function computeBlockedFlag(
-  session: any,
-  inscriptionId: number,
-  t: Transaction,
-  blockEntryIds: Set<number>,
-  blockStartKey: number
-): Promise<boolean> {
-  const priorRecords = await AttendanceRecord.findAll({
-    where: {
-      inscriptionId,
-      status: { [Op.in]: BLOCKING_STATUSES },
-      clearedAt: null,
-    },
+async function computeSessionBlocks(
+  sessionDate: string,
+  blockStartKey: number,
+  clusterEntryIds: Set<number>,
+  inscriptionIds: number[],
+  t?: Transaction
+): Promise<Map<number, PriorBlock>> {
+  const result = new Map<number, PriorBlock>();
+  if (inscriptionIds.length === 0) return result;
+  const currentShift = shiftOfKey(blockStartKey);
+
+  const rows = await AttendanceRecord.findAll({
+    where: { inscriptionId: inscriptionIds },
     include: [
       {
         model: AttendanceSession,
         as: 'session',
-        where: { sessionDate: (session as any).sessionDate },
-        include: [{ model: ScheduleEntry, as: 'scheduleEntry' }],
+        required: true,
+        where: { sessionDate: { [Op.gte]: shiftDays(sessionDate, -45), [Op.lte]: sessionDate } },
+        include: [{ model: ScheduleEntry, as: 'scheduleEntry', include: [{ model: Subject, as: 'subject' }] }],
       },
     ],
     transaction: t,
   });
 
-  return (priorRecords as any[]).some(
-    r => !blockEntryIds.has(r.session?.scheduleEntryId)
-      && periodSortKey(r.session?.scheduleEntry?.periodId ?? '') < blockStartKey
-  );
+  const byStudent = new Map<number, DayRecord[]>();
+  for (const r of rows as any[]) {
+    const entry = r.session?.scheduleEntry;
+    if (!entry?.periodId) continue;
+    const d: DayRecord = {
+      date: r.session.sessionDate,
+      shift: entry.periodId.startsWith('t') ? 't' : 'm',
+      key: periodSortKey(entry.periodId),
+      status: r.status,
+      reason: r.reason ?? null,
+      clearedAt: r.clearedAt ?? null,
+      inCluster: clusterEntryIds.has(entry.id),
+      subjectName: entry.subject?.name ?? null,
+      periodId: entry.periodId,
+    };
+    const list = byStudent.get(r.inscriptionId) ?? [];
+    list.push(d);
+    byStudent.set(r.inscriptionId, list);
+  }
+
+  // 'YYYY-MM-DD|m' < 'YYYY-MM-DD|t' — ISO dates and 'm'<'t' sort lexicographically.
+  const shiftOrder = (d: DayRecord) => `${d.date}|${d.shift}`;
+
+  for (const [inscriptionId, recs] of byStudent) {
+    // Rule 2 — kicked earlier this same shift.
+    const kick = recs
+      .filter(d => d.date === sessionDate && d.shift === currentShift
+        && d.status === 'kicked' && d.clearedAt === null && !d.inCluster && d.key < blockStartKey)
+      .sort((a, b) => a.key - b.key)[0];
+    if (kick) {
+      const freed = recs.some(d => d.date === sessionDate && d.shift === currentShift
+        && d.clearedAt !== null && d.key > kick.key && d.key <= blockStartKey);
+      if (!freed) {
+        result.set(inscriptionId, {
+          kind: 'kicked', subjectName: kick.subjectName, periodId: kick.periodId,
+          status: 'kicked', sessionDate, shift: currentShift,
+        });
+        continue;
+      }
+    }
+
+    // Rule 1 — retired in the most recent earlier shift WITH records.
+    const earlier = recs.filter(d => shiftOrder(d) < `${sessionDate}|${currentShift}`);
+    if (earlier.length === 0) continue;
+    const lastShift = earlier.reduce((max, d) => (shiftOrder(d) > max ? shiftOrder(d) : max), '');
+    const prev = earlier.filter(d => shiftOrder(d) === lastShift).sort((a, b) => a.key - b.key);
+    const trigger = prev.find((d, i) =>
+      isUnjustifiedAbsence(d.status, d.reason)
+      && prev.slice(0, i).some(p => PRESENCE_STATUSES.includes(p.status)));
+    if (!trigger || trigger.clearedAt !== null) continue;
+    const freedHere = recs.some(d => d.date === sessionDate && d.shift === currentShift
+      && d.clearedAt !== null && d.key <= blockStartKey);
+    if (freedHere) continue;
+    result.set(inscriptionId, {
+      kind: 'retired', subjectName: trigger.subjectName, periodId: trigger.periodId,
+      status: 'absent', sessionDate: trigger.date, shift: trigger.shift,
+    });
+  }
+  return result;
 }
 
 /**
  * Clear a block on an attendance record. Requires an active clearance reason;
  * reasons with requiresNote need a non-empty note. Fully audited.
+ *
+ * The stored `blocked` flag is the normal gate, but a record whose flag is
+ * false can still be under a live block (e.g. saved before the triggering
+ * record existed). In that case the flag is fixed and the clearance proceeds —
+ * a visible block must always be clearable.
  */
 export async function clearAttendanceBlock(
   recordId: number,
@@ -985,9 +1131,27 @@ export async function clearAttendanceBlock(
   reasonCode: string,
   reasonNote: string | null
 ): Promise<AttendanceRecord> {
-  const record = await AttendanceRecord.findByPk(recordId);
+  const record = await AttendanceRecord.findByPk(recordId, {
+    include: [{ model: AttendanceSession, as: 'session' }],
+  });
   if (!record) throw new Error('Registro de asistencia no encontrado');
-  if (!record.blocked) throw new Error('El registro no está bloqueado');
+  if (!(record as any).blocked) {
+    const session = (record as any).session;
+    const { blockEntryIds, blockStartKey } = await resolveSessionBlock(session);
+    const live = await computeSessionBlocks(
+      session.sessionDate, blockStartKey, blockEntryIds, [(record as any).inscriptionId]
+    );
+    if (!live.has((record as any).inscriptionId)) throw new Error('El registro no está bloqueado');
+    await record.update({ blocked: true });
+    await AttendanceAuditLog.create({
+      attendanceRecordId: record.id,
+      action: 'blocked',
+      performedBy: clearedByPersonId,
+      previousValue: { blocked: false },
+      newValue: { blocked: true },
+      timestamp: new Date(),
+    });
+  }
 
   const reason = await ClearanceReason.findOne({ where: { code: reasonCode, active: true } });
   if (!reason) throw new Error('Motivo de desbloqueo inválido');
@@ -1041,10 +1205,11 @@ export async function listClearanceReasons() {
 }
 
 /**
- * Clear a prior-session block directly from the session UI. Creates the
- * student's record for this session if it does not exist yet (status
- * 'present' — the student is physically in class), then applies the
- * clearance. Fully audited: 'marked' + 'blocked' + 'cleared'.
+ * Clear a live block directly from the session UI. Creates the student's
+ * record for this session if it does not exist yet (status 'present' — the
+ * student is physically in class), then applies the clearance. Fully audited:
+ * 'marked' + 'blocked' + 'cleared'. Throws when there is no live block, so a
+ * stray record is never created for an unblocked student.
  */
 export async function clearSessionBlock(
   sessionId: number,
@@ -1053,22 +1218,28 @@ export async function clearSessionBlock(
   reasonCode: string,
   reasonNote: string | null
 ): Promise<AttendanceRecord> {
+  const session = await AttendanceSession.findByPk(sessionId);
+  if (!session) throw new Error('Sesión de asistencia no encontrada');
+
+  const { blockEntryIds, blockStartKey } = await resolveSessionBlock(session);
+  const blockMap = await computeSessionBlocks(
+    (session as any).sessionDate, blockStartKey, blockEntryIds, [inscriptionId]
+  );
+  if (!blockMap.has(inscriptionId)) {
+    throw new Error('El estudiante no está bloqueado en esta sesión');
+  }
+
   let record = await AttendanceRecord.findOne({ where: { sessionId, inscriptionId } });
 
   if (!record) {
-    const session = await AttendanceSession.findByPk(sessionId);
-    if (!session) throw new Error('Sesión de asistencia no encontrada');
-
     const t: Transaction = await sequelize.transaction();
     try {
-      const { blockEntryIds, blockStartKey } = await resolveSessionBlock(session, t);
-      const blocked = await computeBlockedFlag(session, inscriptionId, t, blockEntryIds, blockStartKey);
       record = await AttendanceRecord.create({
         sessionId,
         inscriptionId,
         teacherId: clearedByPersonId,
         status: 'present',
-        blocked,
+        blocked: true,
         markedAt: new Date(),
       }, { transaction: t });
 
@@ -1079,17 +1250,14 @@ export async function clearSessionBlock(
         newValue: { status: 'present', reason: null },
         timestamp: new Date(),
       }, { transaction: t });
-
-      if (blocked) {
-        await AttendanceAuditLog.create({
-          attendanceRecordId: record.id,
-          action: 'blocked',
-          performedBy: clearedByPersonId,
-          previousValue: { blocked: false },
-          newValue: { blocked: true },
-          timestamp: new Date(),
-        }, { transaction: t });
-      }
+      await AttendanceAuditLog.create({
+        attendanceRecordId: record.id,
+        action: 'blocked',
+        performedBy: clearedByPersonId,
+        previousValue: { blocked: false },
+        newValue: { blocked: true },
+        timestamp: new Date(),
+      }, { transaction: t });
 
       await t.commit();
     } catch (error) {

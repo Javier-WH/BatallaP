@@ -233,7 +233,7 @@ describe('attendanceService', () => {
       ], person.id)).rejects.toThrow();
     });
 
-    it('marca blocked cuando hubo ausencia sin desbloquear en sesión anterior del día', async () => {
+    it('marca blocked cuando hubo una expulsión sin desbloquear en clase anterior del mismo turno', async () => {
       const { structure, person, schedule } = await setupTeacherWithSchedule('Lunes', 'm1');
       const { inscription } = await setupStudent(structure, 'A');
       const entry2 = await ScheduleEntry.create({
@@ -247,7 +247,7 @@ describe('attendanceService', () => {
 
       const [s1] = await getTeacherSessionsForDate(person.id, MONDAY);
       await saveSessionRecords(s1.id, [
-        { inscriptionId: inscription.id, status: 'absent', reason: 'No llegó' },
+        { inscriptionId: inscription.id, status: 'kicked', reason: 'Pelea' },
       ], person.id);
 
       // Simulate the second session of the day (m2)
@@ -257,7 +257,7 @@ describe('attendanceService', () => {
       }).then(([s]) => s);
 
       await saveSessionRecords(s2.id, [
-        { inscriptionId: inscription.id, status: 'present' },
+        { inscriptionId: inscription.id, status: 'absent' },
       ], person.id);
 
       const record = await AttendanceRecord.findOne({ where: { sessionId: s2.id } });
@@ -269,7 +269,7 @@ describe('attendanceService', () => {
       expect(blockedAudit).not.toBeNull();
     });
 
-    it('no marca blocked si la ausencia anterior fue desbloqueada', async () => {
+    it('no marca blocked si la expulsión anterior fue desbloqueada', async () => {
       const { structure, person, schedule } = await setupTeacherWithSchedule('Lunes', 'm1');
       const { inscription } = await setupStudent(structure, 'A');
       const entry2 = await ScheduleEntry.create({
@@ -283,7 +283,7 @@ describe('attendanceService', () => {
 
       const [s1] = await getTeacherSessionsForDate(person.id, MONDAY);
       await saveSessionRecords(s1.id, [
-        { inscriptionId: inscription.id, status: 'absent', reason: 'No llegó' },
+        { inscriptionId: inscription.id, status: 'kicked', reason: 'Pelea' },
       ], person.id);
 
       // Force the block on the first record, then clear it
@@ -303,6 +303,38 @@ describe('attendanceService', () => {
 
       const record = await AttendanceRecord.findOne({ where: { sessionId: s2.id } });
       expect(record!.blocked).toBe(false);
+    });
+
+    it('rechaza marcar (que no sea ausente) a un estudiante bloqueado sin desbloquear', async () => {
+      const { structure, person, schedule } = await setupTeacherWithSchedule('Lunes', 'm1');
+      const { inscription } = await setupStudent(structure, 'A');
+      const entry2 = await ScheduleEntry.create({
+        scheduleId: schedule.id,
+        day: 'Lunes',
+        periodId: 'm2',
+        subjectId: null,
+        teacherId: person.id,
+        isGroupSubject: false,
+      });
+
+      const [s1] = await getTeacherSessionsForDate(person.id, MONDAY);
+      await saveSessionRecords(s1.id, [
+        { inscriptionId: inscription.id, status: 'kicked', reason: 'Pelea' },
+      ], person.id);
+
+      const s2 = await AttendanceSession.findOrCreate({
+        where: { scheduleEntryId: entry2.id, sessionDate: MONDAY },
+        defaults: { scheduleEntryId: entry2.id, schoolPeriodId: structure.period.id, sessionDate: MONDAY },
+      }).then(([s]) => s);
+
+      await expect(
+        saveSessionRecords(s2.id, [{ inscriptionId: inscription.id, status: 'present' }], person.id)
+      ).rejects.toThrow(/bloquead/);
+      // An 'absent' write is allowed even while blocked.
+      const ok = await saveSessionRecords(s2.id, [
+        { inscriptionId: inscription.id, status: 'absent' },
+      ], person.id);
+      expect(ok.created).toBe(1);
     });
   });
 
@@ -388,7 +420,7 @@ describe('attendanceService', () => {
   });
 
   describe('getSessionDetail — priorBlock', () => {
-    it('retorna priorBlock para ausente sin desbloquear en sesión anterior del día', async () => {
+    it('retorna priorBlock "kicked" para expulsado sin desbloquear en clase anterior del mismo turno', async () => {
       const { structure, person, schedule } = await setupTeacherWithSchedule('Lunes', 'm1');
       const { inscription } = await setupStudent(structure, 'A');
       await ScheduleEntry.create({
@@ -404,14 +436,39 @@ describe('attendanceService', () => {
       const [s1, s2] = sessions;
 
       await saveSessionRecords(s1.id, [
-        { inscriptionId: inscription.id, status: 'absent', reason: 'No llegó' },
+        { inscriptionId: inscription.id, status: 'kicked', reason: 'Pelea' },
       ], person.id);
 
       const detail = await getSessionDetail(s2.id);
       const entry = detail.roster.find(r => r.inscriptionId === inscription.id);
       expect(entry!.priorBlock).not.toBeNull();
-      expect(entry!.priorBlock!.status).toBe('absent');
+      expect(entry!.priorBlock!.kind).toBe('kicked');
+      expect(entry!.priorBlock!.status).toBe('kicked');
       expect(entry!.priorBlock!.periodId).toBe('m1');
+    });
+
+    it('la expulsión no bloquea el turno siguiente (solo el mismo turno)', async () => {
+      const { structure, person, schedule } = await setupTeacherWithSchedule('Lunes', 'm1');
+      const { inscription } = await setupStudent(structure, 'A');
+      await ScheduleEntry.create({
+        scheduleId: schedule.id,
+        day: 'Lunes',
+        periodId: 't1',
+        subjectId: null,
+        teacherId: person.id,
+        isGroupSubject: false,
+      });
+
+      const sessions = await getTeacherSessionsForDate(person.id, MONDAY);
+      const [s1, s2] = sessions; // m1 y t1
+
+      await saveSessionRecords(s1.id, [
+        { inscriptionId: inscription.id, status: 'kicked', reason: 'Pelea' },
+      ], person.id);
+
+      const detail = await getSessionDetail(s2.id);
+      const entry = detail.roster.find(r => r.inscriptionId === inscription.id);
+      expect(entry!.priorBlock).toBeNull();
     });
 
     it('no retorna priorBlock en la primera sesión del día', async () => {
@@ -440,7 +497,7 @@ describe('attendanceService', () => {
       const [s1, s2] = sessions;
 
       await saveSessionRecords(s1.id, [
-        { inscriptionId: inscription.id, status: 'absent', reason: 'No llegó' },
+        { inscriptionId: inscription.id, status: 'kicked', reason: 'Pelea' },
       ], person.id);
       await listClearanceReasons();
       await clearSessionBlock(s2.id, inscription.id, person.id, 'parent_note', null);
@@ -451,6 +508,172 @@ describe('attendanceService', () => {
       expect(entry!.status).toBe('present');
       expect(entry!.blocked).toBe(false);
       expect(entry!.clearanceReasonCode).toBe('parent_note');
+    });
+
+    it('un solo desbloqueo libra todo el turno', async () => {
+      const { structure, person, schedule } = await setupTeacherWithSchedule('Lunes', 'm1');
+      const { inscription } = await setupStudent(structure, 'A');
+      // m2 y m4 con subjectId null: periodos no consecutivos -> clases separadas.
+      for (const periodId of ['m2', 'm4']) {
+        await ScheduleEntry.create({
+          scheduleId: schedule.id, day: 'Lunes', periodId,
+          subjectId: null, teacherId: person.id, isGroupSubject: false,
+        });
+      }
+      const [s1, s2, s3] = await getTeacherSessionsForDate(person.id, MONDAY);
+
+      await saveSessionRecords(s1.id, [
+        { inscriptionId: inscription.id, status: 'kicked', reason: 'Pelea' },
+      ], person.id);
+      await listClearanceReasons();
+      await clearSessionBlock(s2.id, inscription.id, person.id, 'nurse_visit', null);
+
+      const detail = await getSessionDetail(s3.id);
+      expect(detail.roster.find(r => r.inscriptionId === inscription.id)!.priorBlock).toBeNull();
+    });
+  });
+
+  describe('getSessionDetail — jubilado', () => {
+    const FRIDAY = '2026-09-11';
+
+    /** Friday afternoon with two classes (t1 subject, t2 plain) + Monday m1. */
+    async function setupFridayThenMonday() {
+      const structure = await createAcademicStructure();
+      const { person } = await createTestUser({ firstName: 'Profe', lastName: 'Dos' });
+      const schedule = await Schedule.create({
+        schoolPeriodId: structure.period.id,
+        periodGradeSectionId: structure.periodGradeSection.id,
+        status: 'published',
+      });
+      await ScheduleEntry.create({
+        scheduleId: schedule.id, day: 'Viernes', periodId: 't1',
+        subjectId: structure.subject.id, teacherId: person.id, isGroupSubject: false,
+      });
+      await ScheduleEntry.create({
+        scheduleId: schedule.id, day: 'Viernes', periodId: 't2',
+        subjectId: null, teacherId: person.id, isGroupSubject: false,
+      });
+      await ScheduleEntry.create({
+        scheduleId: schedule.id, day: 'Lunes', periodId: 'm1',
+        subjectId: null, teacherId: person.id, isGroupSubject: false,
+      });
+      const { person: sp } = await createTestUser({ firstName: 'Est', lastName: 'B' });
+      const inscription = await createTestInscription(
+        sp.id, structure.period.id, structure.grade.id, structure.section.id);
+      return { person, inscription };
+    }
+
+    it('bloquea el siguiente turno si estuvo presente y luego ausente sin justificar', async () => {
+      const { structure, person, schedule } = await setupTeacherWithSchedule('Lunes', 'm1');
+      const { inscription } = await setupStudent(structure, 'A');
+      for (const periodId of ['m2', 't1']) {
+        await ScheduleEntry.create({
+          scheduleId: schedule.id, day: 'Lunes', periodId,
+          subjectId: null, teacherId: person.id, isGroupSubject: false,
+        });
+      }
+      const [sM1, sM2, sT1] = await getTeacherSessionsForDate(person.id, MONDAY);
+
+      await saveSessionRecords(sM1.id, [{ inscriptionId: inscription.id, status: 'present' }], person.id);
+      await saveSessionRecords(sM2.id, [{ inscriptionId: inscription.id, status: 'absent' }], person.id);
+
+      const detail = await getSessionDetail(sT1.id);
+      const entry = detail.roster.find(r => r.inscriptionId === inscription.id);
+      expect(entry!.priorBlock).not.toBeNull();
+      expect(entry!.priorBlock!.kind).toBe('retired');
+      expect(entry!.priorBlock!.shift).toBe('m');
+      expect(entry!.priorBlock!.sessionDate).toBe(MONDAY);
+    });
+
+    it('el bloqueo cruza el fin de semana: jubilado viernes tarde -> lunes', async () => {
+      const { person, inscription } = await setupFridayThenMonday();
+      const [fT1, fT2] = await getTeacherSessionsForDate(person.id, FRIDAY);
+      const [sMon] = await getTeacherSessionsForDate(person.id, MONDAY);
+
+      await saveSessionRecords(fT1.id, [{ inscriptionId: inscription.id, status: 'present' }], person.id);
+      await saveSessionRecords(fT2.id, [{ inscriptionId: inscription.id, status: 'absent' }], person.id);
+
+      const detail = await getSessionDetail(sMon.id);
+      const entry = detail.roster.find(r => r.inscriptionId === inscription.id);
+      expect(entry!.priorBlock).not.toBeNull();
+      expect(entry!.priorBlock!.kind).toBe('retired');
+      expect(entry!.priorBlock!.sessionDate).toBe(FRIDAY);
+      expect(entry!.priorBlock!.shift).toBe('t');
+    });
+
+    it('ausente primero y presente después no es jubilado (llegó tarde)', async () => {
+      const { structure, person, schedule } = await setupTeacherWithSchedule('Lunes', 'm1');
+      const { inscription } = await setupStudent(structure, 'A');
+      for (const periodId of ['m2', 't1']) {
+        await ScheduleEntry.create({
+          scheduleId: schedule.id, day: 'Lunes', periodId,
+          subjectId: null, teacherId: person.id, isGroupSubject: false,
+        });
+      }
+      const [sM1, sM2, sT1] = await getTeacherSessionsForDate(person.id, MONDAY);
+
+      await saveSessionRecords(sM1.id, [{ inscriptionId: inscription.id, status: 'absent' }], person.id);
+      await saveSessionRecords(sM2.id, [{ inscriptionId: inscription.id, status: 'present' }], person.id);
+
+      const detail = await getSessionDetail(sT1.id);
+      expect(detail.roster.find(r => r.inscriptionId === inscription.id)!.priorBlock).toBeNull();
+    });
+
+    it('ausente todo el turno no es jubilado (nunca llegó)', async () => {
+      const { structure, person, schedule } = await setupTeacherWithSchedule('Lunes', 'm1');
+      const { inscription } = await setupStudent(structure, 'A');
+      for (const periodId of ['m2', 't1']) {
+        await ScheduleEntry.create({
+          scheduleId: schedule.id, day: 'Lunes', periodId,
+          subjectId: null, teacherId: person.id, isGroupSubject: false,
+        });
+      }
+      const [sM1, sM2, sT1] = await getTeacherSessionsForDate(person.id, MONDAY);
+
+      await saveSessionRecords(sM1.id, [{ inscriptionId: inscription.id, status: 'absent' }], person.id);
+      await saveSessionRecords(sM2.id, [{ inscriptionId: inscription.id, status: 'absent' }], person.id);
+
+      const detail = await getSessionDetail(sT1.id);
+      expect(detail.roster.find(r => r.inscriptionId === inscription.id)!.priorBlock).toBeNull();
+    });
+
+    it('ausencia justificada tras una presencia no bloquea', async () => {
+      const { structure, person, schedule } = await setupTeacherWithSchedule('Lunes', 'm1');
+      const { inscription } = await setupStudent(structure, 'A');
+      for (const periodId of ['m2', 't1']) {
+        await ScheduleEntry.create({
+          scheduleId: schedule.id, day: 'Lunes', periodId,
+          subjectId: null, teacherId: person.id, isGroupSubject: false,
+        });
+      }
+      const [sM1, sM2, sT1] = await getTeacherSessionsForDate(person.id, MONDAY);
+
+      await saveSessionRecords(sM1.id, [{ inscriptionId: inscription.id, status: 'present' }], person.id);
+      await saveSessionRecords(sM2.id, [
+        { inscriptionId: inscription.id, status: 'absent', reason: 'Justificado' },
+      ], person.id);
+
+      const detail = await getSessionDetail(sT1.id);
+      expect(detail.roster.find(r => r.inscriptionId === inscription.id)!.priorBlock).toBeNull();
+    });
+
+    it('presente, ausente sin justificar y presente otra vez sí es jubilado', async () => {
+      const { structure, person, schedule } = await setupTeacherWithSchedule('Lunes', 'm1');
+      const { inscription } = await setupStudent(structure, 'A');
+      for (const periodId of ['m2', 'm4', 't1']) {
+        await ScheduleEntry.create({
+          scheduleId: schedule.id, day: 'Lunes', periodId,
+          subjectId: null, teacherId: person.id, isGroupSubject: false,
+        });
+      }
+      const [sM1, sM2, sM4, sT1] = await getTeacherSessionsForDate(person.id, MONDAY);
+
+      await saveSessionRecords(sM1.id, [{ inscriptionId: inscription.id, status: 'present' }], person.id);
+      await saveSessionRecords(sM2.id, [{ inscriptionId: inscription.id, status: 'absent' }], person.id);
+      await saveSessionRecords(sM4.id, [{ inscriptionId: inscription.id, status: 'present' }], person.id);
+
+      const detail = await getSessionDetail(sT1.id);
+      expect(detail.roster.find(r => r.inscriptionId === inscription.id)!.priorBlock?.kind).toBe('retired');
     });
   });
 
@@ -474,7 +697,7 @@ describe('attendanceService', () => {
       const sessions = await getTeacherSessionsForDate(person.id, MONDAY);
       const [s1, s2] = sessions;
       await saveSessionRecords(s1.id, [
-        { inscriptionId: inscription.id, status: 'absent', reason: 'No llegó' },
+        { inscriptionId: inscription.id, status: 'kicked', reason: 'Pelea' },
       ], person.id);
 
       const record = await clearSessionBlock(s2.id, inscription.id, person.id, 'parent_note', null);
@@ -491,13 +714,35 @@ describe('attendanceService', () => {
     });
 
     it('rechaza cuando el motivo requiere nota y no se envía', async () => {
+      const { structure, person, schedule } = await setupTeacherWithSchedule('Lunes', 'm1');
+      const { inscription } = await setupStudent(structure, 'A');
+      await ScheduleEntry.create({
+        scheduleId: schedule.id,
+        day: 'Lunes',
+        periodId: 'm2',
+        subjectId: null,
+        teacherId: person.id,
+        isGroupSubject: false,
+      });
+      const [s1, s2] = await getTeacherSessionsForDate(person.id, MONDAY);
+      await saveSessionRecords(s1.id, [
+        { inscriptionId: inscription.id, status: 'kicked', reason: 'Pelea' },
+      ], person.id);
+
+      await expect(
+        clearSessionBlock(s2.id, inscription.id, person.id, 'other', null)
+      ).rejects.toThrow();
+    });
+
+    it('rechaza desbloquear cuando no hay bloqueo vivo', async () => {
       const { structure, person } = await setupTeacherWithSchedule('Lunes', 'm1');
       const { inscription } = await setupStudent(structure, 'A');
       const [s1] = await getTeacherSessionsForDate(person.id, MONDAY);
 
       await expect(
-        clearSessionBlock(s1.id, inscription.id, person.id, 'other', null)
-      ).rejects.toThrow();
+        clearSessionBlock(s1.id, inscription.id, person.id, 'parent_note', null)
+      ).rejects.toThrow(/bloquead/);
+      expect(await AttendanceRecord.count()).toBe(0);
     });
   });
 
