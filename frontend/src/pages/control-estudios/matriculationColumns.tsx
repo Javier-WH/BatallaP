@@ -245,6 +245,7 @@ export const BASE_COLUMN_OPTIONS: ColumnOption[] = [
   { key: 'birthdate', label: 'Fecha Nacimiento', group: 'Estudiante' },
   { key: 'pathology', label: 'Patología', group: 'Estudiante' },
   { key: 'livingWith', label: 'Vive Con', group: 'Estudiante' },
+  { key: 'email', label: 'Correo', group: 'Estudiante' },
   { key: 'birthState', label: 'Estado Nacimiento', group: 'Estudiante' },
   { key: 'birthMunicipality', label: 'Municipio Nacimiento', group: 'Estudiante' },
   { key: 'birthParish', label: 'Parroquia Nacimiento', group: 'Estudiante' },
@@ -1171,6 +1172,29 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
 
   if (isCol('pathology')) estudianteCols.push(textCol('pathology', 'Patología', 150, callbacks));
   if (isCol('livingWith')) estudianteCols.push(textCol('livingWith', 'Vive Con', 150, callbacks));
+  // Student email lives in `student.contact.email`; tempData only holds it
+  // after an edit, so the getter prefers the edited value over the stored one.
+  if (isCol('email')) {
+    estudianteCols.push({
+      colId: 'studentEmail',
+      field: 'student_email' as any,
+      headerName: 'Correo',
+      width: 180,
+      editable: true,
+      sortable: true,
+      resizable: true,
+      ...textEditorParams('correo@ejemplo.com'),
+      valueGetter: (p) =>
+        (p.data?.tempData.email as string) ?? p.data?.student?.contact?.email ?? '',
+      valueSetter: (p) => {
+        if (p.newValue !== p.oldValue && p.data) {
+          callbacks.onUpdateField(p.data.id, 'email' as keyof TempData, p.newValue as TempData[keyof TempData]);
+          return true;
+        }
+        return false;
+      },
+    });
+  }
   if (isCol('birthState')) estudianteCols.push(studentLocationCol('birth', 'state', 'Estado Nac.', 120, callbacks, locations));
   if (isCol('birthMunicipality')) estudianteCols.push(studentLocationCol('birth', 'municipality', 'Municipio Nac.', 120, callbacks, locations));
   if (isCol('birthParish')) estudianteCols.push(studentLocationCol('birth', 'parish', 'Parroquia Nac.', 120, callbacks, locations));
