@@ -4,7 +4,7 @@
   "description": "Toma de asistencia por sesión de clase para profesores",
   "id": "/asistencias.html",
   "start_url": "/asistencias.html",
-  "scope": "/",
+  "scope": "/asistencias.html",
   "display": "standalone",
   "orientation": "portrait",
   "lang": "es",

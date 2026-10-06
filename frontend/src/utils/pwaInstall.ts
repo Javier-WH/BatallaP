@@ -173,7 +173,7 @@ export async function collectPwaDiagnostics(): Promise<PwaCheck[]> {
     ok: canPromptInstall(),
     detail: canPromptInstall()
       ? 'Sí: el botón "Instalar app" abrirá el diálogo del sistema.'
-      : 'Todavía no. Algunos navegadores (p. ej. Vivaldi, Opera) no lo emiten; usa el menú del navegador.',
+      : 'Todavía no. Algunos navegadores (p. ej. Vivaldi, Opera) no lo emiten, y Chrome lo oculta si esta página está dentro del alcance de otra app de este sitio ya instalada. Prueba también el menú del navegador.',
   });
 
   return checks;

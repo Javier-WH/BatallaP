@@ -157,13 +157,21 @@ const ExchangeRateCalculator: React.FC<ExchangeRateCalculatorProps> = ({ active,
             Actualizar
           </Button>
         </div>
-        <DatePicker
-          value={calcDate}
-          onChange={handleCalcDateChange}
-          format="DD/MM/YYYY"
-          style={{ width: '100%' }}
-          allowClear={false}
-        />
+        <div className="flex gap-2">
+          <DatePicker
+            value={calcDate}
+            onChange={handleCalcDateChange}
+            format="DD/MM/YYYY"
+            style={{ flex: 1 }}
+            allowClear={false}
+          />
+          <Button
+            type={calcDate.isSame(dayjs(), 'day') ? 'primary' : 'default'}
+            onClick={() => handleCalcDateChange(dayjs())}
+          >
+            Hoy
+          </Button>
+        </div>
         {calcRates.length > 0 && (
           <div className="mt-1 text-xs text-slate-400">
             {calcRates.filter(r => r.rate !== null).map(r => (

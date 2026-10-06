@@ -37,7 +37,7 @@ const InstallAppButton: React.FC = () => {
         <div className="text-sm space-y-2">
           <p className="m-0">
             {confirmed
-              ? 'Busca "Calculadora" en la pantalla de inicio o en el cajón de aplicaciones.'
+              ? `Busca "${document.title || 'la app'}" en la pantalla de inicio o en el cajón de aplicaciones.`
               : 'Aceptaste el diálogo, pero el navegador no avisó que terminó. Puede tardar unos segundos; si no aparece, intenta de nuevo.'}
           </p>
           {!browser.installsRealApp && (
