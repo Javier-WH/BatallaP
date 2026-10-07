@@ -800,10 +800,14 @@ export interface ClassroomDistributionInput {
   sections: ScheduleSection[];
   /** Room names in order, e.g. ["Aula 1", "Aula 2", ..., "Cancha"] */
   rooms: string[];
-  /** assignments: "Lunes|m1|Aula 3" -> "gradeId-sectionId" (or "group:...") */
+  /** assignments: "Lunes|m1|Aula 3" -> "gradeId-sectionId" (or "group:subjectId:gradeId[,gradeId...]") */
   assignments: Record<string, string>;
   /** Map "gradeId-sectionId" -> label like "1° A" */
   sectionLabels: Record<string, string>;
+  /** Map subjectId -> subject name (for "group:" cells, e.g. "Artes Gráficas") */
+  subjectLabels?: Record<number, string>;
+  /** Map gradeId -> grade name (for "group:" cells, e.g. "1er Año") */
+  gradeLabels?: Record<number, string>;
 }
 
 /**
@@ -812,7 +816,7 @@ export interface ClassroomDistributionInput {
  * room at that time. Simplified header: "DISTRIBUCIÓN DE AULAS" + school year.
  */
 export async function generateClassroomDistribution(input: ClassroomDistributionInput) {
-  const { schoolPeriodName, sections, rooms, assignments, sectionLabels } = input;
+  const { schoolPeriodName, sections, rooms, assignments, sectionLabels, subjectLabels, gradeLabels } = input;
   const yearRange = extractYearRange(schoolPeriodName);
 
   const workbook = new ExcelJS.Workbook();
@@ -825,12 +829,23 @@ export async function generateClassroomDistribution(input: ClassroomDistribution
   ws.columns = Array(numCols).fill(0).map((_, i) => ({ width: i === 0 ? 5 : i === 1 ? 16 : 14 }));
   const lastColLetter = String.fromCharCode(64 + numCols);
 
-  // Helper: get cell value for a day/period/room
+  // Helper: get cell value for a day/period/room.
+  // Group cells ("group:subjectId:gradeId,...") render like the on-screen grid:
+  // "GRADO + GRADO MATERIA" (e.g. "1ER AÑO ARTES GRÁFICAS"), falling back to
+  // "GRUPO" when the subject name cannot be resolved.
   const cellValue = (day: string, periodId: string, room: string): string => {
     const key = `${day}|${periodId}|${room}`;
     const value = assignments[key];
     if (!value) return '';
-    if (value.startsWith('group:')) return 'GRUPO';
+    if (value.startsWith('group:')) {
+      const parts = value.split(':');
+      const subjectId = Number(parts[1]);
+      const gradeIds = (parts[2] || '').split(',').map(Number).filter(n => Number.isFinite(n) && n > 0);
+      const subjectName = subjectLabels?.[subjectId] ?? '';
+      const gradeNames = gradeIds.map(id => gradeLabels?.[id]).filter(Boolean).join(' + ');
+      const label = `${gradeNames} ${subjectName}`.trim();
+      return (label || 'GRUPO').toUpperCase();
+    }
     return (sectionLabels[value] || value).toUpperCase();
   };
 
@@ -929,15 +944,13 @@ export async function generateClassroomDistribution(input: ClassroomDistribution
           values.push(val);
           const cell = row.getCell(i + 3);
           if (val) {
-            if (val === 'GRUPO') {
-              cell.value = 'GRUPO';
-              cell.font = { name: 'Cambria', size: 8, bold: true, color: { argb: 'FF722ED1' } };
-            } else {
-              cell.value = val;
-              cell.font = { name: 'Cambria', size: 7, bold: true, color: { argb: 'FF000000' } };
-            }
-            // Gray fill for occupied blocks
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFBFBFBF' } };
+            const isGroup = (assignments[`${day}|${period.id}|${room}`] || '').startsWith('group:');
+            cell.value = val;
+            cell.font = isGroup
+              ? { name: 'Cambria', size: 8, bold: true, color: { argb: 'FF722ED1' } }
+              : { name: 'Cambria', size: 7, bold: true, color: { argb: 'FF000000' } };
+            // Light gray fill for occupied blocks (kept light for print contrast)
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9D9D9' } };
           } else {
             cell.value = '';
           }

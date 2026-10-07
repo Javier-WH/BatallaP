@@ -586,6 +586,7 @@ export class RevisionPeriodService {
       openedAt: null,
       completedAt: null,
       completedBy: null,
+      completedAtOverride: null,
       closedAt: null,
     }, { transaction });
 

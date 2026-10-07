@@ -14,6 +14,7 @@ interface RevisionPeriodAttributes {
   openedAt?: Date | null;
   completedAt?: Date | null;
   completedBy?: number | null;
+  completedAtOverride?: string | null;
   closedAt?: Date | null;
   gradesFinalized?: boolean;
   gradesFinalizedAt?: Date | null;
@@ -24,7 +25,7 @@ interface RevisionPeriodAttributes {
 
 type RevisionPeriodCreationAttributes = Optional<
   RevisionPeriodAttributes,
-  'id' | 'status' | 'maxOpportunities' | 'passingGrade' | 'currentOpportunity' | 'openedAt' | 'completedAt' | 'completedBy' | 'closedAt' | 'gradesFinalized' | 'gradesFinalizedAt' | 'gradesFinalizedBy'
+  'id' | 'status' | 'maxOpportunities' | 'passingGrade' | 'currentOpportunity' | 'openedAt' | 'completedAt' | 'completedBy' | 'completedAtOverride' | 'closedAt' | 'gradesFinalized' | 'gradesFinalizedAt' | 'gradesFinalizedBy'
 >;
 
 class RevisionPeriod
@@ -40,6 +41,7 @@ class RevisionPeriod
   public openedAt!: Date | null;
   public completedAt!: Date | null;
   public completedBy!: number | null;
+  public completedAtOverride!: string | null;
   public closedAt!: Date | null;
   public gradesFinalized!: boolean;
   public gradesFinalizedAt!: Date | null;
@@ -97,6 +99,14 @@ RevisionPeriod.init(
       allowNull: true,
       references: { model: 'users', key: 'id' },
       onDelete: 'SET NULL',
+    },
+    completedAtOverride: {
+      // Calendar date (YYYY-MM-DD) set by Master to override the revision
+      // completion date shown in official documents (performance summary
+      // Excel). DATEONLY avoids timezone conversions: the stored string is
+      // the date shown everywhere.
+      type: DataTypes.DATEONLY,
+      allowNull: true,
     },
     closedAt: {
       type: DataTypes.DATE,

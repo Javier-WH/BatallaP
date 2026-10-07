@@ -564,7 +564,9 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     // inst_date source depends on the summary type:
     // - Final: last term's council date — Master override
     //   (Term.councilCompletedAtOverride) wins via resolveCouncilDate.
-    // - Revisión: date the revision period was marked completed.
+    // - Revisión: date the revision period was marked completed
+    //   (Master override wins, then the "Marcar como completada" timestamp,
+    //   then the lock date).
     // - Materia Pendiente: last date set on pending-subject encounters
     //   (encounters persist after period closure, so this also works in
     //   historical mode).
@@ -572,10 +574,15 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
     if (requestedHistoricalType === 'revision') {
       const revPeriod: any = await RevisionPeriod.findOne({
         where: { schoolPeriodId: Number(schoolPeriodId) },
-        attributes: ['completedAt', 'closedAt'],
+        attributes: ['completedAtOverride', 'completedAt', 'gradesFinalizedAt', 'closedAt'],
         raw: true,
       });
-      lastCouncilDate = formatDateInCaracas(revPeriod?.completedAt ?? revPeriod?.closedAt);
+      lastCouncilDate = formatDateInCaracas(
+        // gradesFinalizedAt is the canonical "marked as completed" timestamp;
+        // completedAt is a legacy column (no current code writes it) so it is
+        // only a last-resort fallback behind closedAt.
+        revPeriod?.completedAtOverride ?? revPeriod?.gradesFinalizedAt ?? revPeriod?.closedAt ?? revPeriod?.completedAt
+      );
     } else if (isMpSection) {
       const lastEncounter: any = await PendingSubjectEncounter.findOne({
         where: { date: { [Op.ne]: null } },
@@ -2352,9 +2359,11 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
         templateGradeName,
         section?.name,
         letterGradesConfig,
-        // inst_date: date the revision period was marked completed
-        // (closedAt as fallback — closing implies it was completed).
-        formatDateInCaracas(revisionPeriod.completedAt ?? revisionPeriod.closedAt),
+        // inst_date: date the revision period was marked completed —
+        // Master override wins, then the "Marcar como completada" timestamp
+        // (gradesFinalizedAt), then the lock date. completedAt is a legacy
+        // column no current code writes — last-resort fallback only.
+        formatDateInCaracas(revisionPeriod.completedAtOverride ?? revisionPeriod.gradesFinalizedAt ?? revisionPeriod.closedAt ?? revisionPeriod.completedAt),
         false, // isMpSection
         true,  // isRevisionSection
         isRevisionAbsent,

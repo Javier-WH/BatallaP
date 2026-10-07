@@ -809,12 +809,18 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({
               sectionsList.forEach(s => {
                 sectionLabels[`${s.gradeId}-${s.sectionId}`] = s.label;
               });
+              const subjectLabels: Record<number, string> = {};
+              subjectsList.forEach(s => { subjectLabels[s.id] = s.name; });
+              const gradeLabels: Record<number, string> = {};
+              gradesList.forEach(g => { gradeLabels[g.id] = g.name; });
               generateClassroomDistribution({
                 schoolPeriodName: schoolPeriodName || '',
                 sections: scheduleSections,
                 rooms,
                 assignments,
                 sectionLabels,
+                subjectLabels,
+                gradeLabels,
               }).catch(() => message.error('Error al exportar distribución de aulas'));
             }}
           >

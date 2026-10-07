@@ -2029,3 +2029,48 @@ export const unfinalizeRevisionGrades = async (req: Request, res: Response) => {
     return res.status(500).json({ message: error.message || 'Error al desmarcar revisión' });
   }
 };
+
+/**
+ * PUT /revision-periods/:schoolPeriodId/date-override
+ * Master-only. Sets or clears the completion-date override shown in official
+ * documents (performance summary Excel). Body: { completedAtOverride: 'YYYY-MM-DD' | null }
+ */
+export const setRevisionDateOverride = async (req: Request, res: Response) => {
+  try {
+    const roles: string[] = (req.session as any)?.user?.roles || [];
+    if (!roles.includes('Master')) {
+      return res.status(403).json({ message: 'Solo Master puede ajustar la fecha de completado' });
+    }
+
+    const schoolPeriodId = parseInt(req.params.schoolPeriodId, 10);
+    if (!schoolPeriodId) {
+      return res.status(400).json({ message: 'schoolPeriodId es requerido' });
+    }
+
+    const { completedAtOverride } = req.body as { completedAtOverride?: string | null };
+
+    if (completedAtOverride !== null && completedAtOverride !== undefined && completedAtOverride !== '') {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(completedAtOverride)) {
+        return res.status(400).json({ message: 'Formato de fecha inválido. Use YYYY-MM-DD.' });
+      }
+      const parsed = new Date(`${completedAtOverride}T00:00:00`);
+      if (Number.isNaN(parsed.getTime())) {
+        return res.status(400).json({ message: 'Fecha inválida' });
+      }
+    }
+
+    const revisionPeriod = await RevisionPeriod.findOne({ where: { schoolPeriodId } });
+    if (!revisionPeriod) {
+      return res.status(404).json({ message: 'Período de revisión no encontrado' });
+    }
+
+    await revisionPeriod.update({
+      completedAtOverride: completedAtOverride ? completedAtOverride : null,
+    });
+
+    return res.json(revisionPeriod);
+  } catch (error: any) {
+    console.error('[setRevisionDateOverride] Error:', error);
+    return res.status(500).json({ message: error.message || 'Error al ajustar la fecha de completado' });
+  }
+};

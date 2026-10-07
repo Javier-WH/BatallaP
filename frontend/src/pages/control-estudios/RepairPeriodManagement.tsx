@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Card, Button, Tag, Space, Typography, Spin, message, Alert, Statistic, Row, Col, Popconfirm, Checkbox, Tabs, InputNumber, Segmented, Modal, DatePicker } from 'antd';
+import { Card, Button, Tag, Space, Typography, Spin, message, Alert, Statistic, Row, Col, Popconfirm, Checkbox, Tabs, InputNumber, Segmented, Modal, DatePicker, Tooltip } from 'antd';
 import { PlayCircleOutlined, StopOutlined, ReloadOutlined, CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined, PrinterOutlined, RetweetOutlined, UndoOutlined, LockOutlined, UnlockOutlined, EditOutlined, CalendarOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '@/services/api';
@@ -38,6 +38,7 @@ interface RevisionPeriodData {
   openedAt: string | null;
   completedAt: string | null;
   completedBy: number | null;
+  completedAtOverride?: string | null;
   closedAt: string | null;
   gradesFinalized?: boolean;
   gradesFinalizedAt?: string | null;
@@ -126,6 +127,11 @@ const RepairPeriodManagement: React.FC = () => {
   const [datesModalSubject, setDatesModalSubject] = useState<{ pgsId: number; subjectName: string; abbreviation: string } | null>(null);
   const [datesModalValues, setDatesModalValues] = useState<Record<number, string | null>>({});
   const [datesSaving, setDatesSaving] = useState(false);
+
+  // Master override for the revision completion date shown in official documents
+  const [overrideModalOpen, setOverrideModalOpen] = useState(false);
+  const [overrideDateValue, setOverrideDateValue] = useState<dayjs.Dayjs | null>(null);
+  const [savingOverride, setSavingOverride] = useState(false);
 
   const canOverride = user?.roles.includes('Control de Estudios') || isMaster;
 
@@ -367,6 +373,31 @@ const RepairPeriodManagement: React.FC = () => {
   };
 
   const [finalizing, setFinalizing] = useState(false);
+
+  const openOverrideModal = () => {
+    const current = summary?.revisionPeriod?.completedAtOverride;
+    setOverrideDateValue(current ? dayjs(current) : null);
+    setOverrideModalOpen(true);
+  };
+
+  const handleSaveDateOverride = async (dateValue?: dayjs.Dayjs | null) => {
+    if (!activePeriodId) return;
+    const value = dateValue === undefined ? overrideDateValue : dateValue;
+    setSavingOverride(true);
+    try {
+      await api.put(`/revision-periods/${activePeriodId}/date-override`, {
+        completedAtOverride: value ? value.format('YYYY-MM-DD') : null,
+      });
+      message.success(value ? `Fecha de completado ajustada al ${value.format('DD/MM/YYYY')}` : 'Override de fecha eliminado');
+      setOverrideModalOpen(false);
+      await fetchData();
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Error al ajustar la fecha de completado');
+    } finally {
+      setSavingOverride(false);
+    }
+  };
+
   const handleFinalizeRevisionGrades = async (checked: boolean) => {
     if (!activePeriodId) return;
     setFinalizing(true);
@@ -718,6 +749,26 @@ const RepairPeriodManagement: React.FC = () => {
                         'Marcar como completada'
                       )}
                     </Checkbox>
+                    {isMaster && summary?.revisionPeriod && (
+                      <Space size={4} style={{ marginTop: 15 }}>
+                        <Button
+                          type="link"
+                          size="small"
+                          icon={<EditOutlined />}
+                          onClick={openOverrideModal}
+                          style={{ fontWeight: 700, fontSize: 12, padding: '0 8px', height: 24 }}
+                        >
+                          Ajustar fecha
+                        </Button>
+                        {summary.revisionPeriod.completedAtOverride && (
+                          <Tooltip title="Override activo: esta fecha se usa en documentos oficiales en lugar de la fecha original">
+                            <Tag color="purple" style={{ borderRadius: 20, fontWeight: 700, fontSize: 10, margin: 0 }}>
+                              OVERRIDE · {dayjs(summary.revisionPeriod.completedAtOverride).format('DD/MM/YYYY')}
+                            </Tag>
+                          </Tooltip>
+                        )}
+                      </Space>
+                    )}
                   </Space>
                 </Space>
                 <Space direction="vertical" size={8} style={{ width: '100%' }}>
@@ -1098,6 +1149,46 @@ const RepairPeriodManagement: React.FC = () => {
             })}
           </div>
         )}
+      </Modal>
+
+      <Modal
+        title="Ajustar fecha de completado · Revisión"
+        open={overrideModalOpen}
+        onOk={() => handleSaveDateOverride()}
+        onCancel={() => setOverrideModalOpen(false)}
+        confirmLoading={savingOverride}
+        okText="Guardar"
+        cancelText="Cancelar"
+        okButtonProps={{ disabled: !overrideDateValue }}
+        footer={[
+          summary?.revisionPeriod?.completedAtOverride ? (
+            <Button
+              key="clear"
+              danger
+              loading={savingOverride}
+              onClick={() => handleSaveDateOverride(null)}
+            >
+              Quitar override
+            </Button>
+          ) : null,
+          <Button key="cancel" onClick={() => setOverrideModalOpen(false)}>Cancelar</Button>,
+          <Button key="save" type="primary" loading={savingOverride} disabled={!overrideDateValue} onClick={() => handleSaveDateOverride()}>
+            Guardar
+          </Button>,
+        ]}
+      >
+        <div style={{ padding: '8px 0' }}>
+          <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+            Esta fecha reemplaza la fecha de completado del período de revisión en documentos oficiales (resumen de rendimiento).
+          </Text>
+          <DatePicker
+            style={{ width: '100%' }}
+            value={overrideDateValue}
+            onChange={(d) => setOverrideDateValue(d)}
+            format="DD/MM/YYYY"
+            placeholder="Fecha real de completado"
+          />
+        </div>
       </Modal>
 
       <style>{`
