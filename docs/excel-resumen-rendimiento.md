@@ -49,7 +49,7 @@ La plantilla base tiene `subj_1` … `subj_9` (hasta 9 materias). Si el grado ti
 
 | Nombre | Descripción |
 |---|---|
-| `inst_period` | Nombre del período escolar (ej. 2024-2025) |
+| `inst_period` | Nombre del período escolar (ej. 2024-2025). La frase "año escolar" se elimina si viene incluida (la plantilla ya la imprime como etiqueta). |
 | `inst_code` | Código DEA |
 | `inst_education_code` | Código del nivel educativo |
 | `inst_level` | Nivel/modalidad |
@@ -59,10 +59,10 @@ La plantilla base tiene `subj_1` … `subj_9` (hasta 9 materias). Si el grado ti
 | `inst_municipality` | Municipio |
 | `inst_state` | Estado |
 | `inst_cdcee` | Código CDCEE |
-| `inst_director` | Nombre del director |
+| `inst_director` | Nombre completo del director ("Apellidos, Nombres"; mismo valor que `inst_director_2`, con fallback a `director_name`) |
 | `inst_director_doc` | Documento del director |
 | `inst_grade` | Nombre del grado |
-| `inst_section` | Nombre de la sección |
+| `inst_section` | Nombre de la sección. La palabra "sección" se elimina si viene incluida (la plantilla ya la imprime como etiqueta). |
 | `inst_eval_type` | "Regulares" o "REVISION DE MATERIA PENDIENTE" |
 
 ### Cabecera de materias

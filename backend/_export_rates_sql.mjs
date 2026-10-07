@@ -77,6 +77,7 @@ async function main() {
   lines.push(
     '',
     '-- Cleanup: drop rows for dates the BCV never published (see comment above).',
+    'DROP TEMPORARY TABLE IF EXISTS _bcv_valid_dates;',
     'CREATE TEMPORARY TABLE _bcv_valid_dates (d DATE PRIMARY KEY);',
     `INSERT INTO _bcv_valid_dates (d) VALUES\n${dateTuples};`,
     'DELETE er FROM exchange_rates er',

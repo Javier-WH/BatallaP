@@ -98,6 +98,36 @@ function padNumber(n: number | null | undefined): number | string | null {
   return n;
 }
 
+/**
+ * Remove a label word/phrase that the template already prints statically next
+ * to a named cell ("I. Año Escolar:" beside inst_period, "SECCIÓN" beside
+ * inst_section). Matching is case- and accent-insensitive — "Año Escolar",
+ * "ANO ESCOLAR", "anio escolar", "Sección", "SECCION" all get removed — and
+ * leftover separators/whitespace are cleaned so the rendered line doesn't
+ * repeat the label.
+ */
+function stripLabelPhrase(value: string | null | undefined, phrase: string): string | null | undefined {
+  if (typeof value !== 'string' || !value) return value;
+  const CLASS: Record<string, string> = {
+    a: 'aáàâäã', e: 'eéèêë', i: 'iíìîï', o: 'oóòôöõ', u: 'uúùûü', n: 'nñ',
+  };
+  const toClass = (ch: string): string => {
+    // ñ also accepts the "ni" spelling ("anio" ≡ "año")
+    if (ch === 'ñ' || ch === 'Ñ') return '(?:[nñNÑ][iI]?)';
+    const base = ch.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const g = CLASS[base];
+    return g ? `[${g}${g.toUpperCase()}]` : ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  };
+  const pattern = phrase.trim().split(/\s+/)
+    .map(word => word.split('').map(toClass).join(''))
+    .join('\\s+');
+  return value
+    .replace(new RegExp(`\\b${pattern}\\b`, 'gi'), ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s:;,.–—-]+|[\s:;,.–—-]+$/g, '')
+    .trim();
+}
+
 function numericToLetter(numericGrade: number, letterGrades: { letter: string; max: number }[]): string {
   if (!letterGrades || letterGrades.length === 0) return String(numericGrade);
   const sorted = [...letterGrades].sort((a, b) => b.max - a.max);
@@ -291,7 +321,9 @@ function fillSheetByNamedRanges(
     }
   };
 
-  setByRange('inst_period', period?.name);
+  // The template already prints the "Año Escolar" / "SECCIÓN" labels next to
+  // these cells — strip them if they leaked into the stored names.
+  setByRange('inst_period', stripLabelPhrase(period?.name, 'año escolar'));
   setByRange('inst_code', settings.institution_dea_code || plantel?.code);
   setByRange('inst_education_code', settings.institution_code);
   setByRange('inst_level', settings.institution_level);
@@ -301,27 +333,28 @@ function fillSheetByNamedRanges(
   setByRange('inst_municipality', settings.institution_municipality || plantel?.municipality);
   setByRange('inst_state', settings.institution_state || plantel?.state);
   setByRange('inst_cdcee', settings.institution_cdcee);
-  setByRange('inst_director', settings.director_name);
-  setByRange('inst_director_doc', settings.director_document);
-  // inst_director_2 uses "Apellidos, Nombres" format if available, else falls back to director_name
+  // Both director cells use the full "Apellidos, Nombres" format when the
+  // structured name fields are set, else fall back to director_name.
   const directorFirstNames = (settings.director_first_names || '').trim();
   const directorLastNames = (settings.director_last_names || '').trim();
   const directorLong = (directorLastNames && directorFirstNames)
     ? `${directorLastNames}, ${directorFirstNames}`
     : settings.director_name;
+  setByRange('inst_director', directorLong);
+  setByRange('inst_director_doc', settings.director_document);
   setByRange('inst_director_2', directorLong);
   setByRange('inst_director_doc_2', settings.director_document);
   setByRange('inst_grade', gradeName);
-  setByRange('inst_section', sectionName);
+  setByRange('inst_section', stripLabelPhrase(sectionName, 'sección'));
 
   // Write the council date to cell Z4 (no named range defined in template).
-  // Format: "MES DE AÑO" (e.g. "JULIO DE 2026") in uppercase.
+  // Format: "MES AÑO" (e.g. "JULIO 2026") in uppercase.
   if (lastCouncilDate) {
     const caracasDate = formatDateInCaracas(lastCouncilDate);
     if (caracasDate) {
       const parts = caracasDate.split('-');
       const months = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
-      const dateStr = `${months[Number(parts[1]) - 1]} DE ${parts[0]}`;
+      const dateStr = `${months[Number(parts[1]) - 1]} ${parts[0]}`;
       // Try named range first, fall back to direct Z4 cell
       let dateRef = namedRanges.getCell(lookupSheetName, 'inst_date');
       if (!dateRef) {

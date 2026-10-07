@@ -3181,6 +3181,7 @@ ON DUPLICATE KEY UPDATE rate = VALUES(rate), updatedAt = NOW();
 
 
 -- Cleanup: drop rows for dates the BCV never published (see comment above).
+DROP TEMPORARY TABLE IF EXISTS _bcv_valid_dates;
 CREATE TEMPORARY TABLE _bcv_valid_dates (d DATE PRIMARY KEY);
 INSERT INTO _bcv_valid_dates (d) VALUES
 ('2020-03-27'),
