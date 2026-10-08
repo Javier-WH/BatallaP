@@ -86,8 +86,7 @@ const PendingSubjectTeacherPanel: React.FC = () => {
   const [contentModalOpen, setContentModalOpen] = useState(false);
   const [contentLoading, setContentLoading] = useState(false);
   const [contentSaving, setContentSaving] = useState(false);
-  const [contentTheme, setContentTheme] = useState('');
-  const [contentItems, setContentItems] = useState<{ text: string; order: number }[]>([]);
+  const [contentThemes, setContentThemes] = useState<{ themeTitle: string; items: { text: string; order: number }[] }[]>([]);
 
   /* ------------------- Fetch assignments ------------------- */
   const fetchAssignments = useCallback(async () => {
@@ -254,12 +253,13 @@ const PendingSubjectTeacherPanel: React.FC = () => {
     if (!first.pendingSubjectId) return;
     setContentModalOpen(true);
     setContentLoading(true);
-    setContentTheme('');
-    setContentItems([]);
+    setContentThemes([{ themeTitle: '', items: [] }]);
     try {
       const res = await api.get(`/pending-subjects/${first.pendingSubjectId}/content`);
-      setContentTheme(res.data.themeTitle || '');
-      setContentItems(res.data.items.map((it: any) => ({ text: it.text, order: it.order })));
+      const themes = res.data.themes || [];
+      setContentThemes(themes.length > 0
+        ? themes.map((t: any) => ({ themeTitle: t.themeTitle, items: t.items.map((it: any) => ({ text: it.text, order: it.order })) }))
+        : [{ themeTitle: '', items: [] }]);
     } catch {
       // No content yet — ok
     } finally {
@@ -274,8 +274,7 @@ const PendingSubjectTeacherPanel: React.FC = () => {
     setContentSaving(true);
     try {
       await api.put(`/pending-subjects/${first.pendingSubjectId}/content`, {
-        themeTitle: contentTheme,
-        items: contentItems,
+        themes: contentThemes.map(t => ({ themeTitle: t.themeTitle, items: t.items })),
       });
       message.success('Contenido guardado');
       setContentModalOpen(false);
@@ -290,15 +289,18 @@ const PendingSubjectTeacherPanel: React.FC = () => {
     const printWin = window.open('', '_blank', 'width=800,height=600');
     if (!printWin) return;
     const subjName = encounterData?.subjectName || '';
-    const itemsHtml = contentItems.map(it => `<li>${it.text}</li>`).join('');
+    const themesHtml = contentThemes
+      .filter(t => t.themeTitle.trim() || t.items.length > 0)
+      .map(t => `
+        <h2>Tema: ${t.themeTitle || '—'}</h2>
+        ${t.items.length > 0 ? `<ol>${t.items.map(it => `<li>${it.text}</li>`).join('')}</ol>` : ''}
+      `).join('');
     printWin.document.write(`
       <html><head><title>Contenido - ${subjName}</title>
       <style>body{font-family:Arial,sans-serif;padding:40px;}h1{font-size:18px;}h2{font-size:14px;border-bottom:1px solid #ccc;padding-bottom:4px;}ol{font-size:13px;line-height:1.8;}</style>
       </head><body>
       <h1>Materia Pendiente: ${subjName}</h1>
-      <h2>Tema General: ${contentTheme || '—'}</h2>
-      <h2>Contenidos:</h2>
-      <ol>${itemsHtml}</ol>
+      ${themesHtml || '<p>Sin contenido registrado.</p>'}
       </body></html>
     `);
     printWin.document.close();
@@ -653,7 +655,7 @@ const PendingSubjectTeacherPanel: React.FC = () => {
         onCancel={() => setContentModalOpen(false)}
         width={600}
         footer={[
-          <Button key="print" icon={<PrinterOutlined />} onClick={handlePrintContent} disabled={!contentTheme && contentItems.length === 0}>
+          <Button key="print" icon={<PrinterOutlined />} onClick={handlePrintContent} disabled={contentThemes.every(t => !t.themeTitle.trim() && t.items.length === 0)}>
             Imprimir
           </Button>,
           <Button key="cancel" onClick={() => setContentModalOpen(false)}>Cancelar</Button>,
@@ -665,49 +667,71 @@ const PendingSubjectTeacherPanel: React.FC = () => {
         <Spin spinning={contentLoading}>
           <Alert
             type="info"
-            message="Tema General y lista de Contenidos para que los estudiantes sepan qué estudiar."
+            message="Temas Generales, cada uno con su lista de Contenidos para que los estudiantes sepan qué estudiar."
             showIcon
             style={{ marginBottom: 16 }}
           />
-          <div style={{ marginBottom: 16 }}>
-            <Text strong>Tema General:</Text>
-            <Input
-              value={contentTheme}
-              onChange={e => setContentTheme(e.target.value)}
-              placeholder="Ej: Repaso general de la materia"
-              style={{ marginTop: 8 }}
-            />
-          </div>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <Text strong>Contenidos:</Text>
-              <Button
-                size="small"
-                icon={<PlusOutlined />}
-                onClick={() => setContentItems(prev => [...prev, { text: '', order: prev.length }])}
-              >
-                Añadir
-              </Button>
-            </div>
-            {contentItems.map((item, idx) => (
-              <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                <Input
-                  value={item.text}
-                  onChange={e => setContentItems(prev => prev.map((it, i) => i === idx ? { ...it, text: e.target.value } : it))}
-                  placeholder={`Contenido ${idx + 1}`}
-                />
+          {contentThemes.map((theme, tIdx) => (
+            <div
+              key={tIdx}
+              style={{ border: '1px solid #e8ecf0', borderRadius: 8, padding: 12, marginBottom: 12 }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <Text strong>Tema {tIdx + 1}:</Text>
                 <Button
                   size="small"
                   icon={<DeleteOutlined />}
                   danger
-                  onClick={() => setContentItems(prev => prev.filter((_, i) => i !== idx))}
+                  onClick={() => setContentThemes(prev => prev.filter((_, i) => i !== tIdx))}
                 />
               </div>
-            ))}
-            {contentItems.length === 0 && (
-              <Empty description="Sin contenidos. Haga clic en «Añadir»" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-            )}
-          </div>
+              <Input
+                value={theme.themeTitle}
+                onChange={e => setContentThemes(prev => prev.map((t, i) => i === tIdx ? { ...t, themeTitle: e.target.value } : t))}
+                placeholder="Ej: Repaso general de la materia"
+                style={{ marginBottom: 12 }}
+              />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <Text>Contenidos:</Text>
+                <Button
+                  size="small"
+                  icon={<PlusOutlined />}
+                  onClick={() => setContentThemes(prev => prev.map((t, i) => i === tIdx ? { ...t, items: [...t.items, { text: '', order: t.items.length }] } : t))}
+                >
+                  Añadir
+                </Button>
+              </div>
+              {theme.items.map((item, iIdx) => (
+                <div key={iIdx} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  <Input
+                    value={item.text}
+                    onChange={e => setContentThemes(prev => prev.map((t, i) => i === tIdx
+                      ? { ...t, items: t.items.map((it, j) => j === iIdx ? { ...it, text: e.target.value } : it) }
+                      : t))}
+                    placeholder={`Contenido ${iIdx + 1}`}
+                  />
+                  <Button
+                    size="small"
+                    icon={<DeleteOutlined />}
+                    danger
+                    onClick={() => setContentThemes(prev => prev.map((t, i) => i === tIdx
+                      ? { ...t, items: t.items.filter((_, j) => j !== iIdx) }
+                      : t))}
+                  />
+                </div>
+              ))}
+              {theme.items.length === 0 && (
+                <Empty description="Sin contenidos. Haga clic en «Añadir»" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              )}
+            </div>
+          ))}
+          <Button
+            block
+            icon={<PlusOutlined />}
+            onClick={() => setContentThemes(prev => [...prev, { themeTitle: '', items: [] }])}
+          >
+            Añadir tema
+          </Button>
         </Spin>
       </Modal>
 

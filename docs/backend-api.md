@@ -273,8 +273,8 @@ Ver [`flows/period-closure.md`](./flows/period-closure.md).
 | GET | `/:pendingSubjectId/encounters` | Listar encuentros (auto-crea N según setting). |
 | PUT | `/:pendingSubjectId/encounters` | Actualizar fechas de encuentros. |
 | POST | `/:pendingSubjectId/encounters/:encounterNumber/score` | Registrar nota de encuentro. Si aprueba (≥10), marca MP como aprobada. |
-| GET | `/:pendingSubjectId/content` | Obtener contenido de estudio (Tema General + Contenidos). |
-| PUT | `/:pendingSubjectId/content` | Guardar contenido de estudio. |
+| GET | `/:pendingSubjectId/content` | Obtener temas de estudio (`themes[]`, cada uno con `themeTitle` + `items[]`). |
+| PUT | `/:pendingSubjectId/content` | Guardar temas de estudio (replace-all). |
 
 **Setting relacionado**: `pending_subject_max_encounters` (default: 4) — configurable en `/control-estudios/configuracion`.
 

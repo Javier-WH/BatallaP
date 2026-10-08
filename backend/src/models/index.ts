@@ -454,7 +454,7 @@ PendingSubject.hasMany(PendingSubjectEncounter, { foreignKey: 'pendingSubjectId'
 PendingSubjectEncounter.belongsTo(PendingSubject, { foreignKey: 'pendingSubjectId', as: 'pendingSubject' });
 
 // Pending subject content (Tema General + Contenidos)
-PendingSubject.hasOne(PendingSubjectContent, { foreignKey: 'pendingSubjectId', as: 'content' });
+PendingSubject.hasMany(PendingSubjectContent, { foreignKey: 'pendingSubjectId', as: 'contents' });
 PendingSubjectContent.belongsTo(PendingSubject, { foreignKey: 'pendingSubjectId', as: 'pendingSubject' });
 PendingSubjectContent.hasMany(PendingSubjectContentItem, { foreignKey: 'contentId', as: 'items' });
 PendingSubjectContentItem.belongsTo(PendingSubjectContent, { foreignKey: 'contentId', as: 'content' });

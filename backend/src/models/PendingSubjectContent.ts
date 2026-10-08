@@ -6,13 +6,14 @@ interface PendingSubjectContentAttributes {
   id: number;
   pendingSubjectId: number;
   themeTitle: string;
+  order: number;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 type PendingSubjectContentCreationAttributes = Optional<
   PendingSubjectContentAttributes,
-  'id' | 'createdAt' | 'updatedAt'
+  'id' | 'order' | 'createdAt' | 'updatedAt'
 >;
 
 class PendingSubjectContent
@@ -22,6 +23,7 @@ class PendingSubjectContent
   public id!: number;
   public pendingSubjectId!: number;
   public themeTitle!: string;
+  public order!: number;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -47,13 +49,17 @@ PendingSubjectContent.init(
       allowNull: false,
       defaultValue: '',
     },
+    order: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+    },
   },
   {
     sequelize,
     tableName: 'pending_subject_contents',
     indexes: [
       {
-        unique: true,
         fields: ['pendingSubjectId'],
       },
     ],

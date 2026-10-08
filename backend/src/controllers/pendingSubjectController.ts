@@ -2104,7 +2104,7 @@ export const updateMpLockedEncounters = async (req: Request, res: Response) => {
 
 /* ---------------------------------------------------------------------- */
 /* GET /pending-subjects/:pendingSubjectId/content                        */
-/* Returns the global content (theme title + items) for a MP subject.     */
+/* Returns the study themes (each with its contents) for a MP subject.    */
 /* ---------------------------------------------------------------------- */
 export const getMpContent = async (req: Request, res: Response) => {
   try {
@@ -2116,29 +2116,26 @@ export const getMpContent = async (req: Request, res: Response) => {
     if (!pending) {
       return res.status(404).json({ message: 'Materia pendiente no encontrada' });
     }
-    let content = await PendingSubjectContent.findOne({
+    const contents = await PendingSubjectContent.findAll({
       where: { pendingSubjectId },
       include: [{
         model: PendingSubjectContentItem,
         as: 'items',
-        order: [['order', 'ASC']],
       }],
+      order: [
+        ['order', 'ASC'],
+        ['id', 'ASC'],
+        [{ model: PendingSubjectContentItem, as: 'items' }, 'order', 'ASC'],
+      ],
     });
-    if (!content) {
-      // Auto-create empty content
-      content = await PendingSubjectContent.create({ pendingSubjectId, themeTitle: '' });
-    }
-    const items = (content as any).items
-      ? (content as any).items
-      : await PendingSubjectContentItem.findAll({
-          where: { contentId: content.id },
-          order: [['order', 'ASC']],
-        });
     return res.json({
-      id: content.id,
       pendingSubjectId,
-      themeTitle: content.themeTitle,
-      items: items.map((it: any) => ({ id: it.id, text: it.text, order: it.order })),
+      themes: contents.map((c: any) => ({
+        id: c.id,
+        themeTitle: c.themeTitle,
+        order: c.order,
+        items: (c.items || []).map((it: any) => ({ id: it.id, text: it.text, order: it.order })),
+      })),
     });
   } catch (error) {
     console.error('[getMpContent] Error:', error);
@@ -2148,7 +2145,9 @@ export const getMpContent = async (req: Request, res: Response) => {
 
 /* ---------------------------------------------------------------------- */
 /* PUT /pending-subjects/:pendingSubjectId/content                        */
-/* Upsert the global content (theme title + items).                       */
+/* Replace-all the study themes (each with its contents).                 */
+/* Accepts { themes: [{ themeTitle, items: [{ text }] }] }. Legacy shape  */
+/* { themeTitle, items } is wrapped into a single theme.                  */
 /* ---------------------------------------------------------------------- */
 export const updateMpContent = async (req: Request, res: Response) => {
   const t = await sequelize.transaction();
@@ -2157,50 +2156,72 @@ export const updateMpContent = async (req: Request, res: Response) => {
     if (!Number.isFinite(pendingSubjectId)) {
       return res.status(400).json({ message: 'pendingSubjectId inválido' });
     }
-    const { themeTitle, items } = req.body as {
-      themeTitle: string;
-      items: { text: string; order?: number }[];
+    const body = req.body as {
+      themes?: { themeTitle?: string; items?: { text: string; order?: number }[] }[];
+      themeTitle?: string;
+      items?: { text: string; order?: number }[];
     };
+    const themes = Array.isArray(body.themes)
+      ? body.themes
+      : [{ themeTitle: body.themeTitle || '', items: body.items || [] }];
     const pending = await PendingSubject.findByPk(pendingSubjectId, { transaction: t });
     if (!pending) {
       await t.rollback();
       return res.status(404).json({ message: 'Materia pendiente no encontrada' });
     }
 
-    // Upsert content record
-    let content = await PendingSubjectContent.findOne({ where: { pendingSubjectId }, transaction: t });
-    if (!content) {
-      content = await PendingSubjectContent.create(
-        { pendingSubjectId, themeTitle: themeTitle || '' },
-        { transaction: t }
-      );
-    } else {
-      await content.update({ themeTitle: themeTitle || '' }, { transaction: t });
+    // Replace all existing themes + items
+    const existing = await PendingSubjectContent.findAll({
+      where: { pendingSubjectId },
+      attributes: ['id'],
+      transaction: t,
+    });
+    const existingIds = existing.map(c => c.id);
+    if (existingIds.length > 0) {
+      await PendingSubjectContentItem.destroy({ where: { contentId: existingIds }, transaction: t });
+      await PendingSubjectContent.destroy({ where: { id: existingIds }, transaction: t });
     }
 
-    // Replace all items (delete + recreate)
-    await PendingSubjectContentItem.destroy({ where: { contentId: content.id }, transaction: t });
-    if (Array.isArray(items) && items.length > 0) {
-      await PendingSubjectContentItem.bulkCreate(
-        items.map((it, idx) => ({
-          contentId: content!.id,
-          text: it.text,
-          order: it.order ?? idx,
-        })),
+    // Recreate, skipping fully-empty themes and empty item texts
+    let order = 0;
+    for (const theme of themes) {
+      const themeTitle = (theme.themeTitle || '').trim();
+      const items = (theme.items || []).filter(it => (it.text || '').trim().length > 0);
+      if (!themeTitle && items.length === 0) continue;
+      const content = await PendingSubjectContent.create(
+        { pendingSubjectId, themeTitle, order: order++ },
         { transaction: t }
       );
+      if (items.length > 0) {
+        await PendingSubjectContentItem.bulkCreate(
+          items.map((it, idx) => ({
+            contentId: content.id,
+            text: it.text.trim(),
+            order: it.order ?? idx,
+          })),
+          { transaction: t }
+        );
+      }
     }
 
     await t.commit();
-    const freshItems = await PendingSubjectContentItem.findAll({
-      where: { contentId: content.id },
-      order: [['order', 'ASC']],
+    const fresh = await PendingSubjectContent.findAll({
+      where: { pendingSubjectId },
+      include: [{ model: PendingSubjectContentItem, as: 'items' }],
+      order: [
+        ['order', 'ASC'],
+        ['id', 'ASC'],
+        [{ model: PendingSubjectContentItem, as: 'items' }, 'order', 'ASC'],
+      ],
     });
     return res.json({
-      id: content.id,
       pendingSubjectId,
-      themeTitle: content.themeTitle,
-      items: freshItems.map(it => ({ id: it.id, text: it.text, order: it.order })),
+      themes: fresh.map((c: any) => ({
+        id: c.id,
+        themeTitle: c.themeTitle,
+        order: c.order,
+        items: (c.items || []).map((it: any) => ({ id: it.id, text: it.text, order: it.order })),
+      })),
     });
   } catch (error) {
     await t.rollback();
