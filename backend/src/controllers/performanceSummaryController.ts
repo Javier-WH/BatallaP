@@ -175,6 +175,20 @@ async function getInstitutionSettings(): Promise<Record<string, string>> {
 
 const MAX_STUDENTS_PER_SHEET = 35;
 
+// Copies the print/page layout that addWorksheet does NOT inherit:
+// pageSetup (paperSize, orientation, margins, printArea, fitToPage and the
+// print options — ExcelJS merges <printOptions>/<pageMargins> into
+// `pageSetup` when parsing) and header/footer. Without this, cloned sheets
+// silently revert to portrait/A4/default margins.
+function copySheetPageLayout(sourceSheet: ExcelJS.Worksheet, newSheet: ExcelJS.Worksheet): void {
+  if (sourceSheet.pageSetup) {
+    newSheet.pageSetup = JSON.parse(JSON.stringify(sourceSheet.pageSetup));
+  }
+  if ((sourceSheet as any).headerFooter) {
+    (newSheet as any).headerFooter = JSON.parse(JSON.stringify((sourceSheet as any).headerFooter));
+  }
+}
+
 function cloneWorksheet(workbook: ExcelJS.Workbook, sourceSheet: ExcelJS.Worksheet, newName: string): ExcelJS.Worksheet {
   const newSheet = workbook.addWorksheet(newName, {
     properties: sourceSheet.model.properties,
@@ -226,10 +240,8 @@ function cloneWorksheet(workbook: ExcelJS.Workbook, sourceSheet: ExcelJS.Workshe
     });
   }
 
-  // Copy page setup and print options if present
-  if (sourceSheet.pageSetup) {
-    newSheet.pageSetup = JSON.parse(JSON.stringify(sourceSheet.pageSetup));
-  }
+  // Copy page setup, print options and header/footer
+  copySheetPageLayout(sourceSheet, newSheet);
 
   return newSheet;
 }
@@ -1325,7 +1337,10 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       sourceWs: ExcelJS.Worksheet,
       newName: string
     ): ExcelJS.Worksheet => {
-      const cloned = workbook.addWorksheet(newName);
+      const cloned = workbook.addWorksheet(newName, {
+        properties: sourceWs.model.properties,
+        views: sourceWs.model.views,
+      });
       sourceWs.eachRow({ includeEmpty: true }, (row, rowNum) => {
         row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
           const c = cloned.getRow(rowNum).getCell(colNumber);
@@ -1346,6 +1361,8 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
       if (sourceWs.model.merges) {
         sourceWs.model.merges.forEach((merge: string) => (cloned as any).mergeCellsWithoutStyle(merge));
       }
+      // Copy page layout so every cloned sheet prints identically
+      copySheetPageLayout(sourceWs, cloned);
       return cloned;
     };
 
@@ -1385,14 +1402,18 @@ export const exportPerformanceSummary = async (req: Request, res: Response) => {
         nativeRow: a.nativeRow,
         nativeRowOff: a.nativeRowOff,
       });
-      for (let i = 0; i < originalImages.length; i++) {
-        const img = originalImages[i];
-        if (preImageIds[i] < 0) continue;
-        (ws as any).addImage(preImageIds[i], {
-          tl: makeAnchor(img.range.tl),
-          br: makeAnchor(img.range.br),
-          editAs: (img as any).range.editAs,
-        });
+      // The first rendered page IS the original template sheet — it already
+      // carries the images; re-adding them would stack a duplicate logo.
+      if (ws !== sheet) {
+        for (let i = 0; i < originalImages.length; i++) {
+          const img = originalImages[i];
+          if (preImageIds[i] < 0) continue;
+          (ws as any).addImage(preImageIds[i], {
+            tl: makeAnchor(img.range.tl),
+            br: makeAnchor(img.range.br),
+            editAs: (img as any).range.editAs,
+          });
+        }
       }
 
       const pageStats = buildSubjectStats(
@@ -2178,17 +2199,6 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
       return { studentCountBySubject, failedCountBySubject, passedCountBySubject, zeroCountBySubject };
     };
 
-    // Total students in the section (ALL enrolled students, not only those
-    // with repair grades). Used for the "no inscritos" per-subject count so
-    // it reflects the real section size.
-    const totalStudents = await Inscription.count({
-      where: {
-        schoolPeriodId: Number(schoolPeriodId),
-        sectionId: Number(sectionId),
-        gradeId: Number(gradeId),
-      },
-    });
-
     // Build the subject-column map without writing anything to the template.
     // Headers and statistics are written later per page, based on the scores
     // present in that page only.
@@ -2238,7 +2248,10 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
       sourceWs: ExcelJS.Worksheet,
       newName: string
     ): ExcelJS.Worksheet => {
-      const cloned = workbook.addWorksheet(newName);
+      const cloned = workbook.addWorksheet(newName, {
+        properties: sourceWs.model.properties,
+        views: sourceWs.model.views,
+      });
       sourceWs.eachRow({ includeEmpty: true }, (row, rowNum) => {
         row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
           const c = cloned.getRow(rowNum).getCell(colNumber);
@@ -2256,6 +2269,8 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
       if (sourceWs.model.merges) {
         sourceWs.model.merges.forEach((merge: string) => (cloned as any).mergeCellsWithoutStyle(merge));
       }
+      // Copy page layout so every cloned sheet prints identically
+      copySheetPageLayout(sourceWs, cloned);
       return cloned;
     };
 
@@ -2288,14 +2303,18 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
         nativeRow: a.nativeRow,
         nativeRowOff: a.nativeRowOff,
       });
-      for (let i = 0; i < originalImages.length; i++) {
-        const img = originalImages[i];
-        if (preImageIds[i] < 0) continue;
-        (ws as any).addImage(preImageIds[i], {
-          tl: makeAnchor(img.range.tl),
-          br: makeAnchor(img.range.br),
-          editAs: (img as any).range.editAs,
-        });
+      // The first rendered page IS the original template sheet — it already
+      // carries the images; re-adding them would stack a duplicate logo.
+      if (ws !== sheet) {
+        for (let i = 0; i < originalImages.length; i++) {
+          const img = originalImages[i];
+          if (preImageIds[i] < 0) continue;
+          (ws as any).addImage(preImageIds[i], {
+            tl: makeAnchor(img.range.tl),
+            br: makeAnchor(img.range.br),
+            editAs: (img as any).range.editAs,
+          });
+        }
       }
 
       const pageStats = buildSubjectStats(
@@ -2441,7 +2460,9 @@ export const exportRevisionSummary = async (req: Request, res: Response) => {
       for (let pageIdx = 0; pageIdx < pages; pageIdx++) {
         const studentOffset = pageIdx * MAX_STUDENTS_PER_SHEET;
         const pageCount = Math.min(group.length - studentOffset, MAX_STUDENTS_PER_SHEET);
-        fillGroupPage(pageSheets[pageIdx], group, studentOffset, 'Revisión', totalStudents, pageCount);
+        // std_total = students who actually went to revision, not the whole
+        // section (inscriptions is already filtered to revision students).
+        fillGroupPage(pageSheets[pageIdx], group, studentOffset, 'Revisión', inscriptions.length, pageCount);
       }
 
       return pageNames;

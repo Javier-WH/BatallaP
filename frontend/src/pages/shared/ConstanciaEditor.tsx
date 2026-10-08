@@ -179,6 +179,42 @@ const TableSizePicker: React.FC<{ onPick: (rows: number, cols: number) => void }
 
 const FONT_SIZE_OPTIONS = ['8pt', '10pt', '11pt', '12pt', '14pt', '16pt', '18pt', '20pt', '24pt'].map((v) => ({ value: v, label: v.replace('pt', '') }));
 
+// Template content is a single HTML column stored in MySQL where each query
+// packet is capped (max_allowed_packet ≈ 4MB locally). Photos can be several
+// MB and grow ~1.4x in base64, so they are downscaled before embedding —
+// 1400px is plenty for print while keeping the template self-contained.
+const MAX_IMAGE_DIM = 1400;
+
+function imageFileToDataUrl(file: File): Promise<string> {
+  // SVG stays untouched: it's tiny, vector-based and rasterizing would lose quality.
+  if (file.type === 'image/svg+xml') {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const scale = Math.min(1, MAX_IMAGE_DIM / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(img.width * scale));
+      canvas.height = Math.max(1, Math.round(img.height * scale));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('canvas')); return; }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const keepAlpha = ['image/png', 'image/webp', 'image/gif'].includes(file.type);
+      resolve(keepAlpha ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('image')); };
+    img.src = objectUrl;
+  });
+}
+
 // Keeps the caret inside a table cell (or the editor) while a toolbar button is clicked.
 const keepFocus = (event: React.MouseEvent) => event.preventDefault();
 
@@ -459,13 +495,13 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
         <Upload
           accept="image/*"
           showUploadList={false}
-          beforeUpload={(file) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-              const src = reader.result as string;
+          beforeUpload={async (file) => {
+            try {
+              const src = await imageFileToDataUrl(file);
               editor.chain().focus().setImage({ src, alt: file.name }).run();
-            };
-            reader.readAsDataURL(file);
+            } catch {
+              message.error('No se pudo cargar la imagen');
+            }
             return false;
           }}
         >

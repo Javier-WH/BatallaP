@@ -94,7 +94,7 @@ Para cada estudiante en la fila `n` (1 a 35):
 
 | Nombre | Descripción |
 |---|---|
-| `std_total` | Cantidad total de estudiantes en la sección |
+| `std_total` | Cantidad total de estudiantes en la sección. En Resumen de Revisión: total de estudiantes con revisión (no toda la sección) |
 | `std_page_count` | Cantidad de estudiantes en esta página |
 
 ### Calificaciones (`grade_X_Y`)

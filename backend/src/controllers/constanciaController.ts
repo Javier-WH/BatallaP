@@ -11,6 +11,15 @@ const ALLOWED_ROLES = ['Master', 'Administrador', 'Control de Estudios'];
 const ALLOWED_MARGINS = ['0.5in', '0.75in', '1in', '1.5in', '2in'];
 const DEFAULT_MARGIN = '1in';
 
+// Template HTML embeds images as base64 and is stored in a single row — a
+// packet is capped by MySQL's max_allowed_packet (~4MB in local installs).
+// Reject oversized content with a clear message instead of a raw DB error.
+const MAX_CONTENT_BYTES = 3.5 * 1024 * 1024;
+
+function isPacketTooLarge(error: any): boolean {
+  return error?.code === 'ER_NET_PACKET_TOO_LARGE' || /max_allowed_packet/i.test(error?.message || '');
+}
+
 function hasRole(req: Request, roles: string[]): boolean {
   const user = (req.session as any)?.user;
   if (!user?.roles) return false;
@@ -530,6 +539,9 @@ export const createTemplate = async (req: Request, res: Response) => {
     if (margin !== undefined && !ALLOWED_MARGINS.includes(margin)) {
       return res.status(400).json({ message: 'Margen no válido' });
     }
+    if (typeof content === 'string' && Buffer.byteLength(content) > MAX_CONTENT_BYTES) {
+      return res.status(413).json({ message: 'La plantilla es demasiado grande. Reduzca el tamaño o cantidad de imágenes.' });
+    }
     const template = await ConstanciaTemplate.create({
       name: name.trim(),
       content: content || '',
@@ -538,6 +550,9 @@ export const createTemplate = async (req: Request, res: Response) => {
     return res.status(201).json(template);
   } catch (error) {
     console.error('[createTemplate] Error:', error);
+    if (isPacketTooLarge(error)) {
+      return res.status(413).json({ message: 'La plantilla es demasiado grande. Reduzca el tamaño o cantidad de imágenes.' });
+    }
     return res.status(500).json({ message: 'Error al crear plantilla' });
   }
 };
@@ -553,6 +568,9 @@ export const updateTemplate = async (req: Request, res: Response) => {
     if (margin !== undefined && !ALLOWED_MARGINS.includes(margin)) {
       return res.status(400).json({ message: 'Margen no válido' });
     }
+    if (typeof content === 'string' && Buffer.byteLength(content) > MAX_CONTENT_BYTES) {
+      return res.status(413).json({ message: 'La plantilla es demasiado grande. Reduzca el tamaño o cantidad de imágenes.' });
+    }
     if (name !== undefined) template.name = name.trim();
     if (content !== undefined) template.content = content;
     if (margin !== undefined) template.margin = margin;
@@ -560,6 +578,9 @@ export const updateTemplate = async (req: Request, res: Response) => {
     return res.json(template);
   } catch (error) {
     console.error('[updateTemplate] Error:', error);
+    if (isPacketTooLarge(error)) {
+      return res.status(413).json({ message: 'La plantilla es demasiado grande. Reduzca el tamaño o cantidad de imágenes.' });
+    }
     return res.status(500).json({ message: 'Error al actualizar plantilla' });
   }
 };
