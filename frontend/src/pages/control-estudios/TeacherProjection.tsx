@@ -7,7 +7,9 @@ const { Option } = Select;
 const { Text } = Typography;
 
 const normalizeText = (s?: string) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-const isMpSection = (name?: string) => normalizeText(name) === 'materia pendiente';
+// The Materia Pendiente section is identified by its flag, not its name —
+// the name is user-editable and must not break this page.
+const isMpSection = (section?: { isMateriaPendiente?: boolean } | null) => !!section?.isMateriaPendiente;
 
 interface SchoolPeriod { id: number; period: string; name: string; status: 'preinscripcion' | 'activo' | 'historico' | 'externo'; isActive: boolean; }
 
@@ -401,7 +403,7 @@ const TeacherProjection: React.FC = () => {
       render: (_: any, record: any) => {
         // Exclude MP assignments — those are shown in the MP tab
         const regularAssignments = (record.teachingAssignments || []).filter(
-          (as: any) => !isMpSection(as.section?.name)
+          (as: any) => !isMpSection(as.section)
         );
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -570,7 +572,7 @@ const TeacherProjection: React.FC = () => {
       key: 'assignments',
       render: (_: any, record: any) => {
         const mpAssignments = (record.teachingAssignments || []).filter((as: any) =>
-          isMpSection(as.section?.name)
+          isMpSection(as.section)
         );
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
