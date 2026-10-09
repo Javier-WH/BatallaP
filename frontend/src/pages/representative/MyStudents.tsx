@@ -103,12 +103,19 @@ const MyStudents: React.FC = () => {
                   {student.inscription ? (
                     <div className="bg-slate-50 rounded-lg p-3 w-full border border-slate-100 mt-auto">
                       <div className="flex flex-col gap-1">
-                        <Tag color="blue" className="m-0 text-center font-bold text-wrap whitespace-normal">
+                        <Tag color={student.inscription.status === 'Retirado' ? 'red' : 'blue'} className="m-0 text-center font-bold text-wrap whitespace-normal">
                           {student.inscription.grade}
                         </Tag>
-                        <Text className="text-xs text-slate-500 mt-1">
-                          Sección "{student.inscription.section}"
-                        </Text>
+                        {student.inscription.status === 'Retirado' && (
+                          <Tag color="red" className="m-0 text-center">
+                            Retirado
+                          </Tag>
+                        )}
+                        {student.inscription.section && (
+                          <Text className="text-xs text-slate-500 mt-1">
+                            Sección "{student.inscription.section}"
+                          </Text>
+                        )}
                         <Text className="text-[10px] uppercase tracking-wider text-slate-400">
                           {student.inscription.period}
                         </Text>

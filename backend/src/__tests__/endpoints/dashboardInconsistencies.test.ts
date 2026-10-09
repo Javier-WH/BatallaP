@@ -72,6 +72,19 @@ describe('GET /api/dashboard/admin-inconsistencies', () => {
       sectionId: section.id,
     });
 
+    // Withdrawn student: no section, but must be excluded from both lists.
+    const withdrawn = await makeStudent('Retirado');
+    const insWithdrawn = await createTestInscription(withdrawn.id, period.id, grade.id, null as any);
+    await insWithdrawn.update({ withdrawnAt: new Date() });
+    await Matriculation.create({
+      schoolPeriodId: period.id,
+      gradeId: grade.id,
+      personId: withdrawn.id,
+      inscriptionId: insWithdrawn.id,
+      status: 'withdrawn',
+      escolaridad: 'regular',
+    });
+
     const res = await agent
       .get('/api/dashboard/admin-inconsistencies')
       .query({ schoolPeriodId: period.id });
@@ -84,11 +97,13 @@ describe('GET /api/dashboard/admin-inconsistencies', () => {
     expect(noSectionIds).toContain(noSection.id);
     expect(noSectionIds).not.toContain(noSubjects.id);
     expect(noSectionIds).not.toContain(ok.id);
+    expect(noSectionIds).not.toContain(withdrawn.id);
 
     const noSubjectsIds = res.body.withoutSubjects.map((s: any) => s.personId);
     expect(noSubjectsIds).toContain(noSubjects.id);
     expect(noSubjectsIds).not.toContain(noSection.id);
     expect(noSubjectsIds).not.toContain(ok.id);
+    expect(noSubjectsIds).not.toContain(withdrawn.id);
 
     const noSectionRow = res.body.withoutSection.find((s: any) => s.personId === noSection.id);
     expect(noSectionRow.lastName).toBe('APELLIDO');

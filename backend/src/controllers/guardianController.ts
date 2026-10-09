@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { GuardianDocumentType } from '@/models/GuardianProfile';
 import { findGuardianProfile, findOrCreateGuardianProfile } from '@/services/guardianProfileService';
-import { Person, User, StudentGuardian, GuardianProfile, Inscription, Grade, Section, SchoolPeriod } from '@/models/index';
+import { Person, User, StudentGuardian, GuardianProfile, Inscription, Grade, Section, SchoolPeriod, Matriculation } from '@/models/index';
 
 export const searchGuardian = async (req: Request, res: Response) => {
   try {
@@ -125,7 +125,8 @@ export const getMyStudents = async (req: Request, res: Response) => {
               include: [
                 { model: Grade, as: 'grade' },
                 { model: Section, as: 'section' },
-                { model: SchoolPeriod, as: 'period' }
+                { model: SchoolPeriod, as: 'period' },
+                { model: Matriculation, as: 'matriculation' }
               ]
             }
           ]
@@ -142,6 +143,9 @@ export const getMyStudents = async (req: Request, res: Response) => {
         ? student.inscriptions[0]
         : null;
 
+      const isWithdrawn = Boolean(latestInscription?.withdrawnAt)
+        || latestInscription?.matriculation?.status === 'withdrawn';
+
       return {
         id: student.id,
         firstName: student.firstName,
@@ -156,7 +160,7 @@ export const getMyStudents = async (req: Request, res: Response) => {
           grade: latestInscription.grade?.name,
           section: latestInscription.section?.name,
           period: latestInscription.period?.name,
-          status: 'Inscrito' // You might want to derive this from actual status if available
+          status: isWithdrawn ? 'Retirado' : 'Inscrito'
         } : null
       };
     }).filter(s => s !== null);

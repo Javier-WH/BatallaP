@@ -720,10 +720,13 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
            SELECT i.personId FROM inscriptions i
            LEFT JOIN matriculations m ON m.inscriptionId = i.id
            WHERE i.schoolPeriodId = :spId
+             AND i.withdrawnAt IS NULL
+             AND (m.id IS NULL OR m.status <> 'withdrawn')
              ${isPrivileged ? '' : 'AND m.hiddenFromControlEstudios = false'}
            UNION
            SELECT m2.personId FROM matriculations m2
            WHERE m2.schoolPeriodId = :spId
+             AND m2.status <> 'withdrawn'
              ${isPrivileged ? '' : 'AND m2.hiddenFromControlEstudios = false'}
          ) AS t`,
         { replacements: { spId: schoolPeriodId }, type: QueryTypes.SELECT }
@@ -743,15 +746,18 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
            SELECT i.personId FROM inscriptions i
            LEFT JOIN matriculations m ON m.inscriptionId = i.id
            WHERE i.schoolPeriodId = :spId
+             AND i.withdrawnAt IS NULL
+             AND (m.id IS NULL OR m.status <> 'withdrawn')
              ${isPrivileged ? '' : 'AND m.hiddenFromControlEstudios = false'}
            UNION
            SELECT m2.personId FROM matriculations m2
            WHERE m2.schoolPeriodId = :spId
+             AND m2.status <> 'withdrawn'
              ${isPrivileged ? '' : 'AND m2.hiddenFromControlEstudios = false'}
          ) t
          WHERE NOT EXISTS (
            SELECT 1 FROM inscriptions i2
-           WHERE i2.schoolPeriodId = :spId AND i2.personId = t.personId AND i2.sectionId IS NOT NULL
+           WHERE i2.schoolPeriodId = :spId AND i2.personId = t.personId AND i2.sectionId IS NOT NULL AND i2.withdrawnAt IS NULL
          )`,
         { replacements: { spId: schoolPeriodId }, type: QueryTypes.SELECT }
       ).then((r: any) => Number(r?.[0]?.cnt ?? 0)),
@@ -762,11 +768,13 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
            FROM inscriptions i
            LEFT JOIN matriculations m ON m.inscriptionId = i.id
            WHERE i.schoolPeriodId = :spId AND i.sectionId IS NOT NULL
+             AND i.withdrawnAt IS NULL
+             AND (m.id IS NULL OR m.status <> 'withdrawn')
              ${isPrivileged ? '' : 'AND m.hiddenFromControlEstudios = false'}
              AND NOT EXISTS (
                SELECT 1 FROM inscriptions i3
                JOIN inscription_subjects ins ON ins.inscriptionId = i3.id
-               WHERE i3.schoolPeriodId = :spId AND i3.personId = i.personId
+               WHERE i3.schoolPeriodId = :spId AND i3.personId = i.personId AND i3.withdrawnAt IS NULL
              )`,
         { replacements: { spId: schoolPeriodId }, type: QueryTypes.SELECT }
       ).then((r: any) => Number(r?.[0]?.cnt ?? 0)),
@@ -811,7 +819,7 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
             model: Inscription,
             as: 'inscriptions',
             required: true,
-            where: { schoolPeriodId },
+            where: { schoolPeriodId, withdrawnAt: null },
           }],
         }],
       }),
@@ -910,15 +918,18 @@ export const getAdminInconsistencies = async (req: Request, res: Response) => {
            SELECT i.personId FROM inscriptions i
            LEFT JOIN matriculations m ON m.inscriptionId = i.id
            WHERE i.schoolPeriodId = :spId
+             AND i.withdrawnAt IS NULL
+             AND (m.id IS NULL OR m.status <> 'withdrawn')
              ${isPrivileged ? '' : 'AND m.hiddenFromControlEstudios = false'}
            UNION
            SELECT m2.personId FROM matriculations m2
            WHERE m2.schoolPeriodId = :spId
+             AND m2.status <> 'withdrawn'
              ${isPrivileged ? '' : 'AND m2.hiddenFromControlEstudios = false'}
          ) t
          WHERE NOT EXISTS (
            SELECT 1 FROM inscriptions i2
-           WHERE i2.schoolPeriodId = :spId AND i2.personId = t.personId AND i2.sectionId IS NOT NULL
+           WHERE i2.schoolPeriodId = :spId AND i2.personId = t.personId AND i2.sectionId IS NOT NULL AND i2.withdrawnAt IS NULL
          )`,
         { replacements: { spId: schoolPeriodId }, type: QueryTypes.SELECT }
       ),
@@ -928,11 +939,13 @@ export const getAdminInconsistencies = async (req: Request, res: Response) => {
            FROM inscriptions i
            LEFT JOIN matriculations m ON m.inscriptionId = i.id
            WHERE i.schoolPeriodId = :spId AND i.sectionId IS NOT NULL
+             AND i.withdrawnAt IS NULL
+             AND (m.id IS NULL OR m.status <> 'withdrawn')
              ${hiddenFilter}
              AND NOT EXISTS (
                SELECT 1 FROM inscriptions i3
                JOIN inscription_subjects ins ON ins.inscriptionId = i3.id
-               WHERE i3.schoolPeriodId = :spId AND i3.personId = i.personId
+               WHERE i3.schoolPeriodId = :spId AND i3.personId = i.personId AND i3.withdrawnAt IS NULL
              )`,
         { replacements: { spId: schoolPeriodId }, type: QueryTypes.SELECT }
       ),
