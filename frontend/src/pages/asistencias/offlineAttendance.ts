@@ -84,6 +84,12 @@ export interface SyncOutcome {
 export const QUEUE_EVENT = 'attendance-queue-changed';
 const MAX_CACHED_ROSTERS = 80;
 
+// Axios has no default timeout: on a flaky mobile signal a request can hang
+// forever without failing, which bypasses every offline fallback (they only
+// trigger on an actual error). A timeout turns "stuck loading" into a network
+// error so the cached data takes over.
+export const NET_TIMEOUT_MS = 12_000;
+
 const templateKey = (personId: number) => `att:template:${personId}`;
 const rostersKey = (personId: number) => `att:rosters:${personId}`;
 const queueKey = (personId: number) => `att:queue:${personId}`;
@@ -117,6 +123,7 @@ export const loadTemplate = (personId: number): WeekTemplate | null => readJson(
 export async function refreshTemplate(personId: number): Promise<void> {
   const res = await api.get<WeekTemplate>('/attendance/my-week-template', {
     params: { date: dayjs().format('YYYY-MM-DD') },
+    timeout: NET_TIMEOUT_MS,
   });
   writeJson(templateKey(personId), res.data);
 }
@@ -260,7 +267,7 @@ async function doSync(personId: number): Promise<SyncOutcome> {
           baseStatus: r.baseStatus,
           baseReason: r.baseReason,
         })),
-      });
+      }, { timeout: NET_TIMEOUT_MS });
       removePending(personId, item.key);
       outcome.synced++;
       const byId = new Map(item.records.map(r => [r.inscriptionId, r]));

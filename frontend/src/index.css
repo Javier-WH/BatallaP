@@ -784,6 +784,8 @@ input[type=number] {
     left: -260px;
     top: 0;
     height: 100vh !important;
+    /* Keep the user card / "Acerca de" above the phone's navigation bar. */
+    padding-bottom: env(safe-area-inset-bottom);
     transition: left 0.3s ease, transform 0.3s ease !important;
     box-shadow: none;
   }
@@ -833,6 +835,14 @@ input[type=number] {
   .app-viewport-height {
     height: 100dvh !important;
   }
+}
+
+/* Android edge-to-edge / installed PWA: the system navigation bar overlays the
+   bottom of the viewport. Reserve that inset inside the fixed-height shell so
+   content never sits under the bar. Requires viewport-fit=cover (without it the
+   env() insets are always 0). */
+.app-viewport-height {
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 /* Matriculation grid: extra scrollable room under the last row. The horizontal

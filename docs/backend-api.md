@@ -297,6 +297,7 @@ Ver [`flows/grade-edit.md`](./flows/grade-edit.md).
 | GET | `/control` | Métricas del panel de control (Administrador/Control de Estudios). |
 | GET | `/master` | Métricas del dashboard Master. |
 | GET | `/admin-stats` | Métricas agregadas del dashboard Admin (COUNT/GROUP BY, sin descargar listas). |
+| GET | `/admin-inconsistencies` | Detalle de estudiantes detrás de "Sin sección" / "Sin materias" (`{ withoutSection, withoutSubjects }` con personId, nombre, documento, grado/sección). |
 
 ## 🖼️ Contenido editable del dashboard – `/api/dashboard-content` (`dashboardContentRoutes.ts`)
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { Row, Col, Card, Tag, Empty, Alert, Progress, Spin, message } from 'antd';
+import { Row, Col, Card, Tag, Empty, Alert, Progress, Spin, message, Modal } from 'antd';
 import {
   TeamOutlined,
   UserOutlined,
@@ -7,6 +7,7 @@ import {
   CheckCircleOutlined,
   ExclamationCircleOutlined,
   IdcardOutlined,
+  RightOutlined,
 } from '@ant-design/icons';
 import api from '@/services/api';
 import { useSchool } from '@/context/SchoolContext';
@@ -41,6 +42,32 @@ interface AdminOverviewData {
   };
   alerts: string[];
 }
+
+interface InconsistencyStudent {
+  personId: number;
+  firstName: string;
+  lastName: string;
+  documentType: string;
+  document: string;
+  gradeName: string | null;
+  sectionName: string | null;
+  matriculationStatus: string | null;
+}
+
+interface AdminInconsistencies {
+  withoutSection: InconsistencyStudent[];
+  withoutSubjects: InconsistencyStudent[];
+}
+
+const DOC_PREFIX: Record<string, string> = {
+  Venezolano: 'V',
+  Extranjero: 'E',
+  Pasaporte: 'P',
+  'Cedula Escolar': 'CE',
+};
+
+const docLabel = (s: InconsistencyStudent) =>
+  s.document ? `${DOC_PREFIX[s.documentType] ?? s.documentType}-${s.document}` : 'Sin documento';
 
 /* ---------- Animated counter hook ---------- */
 function useCountUp(target: number, duration = 900, deps: unknown[] = []) {
@@ -183,6 +210,29 @@ const AdminDashboard: React.FC = () => {
   const [data, setData] = useState<AdminOverviewData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [issueType, setIssueType] = useState<'section' | 'subjects' | null>(null);
+  const [inconsistencies, setInconsistencies] = useState<AdminInconsistencies | null>(null);
+  const [issuesLoading, setIssuesLoading] = useState(false);
+
+  const openIssues = useCallback(async (type: 'section' | 'subjects') => {
+    setIssueType(type);
+    setIssuesLoading(true);
+    try {
+      const res = await api.get<AdminInconsistencies>('/dashboard/admin-inconsistencies', { params: { schoolPeriodId: viewPeriod?.id } });
+      setInconsistencies(res.data);
+    } catch {
+      setInconsistencies(null);
+      message.error('No se pudo cargar el detalle de estudiantes.');
+    } finally {
+      setIssuesLoading(false);
+    }
+  }, [viewPeriod?.id]);
+
+  const issueList = issueType === 'section'
+    ? inconsistencies?.withoutSection
+    : issueType === 'subjects'
+      ? inconsistencies?.withoutSubjects
+      : undefined;
 
   const loadSnapshot = useCallback(async () => {
     setLoading(true);
@@ -384,23 +434,39 @@ const AdminDashboard: React.FC = () => {
               <Card className="h-full" bodyStyle={{ padding: 24 }}>
                 <h3 className="text-sm font-bold uppercase tracking-wider mb-6" style={{ color: 'var(--color-text-muted)' }}>Inconsistencias</h3>
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between p-3 rounded-xl" style={{ backgroundColor: data.counts.studentsWithoutSection > 0 ? 'rgba(239,68,68,0.06)' : 'rgba(22,163,74,0.06)' }}>
+                  <div
+                    className={`flex items-center justify-between p-3 rounded-xl${data.counts.studentsWithoutSection > 0 ? ' app-card-hover cursor-pointer' : ''}`}
+                    style={{ backgroundColor: data.counts.studentsWithoutSection > 0 ? 'rgba(239,68,68,0.06)' : 'rgba(22,163,74,0.06)' }}
+                    onClick={data.counts.studentsWithoutSection > 0 ? () => openIssues('section') : undefined}
+                    title={data.counts.studentsWithoutSection > 0 ? 'Ver lista de estudiantes' : undefined}
+                  >
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: data.counts.studentsWithoutSection > 0 ? 'rgba(239,68,68,0.1)' : 'rgba(22,163,74,0.1)', color: data.counts.studentsWithoutSection > 0 ? '#ef4444' : '#16a34a' }}>
                         {data.counts.studentsWithoutSection > 0 ? <ExclamationCircleOutlined /> : <CheckCircleOutlined />}
                       </div>
                       <span className="text-sm font-medium" style={{ color: 'var(--color-text-main)' }}>Sin sección</span>
                     </div>
-                    <span className="text-xl font-black" style={{ color: data.counts.studentsWithoutSection > 0 ? '#ef4444' : '#16a34a' }}>{data.counts.studentsWithoutSection}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl font-black" style={{ color: data.counts.studentsWithoutSection > 0 ? '#ef4444' : '#16a34a' }}>{data.counts.studentsWithoutSection}</span>
+                      {data.counts.studentsWithoutSection > 0 && <RightOutlined className="text-xs" style={{ color: 'var(--color-text-muted)' }} />}
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between p-3 rounded-xl" style={{ backgroundColor: data.counts.studentsWithoutSubjects > 0 ? 'rgba(239,68,68,0.06)' : 'rgba(22,163,74,0.06)' }}>
+                  <div
+                    className={`flex items-center justify-between p-3 rounded-xl${data.counts.studentsWithoutSubjects > 0 ? ' app-card-hover cursor-pointer' : ''}`}
+                    style={{ backgroundColor: data.counts.studentsWithoutSubjects > 0 ? 'rgba(239,68,68,0.06)' : 'rgba(22,163,74,0.06)' }}
+                    onClick={data.counts.studentsWithoutSubjects > 0 ? () => openIssues('subjects') : undefined}
+                    title={data.counts.studentsWithoutSubjects > 0 ? 'Ver lista de estudiantes' : undefined}
+                  >
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: data.counts.studentsWithoutSubjects > 0 ? 'rgba(239,68,68,0.1)' : 'rgba(22,163,74,0.1)', color: data.counts.studentsWithoutSubjects > 0 ? '#ef4444' : '#16a34a' }}>
                         {data.counts.studentsWithoutSubjects > 0 ? <ExclamationCircleOutlined /> : <CheckCircleOutlined />}
                       </div>
                       <span className="text-sm font-medium" style={{ color: 'var(--color-text-main)' }}>Sin materias</span>
                     </div>
-                    <span className="text-xl font-black" style={{ color: data.counts.studentsWithoutSubjects > 0 ? '#ef4444' : '#16a34a' }}>{data.counts.studentsWithoutSubjects}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl font-black" style={{ color: data.counts.studentsWithoutSubjects > 0 ? '#ef4444' : '#16a34a' }}>{data.counts.studentsWithoutSubjects}</span>
+                      {data.counts.studentsWithoutSubjects > 0 && <RightOutlined className="text-xs" style={{ color: 'var(--color-text-muted)' }} />}
+                    </div>
                   </div>
                 </div>
               </Card>
@@ -472,6 +538,46 @@ const AdminDashboard: React.FC = () => {
           </Col>
         </Row>
       </div>
+
+      {/* ===== Inconsistencies drill-down ===== */}
+      <Modal
+        open={issueType !== null}
+        onCancel={() => setIssueType(null)}
+        footer={null}
+        centered
+        width={480}
+        title={issueType === 'section' ? 'Estudiantes sin sección asignada' : 'Estudiantes sin materias asignadas'}
+      >
+        {issuesLoading ? (
+          <div className="flex justify-center py-10"><Spin /></div>
+        ) : !issueList || issueList.length === 0 ? (
+          <Empty description="No hay estudiantes en esta situación." />
+        ) : (
+          <div className="space-y-2 max-h-[60vh] overflow-y-auto -mx-1 px-1">
+            {issueList.map(s => (
+              <div
+                key={s.personId}
+                className="flex items-center justify-between gap-3 p-3 rounded-xl"
+                style={{ border: '1px solid rgba(15,23,42,0.06)', backgroundColor: 'var(--color-content-bg)' }}
+              >
+                <div className="min-w-0">
+                  <p className="font-semibold text-sm m-0 truncate" style={{ color: 'var(--color-text-main)' }}>
+                    {s.lastName}, {s.firstName}
+                  </p>
+                  <p className="text-xs m-0" style={{ color: 'var(--color-text-muted)' }}>
+                    {docLabel(s)}
+                    {s.gradeName ? ` · ${s.gradeName}` : ''}
+                    {s.sectionName ? ` — ${s.sectionName}` : ''}
+                  </p>
+                </div>
+                {s.matriculationStatus === 'pending' && (
+                  <Tag color="orange" className="m-0 flex-shrink-0">Pendiente</Tag>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

@@ -43,14 +43,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   const checkAuth = async () => {
+    // Definitely offline: open straight from the last confirmed user instead of
+    // waiting on a request that cannot reach the server.
+    if (navigator.onLine === false) {
+      setUser(readCachedUser());
+      setLoading(false);
+      return;
+    }
     try {
-      const { data } = await api.get('/auth/me');
+      // The timeout matters: on a flaky signal the request can hang forever
+      // without failing, which would keep the app on the loading spinner.
+      const { data } = await api.get('/auth/me', { timeout: 8000 });
       const nextUser = data.authenticated ? data.user : null;
       cacheUser(nextUser);
       setUser(nextUser);
     } catch (error) {
       console.error("Auth check failed", error);
-      // No response at all = no network: keep the cached user.
+      // No response at all (or timeout) = no network: keep the cached user.
       const offline = axios.isAxiosError(error) && !error.response;
       setUser(offline ? readCachedUser() : null);
     } finally {
@@ -60,6 +69,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     checkAuth();
+    // If the app opened on the cached user, re-validate the session when the
+    // signal comes back (it may have expired meanwhile).
+    const onOnline = () => { void checkAuth(); };
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
   }, []);
 
   const login = (userData: User) => {

@@ -14,7 +14,7 @@ import { getSubjectVisual } from '@/utils/subjectVisuals';
 import { STATUS_LABELS } from './types';
 import type { AttendanceSessionView, RosterEntry, AttendanceStatus, ClearanceReason } from './types';
 import {
-  QUEUE_EVENT, applyPending, cacheRoster, enqueue, findPending, isNetworkError, loadQueue,
+  NET_TIMEOUT_MS, QUEUE_EVENT, applyPending, cacheRoster, enqueue, findPending, isNetworkError, loadQueue,
   offlineRoster, offlineSessionsFor, periodLabelOf, refreshTemplate, removePending, sessionKey, syncPending,
 } from './offlineAttendance';
 import type { PendingSubmission, SyncOutcome, SyncReport } from './offlineAttendance';
@@ -293,6 +293,7 @@ const TeacherAttendanceTab: React.FC<{ onExit?: () => void; fill?: boolean }> = 
     try {
       const res = await api.get('/attendance/my-sessions', {
         params: { date: ds, ...(periodId ? { schoolPeriodId: periodId } : {}) },
+        timeout: NET_TIMEOUT_MS,
       });
       setSessions(res.data.sessions ?? []);
       setOffline(false);
@@ -748,7 +749,7 @@ function RosterScreen({
         let noNetwork = session.id < 0;
         if (!noNetwork) {
           try {
-            const res = await api.get(`/attendance/sessions/${session.id}`);
+            const res = await api.get(`/attendance/sessions/${session.id}`, { timeout: NET_TIMEOUT_MS });
             serverRoster = res.data.roster ?? [];
             cacheRoster(personId, key, serverRoster!);
           } catch (err) {
@@ -949,7 +950,7 @@ function RosterScreen({
       const records = roster
         .filter(r => r.status !== null)
         .map(r => ({ inscriptionId: r.inscriptionId, status: r.status, reason: normalizeAttendanceReason(r.reason) }));
-      await api.put(`/attendance/sessions/${session.id}/records`, { records });
+      await api.put(`/attendance/sessions/${session.id}/records`, { records }, { timeout: NET_TIMEOUT_MS });
       removePending(personId, key);
       message.success(isPast ? 'Cambios guardados' : 'Asistencia guardada');
       onBack();
@@ -1086,9 +1087,9 @@ function RosterScreen({
                         inscriptionId: selectedStudent.inscriptionId,
                         reasonCode: code,
                         reasonNote: note || null,
-                      });
+                      }, { timeout: NET_TIMEOUT_MS });
                       message.success('Estudiante desbloqueado');
-                      const res = await api.get(`/attendance/sessions/${session.id}`);
+                      const res = await api.get(`/attendance/sessions/${session.id}`, { timeout: NET_TIMEOUT_MS });
                       setRoster(res.data.roster ?? []);
                       return true;
                     } catch (err: unknown) {
@@ -1445,7 +1446,7 @@ function ClearancePanel({
   const [reasons, setReasons] = useState<ClearanceReason[]>([]);
 
   useEffect(() => {
-    api.get('/attendance/clearance-reasons')
+    api.get('/attendance/clearance-reasons', { timeout: NET_TIMEOUT_MS })
       .then(res => setReasons(res.data ?? []))
       .catch(() => setReasons([]));
   }, []);

@@ -29,11 +29,14 @@ const AttendanceApp: React.FC = () => {
   const handleLogin = async (values: { username: string; password: string }) => {
     setSubmitting(true);
     try {
-      const { data } = await api.post('/auth/login', values);
+      const { data } = await api.post('/auth/login', values, { timeout: 12000 });
       login(data.user);
       refreshSettings();
     } catch (err) {
-      message.error((axios.isAxiosError(err) && err.response?.data?.message) || 'Usuario o contraseña incorrectos');
+      const networkDown = axios.isAxiosError(err) && !err.response;
+      message.error(networkDown
+        ? 'Sin conexión: para entrar con una sesión nueva necesitas señal.'
+        : (axios.isAxiosError(err) && err.response?.data?.message) || 'Usuario o contraseña incorrectos');
     } finally {
       setSubmitting(false);
     }

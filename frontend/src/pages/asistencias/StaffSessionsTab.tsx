@@ -115,6 +115,7 @@ const StaffSessionsTab: React.FC = () => {
         columns={columns}
         dataSource={sessions}
         rowClassName={() => 'striped-row'}
+        scroll={{ x: 'max-content' }}
         pagination={{ pageSize: 15, showSizeChanger: false }}
         locale={{ emptyText: 'Sin sesiones en el rango seleccionado' }}
       />

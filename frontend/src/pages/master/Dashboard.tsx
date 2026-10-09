@@ -2,7 +2,6 @@ import { useEffect, useState, useRef } from 'react';
 import { Row, Col, Card, Tag, Empty, message, Progress, Modal } from 'antd';
 import {
   GlobalOutlined,
-  ArrowRightOutlined,
   TeamOutlined,
   UserOutlined,
   BookOutlined,
@@ -10,9 +9,7 @@ import {
   ClockCircleOutlined,
   ExclamationCircleOutlined,
   CalendarOutlined,
-  SettingOutlined,
 } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
 import api from '@/services/api';
 import { useSchool } from '@/context/SchoolContext';
 
@@ -241,7 +238,6 @@ const MasterDashboard: React.FC = () => {
   const [data, setData] = useState<MasterDashboardData | null>(null);
   const [loading, setLoading] = useState(false);
   const [showConnected, setShowConnected] = useState(false);
-  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchData = async () => {
@@ -576,77 +572,6 @@ const MasterDashboard: React.FC = () => {
           </Row>
         )}
 
-        {/* ===== Quick Actions ===== */}
-        <FadeIn delay={550}>
-          <Card bodyStyle={{ padding: 24 }}>
-            <div className="flex items-center gap-2 mb-4">
-              <SettingOutlined style={{ color: 'var(--color-accent)' }} />
-              <h3 className="text-sm font-bold uppercase tracking-wider m-0" style={{ color: 'var(--color-text-muted)' }}>Acciones Rápidas</h3>
-            </div>
-            <Row gutter={[16, 16]}>
-              <Col xs={24} sm={8}>
-                <button
-                  onClick={() => navigate('/master/settings')}
-                  className="w-full p-4 rounded-xl text-left app-card-hover group"
-                  style={{ border: '1px solid rgba(15,23,42,0.08)', backgroundColor: 'var(--color-content-bg)', cursor: 'pointer' }}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(30,64,175,0.1)', color: '#1e40af' }}>
-                        <SettingOutlined style={{ fontSize: 18 }} />
-                      </div>
-                      <div>
-                        <p className="font-bold text-sm m-0" style={{ color: 'var(--color-text-main)' }}>Configurar Institución</p>
-                        <p className="text-xs m-0" style={{ color: 'var(--color-text-muted)' }}>Identidad y preferencias</p>
-                      </div>
-                    </div>
-                    <ArrowRightOutlined className="group-hover:translate-x-1 transition-transform" style={{ color: 'var(--color-text-muted)' }} />
-                  </div>
-                </button>
-              </Col>
-              <Col xs={24} sm={8}>
-                <button
-                  onClick={() => navigate('/master/users')}
-                  className="w-full p-4 rounded-xl text-left app-card-hover group"
-                  style={{ border: '1px solid rgba(15,23,42,0.08)', backgroundColor: 'var(--color-content-bg)', cursor: 'pointer' }}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(14,165,233,0.1)', color: '#0ea5e9' }}>
-                        <TeamOutlined style={{ fontSize: 18 }} />
-                      </div>
-                      <div>
-                        <p className="font-bold text-sm m-0" style={{ color: 'var(--color-text-main)' }}>Administrar Usuarios</p>
-                        <p className="text-xs m-0" style={{ color: 'var(--color-text-muted)' }}>{users.total} registrados</p>
-                      </div>
-                    </div>
-                    <ArrowRightOutlined className="group-hover:translate-x-1 transition-transform" style={{ color: 'var(--color-text-muted)' }} />
-                  </div>
-                </button>
-              </Col>
-              <Col xs={24} sm={8}>
-                <button
-                  onClick={() => navigate('/master/academic')}
-                  className="w-full p-4 rounded-xl text-left app-card-hover group"
-                  style={{ border: '1px solid rgba(15,23,42,0.08)', backgroundColor: 'var(--color-content-bg)', cursor: 'pointer' }}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(212,175,55,0.1)', color: '#d4af37' }}>
-                        <GlobalOutlined style={{ fontSize: 18 }} />
-                      </div>
-                      <div>
-                        <p className="font-bold text-sm m-0" style={{ color: 'var(--color-text-main)' }}>Estructura Académica</p>
-                        <p className="text-xs m-0" style={{ color: 'var(--color-text-muted)' }}>Períodos, grados, secciones</p>
-                      </div>
-                    </div>
-                    <ArrowRightOutlined className="group-hover:translate-x-1 transition-transform" style={{ color: 'var(--color-text-muted)' }} />
-                  </div>
-                </button>
-              </Col>
-            </Row>
-          </Card>
-        </FadeIn>
       </div>
 
       {/* ===== Connected Users Modal ===== */}

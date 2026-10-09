@@ -101,9 +101,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     try {
       setLoading(true);
       const [settingsRes, periodRes, allPeriodsRes] = await Promise.all([
-        api.get('/settings'),
-        api.get('/academic/active'),
-        api.get('/academic/periods'),
+        api.get('/settings', { timeout: 15000 }),
+        api.get('/academic/active', { timeout: 15000 }),
+        api.get('/academic/periods', { timeout: 15000 }),
       ]);
 
       const d = settingsRes.data;

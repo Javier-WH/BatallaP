@@ -873,6 +873,123 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * GET /api/dashboard/admin-inconsistencies
+ *
+ * Drill-down behind the Admin Dashboard "Inconsistencias" card: the actual
+ * students counted by studentsWithoutSection / studentsWithoutSubjects, so the
+ * staff can see exactly who needs fixing. Person selection mirrors the COUNT
+ * queries in getAdminDashboardStats (including the hiddenFromControlEstudios
+ * filter for non-privileged roles).
+ *
+ * Query params:
+ *  - schoolPeriodId (optional, defaults to the active period)
+ */
+export const getAdminInconsistencies = async (req: Request, res: Response) => {
+  try {
+    const userRoles: string[] = (req.session as any).user?.roles || [];
+    const isPrivileged = userRoles.includes('Master') || userRoles.includes('Administrador');
+
+    let schoolPeriodId: number | undefined;
+    if (req.query.schoolPeriodId) {
+      schoolPeriodId = Number(req.query.schoolPeriodId);
+    } else {
+      const active = await SchoolPeriod.findOne({ where: { status: 'activo' } });
+      if (!active) {
+        return res.json({ withoutSection: [], withoutSubjects: [] });
+      }
+      schoolPeriodId = active.id;
+    }
+
+    const hiddenFilter = isPrivileged ? '' : 'AND m.hiddenFromControlEstudios = false';
+
+    const [withoutSectionRows, withoutSubjectsRows] = await Promise.all([
+      // Same person set as studentsWithoutSection (no section-bearing inscription)
+      sequelize.query<{ personId: number }>(
+        `SELECT t.personId FROM (
+           SELECT i.personId FROM inscriptions i
+           LEFT JOIN matriculations m ON m.inscriptionId = i.id
+           WHERE i.schoolPeriodId = :spId
+             ${isPrivileged ? '' : 'AND m.hiddenFromControlEstudios = false'}
+           UNION
+           SELECT m2.personId FROM matriculations m2
+           WHERE m2.schoolPeriodId = :spId
+             ${isPrivileged ? '' : 'AND m2.hiddenFromControlEstudios = false'}
+         ) t
+         WHERE NOT EXISTS (
+           SELECT 1 FROM inscriptions i2
+           WHERE i2.schoolPeriodId = :spId AND i2.personId = t.personId AND i2.sectionId IS NOT NULL
+         )`,
+        { replacements: { spId: schoolPeriodId }, type: QueryTypes.SELECT }
+      ),
+      // Same person set as studentsWithoutSubjects (has section, zero subjects)
+      sequelize.query<{ personId: number }>(
+        `SELECT DISTINCT i.personId
+           FROM inscriptions i
+           LEFT JOIN matriculations m ON m.inscriptionId = i.id
+           WHERE i.schoolPeriodId = :spId AND i.sectionId IS NOT NULL
+             ${hiddenFilter}
+             AND NOT EXISTS (
+               SELECT 1 FROM inscriptions i3
+               JOIN inscription_subjects ins ON ins.inscriptionId = i3.id
+               WHERE i3.schoolPeriodId = :spId AND i3.personId = i.personId
+             )`,
+        { replacements: { spId: schoolPeriodId }, type: QueryTypes.SELECT }
+      ),
+    ]);
+
+    const loadStudents = async (rows: { personId: number }[]) => {
+      const ids = rows.map(r => r.personId);
+      if (ids.length === 0) return [];
+      const people = await Person.findAll({
+        where: { id: ids },
+        attributes: ['id', 'firstName', 'lastName', 'documentType', 'document'],
+        include: [
+          {
+            model: Inscription, as: 'inscriptions', required: false, where: { schoolPeriodId },
+            include: [
+              { model: Grade, as: 'grade', attributes: ['id', 'name'] },
+              { model: Section, as: 'section', attributes: ['id', 'name'] },
+            ],
+          },
+          {
+            model: Matriculation, as: 'matriculations', required: false, where: { schoolPeriodId },
+            include: [
+              { model: Grade, as: 'grade', attributes: ['id', 'name'] },
+              { model: Section, as: 'section', attributes: ['id', 'name'] },
+            ],
+          },
+        ],
+        order: [['lastName', 'ASC'], ['firstName', 'ASC']],
+      });
+      return people.map(p => {
+        const ins = (p as any).inscriptions?.[0];
+        const mat = (p as any).matriculations?.[0];
+        return {
+          personId: p.id,
+          firstName: p.firstName,
+          lastName: p.lastName,
+          documentType: p.documentType,
+          document: p.document,
+          gradeName: ins?.grade?.name ?? mat?.grade?.name ?? null,
+          sectionName: ins?.section?.name ?? mat?.section?.name ?? null,
+          matriculationStatus: mat?.status ?? null,
+        };
+      });
+    };
+
+    const [withoutSection, withoutSubjects] = await Promise.all([
+      loadStudents(withoutSectionRows),
+      loadStudents(withoutSubjectsRows),
+    ]);
+
+    return res.json({ withoutSection, withoutSubjects });
+  } catch (error) {
+    console.error('[getAdminInconsistencies] Error:', error);
+    return res.status(500).json({ message: 'Error obteniendo el detalle de inconsistencias' });
+  }
+};
+
 export const getControlPanelMetrics = async (req: Request, res: Response) => {
   try {
     const userRoles: string[] = (req.session as any).user?.roles || [];

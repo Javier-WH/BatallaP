@@ -1,76 +1,14 @@
 import React, { useCallback, useEffect } from 'react';
-import { useEditor, EditorContent, Extension } from '@tiptap/react';
+import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
-import TextAlign from '@tiptap/extension-text-align';
 import { TextStyle } from '@tiptap/extension-text-style';
 import Color from '@tiptap/extension-color';
 import { Button, Space, message, Upload, Select } from 'antd';
 import { BoldOutlined, ItalicOutlined, UnderlineOutlined, OrderedListOutlined, UnorderedListOutlined, AlignLeftOutlined, AlignCenterOutlined, AlignRightOutlined, LinkOutlined, PictureOutlined, UndoOutlined, RedoOutlined } from '@ant-design/icons';
 import { getContent, updateContent, uploadImage, deleteImage } from '@/services/dashboardContentService';
+import { CustomTextAlign, FontSize } from './tiptapExtensions';
 import './DashboardEditor.css';
-
-// Custom TextAlign extension that handles list alignment
-const CustomTextAlign = TextAlign.extend({
-  addGlobalAttributes() {
-    return [
-      {
-        types: this.options.types,
-        attributes: {
-          textAlign: {
-            default: 'left',
-            parseHTML: element => {
-              if (element.classList.contains('text-align-center')) return 'center';
-              if (element.classList.contains('text-align-right')) return 'right';
-              return element.style.textAlign || 'left';
-            },
-            renderHTML: attributes => {
-              if (!attributes.textAlign || attributes.textAlign === 'left') {
-                return {};
-              }
-              return {
-                class: `text-align-${attributes.textAlign}`,
-              };
-            },
-          },
-        },
-      },
-    ];
-  },
-});
-
-// Custom FontSize extension
-const FontSize = Extension.create({
-  name: 'fontSize',
-
-  addOptions() {
-    return {
-      types: ['textStyle'],
-    };
-  },
-
-  addGlobalAttributes() {
-    return [
-      {
-        types: this.options.types,
-        attributes: {
-          fontSize: {
-            default: null,
-            parseHTML: element => element.style.fontSize.replace(/['"]+/g, ''),
-            renderHTML: attributes => {
-              if (!attributes.fontSize) {
-                return {};
-              }
-              return {
-                style: `font-size: ${attributes.fontSize}`,
-              };
-            },
-          },
-        },
-      },
-    ];
-  },
-});
 
 interface DashboardContentData {
   id: number;

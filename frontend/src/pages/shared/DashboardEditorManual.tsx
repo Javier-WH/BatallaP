@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import { Button, Space, message, Popover, Slider, Select } from 'antd';
 import { PlusOutlined, PictureOutlined, SaveOutlined, SettingOutlined, BoldOutlined, ItalicOutlined, UnderlineOutlined } from '@ant-design/icons';
 import { getContent, updateContent, uploadImage } from '@/services/dashboardContentService';
+import TextElementEditorModal from './TextElementEditorModal';
 
 interface DashboardElement {
   id: string;
@@ -41,6 +42,7 @@ const DashboardEditorManual: React.FC<DashboardEditorManualProps> = ({ onSaved }
   const [loading, setLoading] = useState(false);
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0, elementX: 0, elementY: 0 });
   const [styleMenuVisible, setStyleMenuVisible] = useState(false);
+  const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [backgroundColor, setBackgroundColor] = useState('#ffffff');
   
   const containerRef = useRef<HTMLDivElement>(null);
@@ -82,6 +84,8 @@ const DashboardEditorManual: React.FC<DashboardEditorManualProps> = ({ onSaved }
     };
     setElements([...elements, newElement]);
     setSelectedElement(newElement.id);
+    // Open the rich-text editor right away so the placeholder can be replaced.
+    setEditingTextId(newElement.id);
   };
 
   const handleAddImageClick = () => {
@@ -331,10 +335,9 @@ const DashboardEditorManual: React.FC<DashboardEditorManualProps> = ({ onSaved }
           >
             {element.type === 'text' ? (
               <div
-                contentEditable
-                suppressContentEditableWarning
-                className="w-full h-full p-2 outline-none"
-                style={{ 
+                className="w-full h-full p-2 outline-none overflow-hidden"
+                title="Doble clic para editar el texto"
+                style={{
                   minHeight: '100%',
                   fontWeight: element.styles?.fontWeight,
                   fontStyle: element.styles?.fontStyle,
@@ -343,10 +346,12 @@ const DashboardEditorManual: React.FC<DashboardEditorManualProps> = ({ onSaved }
                   backgroundColor: element.styles?.backgroundColor,
                   fontSize: element.styles?.fontSize,
                 }}
-                onBlur={(e) => handleContentChange(element.id, e.currentTarget.innerHTML)}
-              >
-                {element.content}
-              </div>
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  setEditingTextId(element.id);
+                }}
+                dangerouslySetInnerHTML={{ __html: element.content || '' }}
+              />
             ) : (
               <img
                 src={element.imageUrl}
@@ -370,8 +375,17 @@ const DashboardEditorManual: React.FC<DashboardEditorManualProps> = ({ onSaved }
                     <div className="space-y-3 w-64">
                       {element.type === 'text' ? (
                         <>
-                          <div>
-                            <label className="block text-xs font-bold mb-1">Formato</label>
+                          <Button
+                            size="small"
+                            type="primary"
+                            ghost
+                            block
+                            onClick={() => { setStyleMenuVisible(false); setEditingTextId(element.id); }}
+                          >
+                            Editar contenido
+                          </Button>
+                          <div className="mt-2">
+                            <label className="block text-xs font-bold mb-1">Formato del bloque</label>
                             <Space>
                               <Button 
                                 size="small" 
@@ -574,6 +588,16 @@ const DashboardEditorManual: React.FC<DashboardEditorManualProps> = ({ onSaved }
         accept="image/*"
         style={{ display: 'none' }}
         onChange={handleFileChange}
+      />
+
+      <TextElementEditorModal
+        open={editingTextId !== null}
+        initialHtml={elements.find(el => el.id === editingTextId)?.content ?? ''}
+        onSave={(html) => {
+          if (editingTextId) handleContentChange(editingTextId, html);
+          setEditingTextId(null);
+        }}
+        onCancel={() => setEditingTextId(null)}
       />
     </div>
   );
