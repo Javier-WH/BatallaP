@@ -2474,3 +2474,46 @@ input[type=number] {
   line-height: 1.5;
   color: #fa8c16;
 }
+
+/* Rich-text blocks produced by the dashboard Tiptap editors (canvas, viewer, and the editors themselves).
+   Tailwind preflight strips element margins/heading sizes; these rules restore readable structure.
+   min-height on empty <p> is what makes a blank separator line actually render — Tiptap stores it as <p></p>. */
+.dashboard-rich-text p {
+  margin: 0;
+  min-height: 1em;
+}
+.dashboard-rich-text h1 {
+  font-size: 1.75em;
+  font-weight: 700;
+  margin: 0.3em 0;
+}
+.dashboard-rich-text h2 {
+  font-size: 1.4em;
+  font-weight: 700;
+  margin: 0.25em 0;
+}
+.dashboard-rich-text h3 {
+  font-size: 1.15em;
+  font-weight: 600;
+  margin: 0.2em 0;
+}
+.dashboard-rich-text ul {
+  list-style: disc;
+  padding-left: 1.4em;
+  margin: 0.35em 0;
+}
+.dashboard-rich-text ol {
+  list-style: decimal;
+  padding-left: 1.4em;
+  margin: 0.35em 0;
+}
+.dashboard-rich-text a {
+  color: #1677ff;
+  text-decoration: underline;
+}
+.dashboard-rich-text blockquote {
+  border-left: 3px solid #d9d9d9;
+  padding-left: 0.75em;
+  margin: 0.35em 0;
+  color: #595959;
+}

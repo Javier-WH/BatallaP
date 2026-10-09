@@ -55,7 +55,7 @@ const DashboardEditor: React.FC<DashboardEditorProps> = ({ onSaved }) => {
     content: '',
     editorProps: {
       attributes: {
-        class: 'prose prose-slate max-w-none min-h-[400px] p-4 focus:outline-none',
+        class: 'dashboard-rich-text min-h-[400px] p-4 focus:outline-none',
       },
     },
     onUpdate: ({ editor }) => {

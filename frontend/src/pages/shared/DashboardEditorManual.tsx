@@ -335,7 +335,7 @@ const DashboardEditorManual: React.FC<DashboardEditorManualProps> = ({ onSaved }
           >
             {element.type === 'text' ? (
               <div
-                className="w-full h-full p-2 outline-none overflow-hidden"
+                className="w-full h-full p-2 outline-none overflow-hidden dashboard-rich-text"
                 title="Doble clic para editar el texto"
                 style={{
                   minHeight: '100%',

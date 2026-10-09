@@ -110,7 +110,7 @@ const DashboardContent: React.FC<DashboardContentProps> = ({ reloadKey }) => {
             >
               {element.type === 'text' ? (
                 <div
-                  className="p-2 prose prose-slate max-w-none"
+                  className="p-2 dashboard-rich-text"
                   style={{
                     fontWeight: element.styles?.fontWeight,
                     fontStyle: element.styles?.fontStyle,

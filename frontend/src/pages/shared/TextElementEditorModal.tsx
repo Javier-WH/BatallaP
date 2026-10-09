@@ -40,7 +40,7 @@ const TextElementEditorModal: React.FC<TextElementEditorModalProps> = ({ open, i
     content: '',
     editorProps: {
       attributes: {
-        class: 'prose prose-slate max-w-none min-h-[200px] p-3 focus:outline-none',
+        class: 'dashboard-rich-text min-h-[200px] p-3 focus:outline-none',
       },
     },
   });
