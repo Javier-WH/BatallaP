@@ -11,7 +11,7 @@ type PageStatus = 'checking' | 'login' | 'ready';
 /**
  * Standalone exchange-rate calculator page.
  *
- * Publicly reachable (/calculadora and the installable calculadora.html PWA
+ * Publicly reachable (/calculadora and the installable calculadora-tasas.html PWA
  * entry), but the rates endpoint requires a session: without one the page
  * renders a compact inline login instead of redirecting to the main app.
  */

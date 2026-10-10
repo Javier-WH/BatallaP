@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ConfigProvider } from 'antd';
 import esES from 'antd/locale/es_ES';
@@ -119,6 +120,15 @@ const PublicRoute = ({ children }: { children: JSX.Element }) => {
   return children;
 }
 
+// Full-page navigation away from the SPA — used for the renamed standalone
+// entries (the new URL must be fetched as a real document, not a SPA route).
+const LegacyStandaloneRedirect = ({ to }: { to: string }) => {
+  useEffect(() => {
+    window.location.replace(to);
+  }, [to]);
+  return null;
+};
+
 // Theme wrapper that applies Ant Design ConfigProvider with dynamic colors
 const ThemeWrapper = ({ children }: { children: React.ReactNode }) => {
   const { settings } = useSchool();
@@ -218,6 +228,12 @@ function AppRoutes() {
 
       {/* Standalone rate calculator — public route, inline login when unauthenticated */}
       <Route path="/calculadora" element={<ExchangeCalculatorPage />} />
+
+      {/* Legacy standalone-entry filenames: when the service worker serves the
+          SPA shell for these URLs the network redirect in app.ts never runs,
+          so bounce to the renamed entries from inside the app instead. */}
+      <Route path="/asistencias.html" element={<LegacyStandaloneRedirect to="/tomar-asistencia.html" />} />
+      <Route path="/calculadora.html" element={<LegacyStandaloneRedirect to="/calculadora-tasas.html" />} />
 
       {/* General Dashboard (To be defined or shared) */}
       <Route path="/" element={<RequireAuth><MainLayout /></RequireAuth>}>

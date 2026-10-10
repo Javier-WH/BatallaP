@@ -1313,8 +1313,8 @@ function SelectedStudentEditor({
       ref={panelRef}
       data-selected-editor
       onWheel={handlePanelWheel}
-      style={{ height: editorHeight }}
-      className="shrink-0 overflow-y-auto rounded-xl border border-slate-300 bg-white p-3 shadow-sm"
+      style={{ minHeight: editorHeight }}
+      className="shrink-0 rounded-xl border border-slate-300 bg-white p-3 shadow-sm"
       aria-label={`Asistencia de ${student.fullName}`}
     >
       <div className="flex items-center justify-between gap-2 mb-2">
@@ -1340,9 +1340,10 @@ function SelectedStudentEditor({
           <p className="m-0 flex items-start gap-2 text-xs leading-relaxed text-amber-800">
             <StopOutlined className="mt-0.5 shrink-0" />
             {prior.kind === 'retired'
-              ? `Jubilado el ${DAY_NAMES_ES[dayjs(prior.sessionDate).day()]} en ${prior.shift === 'm' ? 'la mañana' : 'la tarde'}. `
-              : `Expulsado en ${prior.subjectName || 'clase anterior'}, ${prior.periodId.toUpperCase()}. `}
-            Debe desbloquearse antes de registrar asistencia.
+              ? `Jubilado el ${DAY_NAMES_ES[dayjs(prior.sessionDate).day()]} en ${prior.shift === 'm' ? 'la mañana' : 'la tarde'}.`
+              : prior.kind === 'absent'
+                ? `Inasistente en ${prior.subjectName || 'la clase anterior'}, ${prior.periodId.toUpperCase()}.`
+                : `Expulsado en ${prior.subjectName || 'clase anterior'}, ${prior.periodId.toUpperCase()}.`}
           </p>
           {!clearing ? (
             <button

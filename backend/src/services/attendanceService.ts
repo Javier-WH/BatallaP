@@ -388,15 +388,18 @@ function sortBlocksByPeriod<T extends { periodId: string }>(blocks: T[]): T[] {
 
 /**
  * Active block against a student in the session being viewed.
- *  - 'retired' (jubilado): in the student's most recent earlier shift WITH
- *    records, a presence (present/late/kicked) was followed by an unjustified
- *    absence — they came to school and left early. Blocks the whole next
+ *  - 'retired' (jubilado): an un-cleared unjustified absence preceded by a
+ *    presence (present/late/kicked) — the student came to school and left
+ *    early. Triggered in the same shift it blocks the rest of that shift;
+ *    triggered in an earlier shift it blocks the whole next
  *    shift-with-records until cleared once.
  *  - 'kicked' (expulsado): an un-cleared expulsion in an earlier class block of
  *    the same day and shift. Blocks the rest of that shift.
+ *  - 'absent' (inasistente): an un-cleared unjustified absence in an earlier
+ *    class block of the same day and shift. Blocks the rest of that shift.
  */
 export interface PriorBlock {
-  kind: 'retired' | 'kicked';
+  kind: 'retired' | 'kicked' | 'absent';
   subjectName: string | null;
   /** Period id of the class where the block was triggered. */
   periodId: string;
@@ -729,7 +732,7 @@ export async function saveSessionRecords(
         `${i.student?.lastName ?? ''}, ${i.student?.firstName ?? ''}`.trim() || `#${i.id}`);
       throw new Error(
         `${names.join('; ')} ${blockedIds.length === 1 ? 'está bloqueado' : 'están bloqueados'} `
-        + '(jubilado o expulsado): debe desbloquearse antes de registrar asistencia.'
+        + '(jubilado, inasistente o expulsado): debe desbloquearse antes de registrar asistencia.'
       );
     }
 
@@ -984,7 +987,7 @@ async function resolveSessionBlock(
 }
 
 /** 'm' (morning) periods sort below 1000; 't' (afternoon) at 1000+. */
-const shiftOfKey = (key: number): 'm' | 't' => (key < 1000 ? 'm' : 't');
+export const shiftOfKey = (key: number): 'm' | 't' => (key < 1000 ? 'm' : 't');
 
 /** Statuses that count as "the student was there" for the retirement rule. */
 const PRESENCE_STATUSES: AttendanceStatus[] = ['present', 'late', 'kicked'];
@@ -1021,6 +1024,13 @@ interface DayRecord {
  *    day+shift blocks the rest of the shift. Records inside the same class
  *    block never self-block. A clearance recorded in a LATER class of the
  *    same shift (or in this very block) lifts it.
+ *  - 'absent' (inasistente): an un-cleared unjustified absence in an EARLIER
+ *    class block of the same day+shift blocks the rest of the shift — the
+ *    student was not in school for that class. When that absence was preceded
+ *    by a same-shift presence it is reported as 'retired' instead (the
+ *    student came and left early). Justified absences (Justificado/Enfermo)
+ *    never block. When both in-shift rules fire, the most recent event wins.
+ *    A clearance frees the shift until a NEW event re-blocks the student.
  *  - 'retired' (jubilado): in the student's most recent earlier shift WITH
  *    records — afternoon of the same day, or a previous day's shift — a
  *    presence followed later by an unjustified absence means they left school
@@ -1079,21 +1089,35 @@ async function computeSessionBlocks(
   const shiftOrder = (d: DayRecord) => `${d.date}|${d.shift}`;
 
   for (const [inscriptionId, recs] of byStudent) {
-    // Rule 2 — kicked earlier this same shift.
+    // Same-shift blocks — kicked or inasistente in an earlier class block.
+    // The most recent un-cleared event determines the shown block.
+    const inSameShift = (d: DayRecord) =>
+      d.date === sessionDate && d.shift === currentShift && !d.inCluster && d.key < blockStartKey;
+    const freedAfter = (key: number) => recs.some(d => d.date === sessionDate
+      && d.shift === currentShift && d.clearedAt !== null && d.key > key && d.key <= blockStartKey);
+
     const kick = recs
-      .filter(d => d.date === sessionDate && d.shift === currentShift
-        && d.status === 'kicked' && d.clearedAt === null && !d.inCluster && d.key < blockStartKey)
-      .sort((a, b) => a.key - b.key)[0];
-    if (kick) {
-      const freed = recs.some(d => d.date === sessionDate && d.shift === currentShift
-        && d.clearedAt !== null && d.key > kick.key && d.key <= blockStartKey);
-      if (!freed) {
-        result.set(inscriptionId, {
-          kind: 'kicked', subjectName: kick.subjectName, periodId: kick.periodId,
-          status: 'kicked', sessionDate, shift: currentShift,
-        });
-        continue;
-      }
+      .filter(d => inSameShift(d) && d.status === 'kicked' && d.clearedAt === null && !freedAfter(d.key))
+      .sort((a, b) => b.key - a.key)[0];
+    const away = recs
+      .filter(d => inSameShift(d) && isUnjustifiedAbsence(d.status, d.reason)
+        && d.clearedAt === null && !freedAfter(d.key))
+      .sort((a, b) => b.key - a.key)[0];
+    const inShift = kick && away ? (kick.key >= away.key ? kick : away) : (kick ?? away);
+    if (inShift) {
+      // An in-shift absence after an earlier same-shift presence is a
+      // retirement (the student was there and left); otherwise inasistente.
+      const hadPresence = recs.some(d => d.date === sessionDate && d.shift === currentShift
+        && PRESENCE_STATUSES.includes(d.status) && d.key < inShift.key);
+      const kind: PriorBlock['kind'] = inShift.status === 'kicked'
+        ? 'kicked'
+        : hadPresence ? 'retired' : 'absent';
+      result.set(inscriptionId, {
+        kind, subjectName: inShift.subjectName, periodId: inShift.periodId,
+        status: inShift.status === 'kicked' ? 'kicked' : 'absent',
+        sessionDate: inShift.date, shift: inShift.shift,
+      });
+      continue;
     }
 
     // Rule 1 — retired in the most recent earlier shift WITH records.
@@ -1189,9 +1213,9 @@ export async function clearAttendanceBlock(
 }
 
 const DEFAULT_CLEARANCE_REASONS = [
-  { code: 'nurse_visit', label: 'Visita a enfermería', requiresNote: false },
+  { code: 'nurse_visit', label: 'Enfermo', requiresNote: false },
   { code: 'admin_authorized', label: 'Autorizado por Administración', requiresNote: false },
-  { code: 'parent_note', label: 'Nota del representante', requiresNote: false },
+  { code: 'parent_note', label: 'Llegó tarde', requiresNote: false },
   { code: 'other', label: 'Otro (especificar)', requiresNote: true },
 ];
 

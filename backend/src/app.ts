@@ -210,6 +210,15 @@ const findFrontendDist = (): string => {
 };
 
 const frontendDist = findFrontendDist();
+
+// Legacy standalone-entry URLs: the files were renamed to tomar-asistencia.html
+// and calculadora-tasas.html so extension-less content negotiation (Apache
+// MultiViews, clean-URL static hosts) can never steal the SPA routes
+// /asistencias and /calculadora. Redirect so PWAs installed with the old
+// start_url still land on the standalone entries.
+app.get('/asistencias.html', (_req, res) => res.redirect(301, '/tomar-asistencia.html'));
+app.get('/calculadora.html', (_req, res) => res.redirect(301, '/calculadora-tasas.html'));
+
 app.use(express.static(frontendDist));
 
 // SPA fallback: serve index.html for any non-API route (React Router)

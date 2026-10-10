@@ -67,7 +67,34 @@ export default defineConfig({
         ],
       },
     }),
-    // calculadora.html / asistencias.html ship their own manifest (dedicated name/start_url).
+    // Dev-only route ownership, mirroring the production redirects in app.ts:
+    // the clean paths belong to the SPA router, and the legacy entry filenames
+    // (asistencias.html / calculadora.html) were renamed to tomar-asistencia.html
+    // and calculadora-tasas.html so extension-less negotiation can never steal
+    // the SPA routes on hosts that do content negotiation (e.g. MultiViews).
+    {
+      name: 'spa-owns-clean-routes',
+      configureServer(server) {
+        server.middlewares.use((req, res, next) => {
+          const pathname = req.url?.split('?')[0];
+          if (pathname === '/asistencias.html') {
+            res.writeHead(301, { Location: '/tomar-asistencia.html' });
+            res.end();
+            return;
+          }
+          if (pathname === '/calculadora.html') {
+            res.writeHead(301, { Location: '/calculadora-tasas.html' });
+            res.end();
+            return;
+          }
+          if (pathname === '/asistencias' || pathname === '/calculadora') {
+            req.url = `/index.html${req.url?.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`;
+          }
+          next();
+        });
+      },
+    },
+    // tomar-asistencia.html / calculadora-tasas.html ship their own manifest (dedicated name/start_url).
     // VitePWA also injects the main one into every entry, and a page must declare exactly one.
     {
       name: 'secondary-entries-own-manifest',
@@ -75,7 +102,7 @@ export default defineConfig({
       transformIndexHtml: {
         order: 'post',
         handler(html: string, ctx: { filename?: string }) {
-          if (!/(calculadora|asistencias)\.html$/.test(ctx.filename ?? '')) return html;
+          if (!/(calculadora-tasas|tomar-asistencia)\.html$/.test(ctx.filename ?? '')) return html;
           return html.replace(/<link rel="manifest" href="\/manifest\.webmanifest"\s*\/?>/g, '');
         },
       },
@@ -86,9 +113,9 @@ export default defineConfig({
       input: {
         main: path.resolve(__dirname, 'index.html'),
         // Separate installable entry: dedicated launcher icon for the rate calculator
-        calculadora: path.resolve(__dirname, 'calculadora.html'),
+        calculadora: path.resolve(__dirname, 'calculadora-tasas.html'),
         // Teacher-only installable entry: just the "Tomar Asistencia" view
-        asistencias: path.resolve(__dirname, 'asistencias.html'),
+        asistencias: path.resolve(__dirname, 'tomar-asistencia.html'),
       },
     },
   },

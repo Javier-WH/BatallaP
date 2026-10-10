@@ -382,7 +382,7 @@ const SessionRosterModal: React.FC<SessionRosterModalProps> = ({
                           display: 'inline-block', padding: '2px 8px', borderRadius: 6,
                           background: '#fef0c7', color: '#b54708', fontSize: 12, fontWeight: 600,
                         }}>
-                          {r.priorBlock?.kind === 'retired' ? 'Jubilado' : 'Bloqueado'}
+                          {r.priorBlock?.kind === 'retired' ? 'Jubilado' : r.priorBlock?.kind === 'absent' ? 'Inasistente' : 'Bloqueado'}
                         </span>
                         {canEdit && r.recordId && (
                           <Button size="small" type="text" icon={<UnlockOutlined />} onClick={() => { setClearing(r); setClearCode(null); setClearNote(''); }} />

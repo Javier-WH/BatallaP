@@ -471,6 +471,148 @@ describe('attendanceService', () => {
       expect(entry!.priorBlock).toBeNull();
     });
 
+    it('retorna priorBlock "absent" (inasistente) para ausencia injustificada en clase anterior del mismo turno', async () => {
+      const { structure, person, schedule } = await setupTeacherWithSchedule('Lunes', 'm1');
+      const { inscription } = await setupStudent(structure, 'A');
+      await ScheduleEntry.create({
+        scheduleId: schedule.id,
+        day: 'Lunes',
+        periodId: 'm2',
+        subjectId: null,
+        teacherId: person.id,
+        isGroupSubject: false,
+      });
+
+      const sessions = await getTeacherSessionsForDate(person.id, MONDAY);
+      const [s1, s2] = sessions;
+
+      await saveSessionRecords(s1.id, [
+        { inscriptionId: inscription.id, status: 'absent' },
+      ], person.id);
+
+      const detail = await getSessionDetail(s2.id);
+      const entry = detail.roster.find(r => r.inscriptionId === inscription.id);
+      expect(entry!.priorBlock).not.toBeNull();
+      expect(entry!.priorBlock!.kind).toBe('absent');
+      expect(entry!.priorBlock!.status).toBe('absent');
+      expect(entry!.priorBlock!.periodId).toBe('m1');
+    });
+
+    it('la inasistencia no bloquea el turno siguiente (solo el mismo turno)', async () => {
+      const { structure, person, schedule } = await setupTeacherWithSchedule('Lunes', 'm1');
+      const { inscription } = await setupStudent(structure, 'A');
+      await ScheduleEntry.create({
+        scheduleId: schedule.id,
+        day: 'Lunes',
+        periodId: 't1',
+        subjectId: null,
+        teacherId: person.id,
+        isGroupSubject: false,
+      });
+
+      const sessions = await getTeacherSessionsForDate(person.id, MONDAY);
+      const [s1, s2] = sessions; // m1 y t1
+
+      await saveSessionRecords(s1.id, [
+        { inscriptionId: inscription.id, status: 'absent' },
+      ], person.id);
+
+      const detail = await getSessionDetail(s2.id);
+      const entry = detail.roster.find(r => r.inscriptionId === inscription.id);
+      expect(entry!.priorBlock).toBeNull();
+    });
+
+    it('una ausencia justificada en clase anterior no bloquea el resto del turno', async () => {
+      const { structure, person, schedule } = await setupTeacherWithSchedule('Lunes', 'm1');
+      const { inscription } = await setupStudent(structure, 'A');
+      await ScheduleEntry.create({
+        scheduleId: schedule.id,
+        day: 'Lunes',
+        periodId: 'm2',
+        subjectId: null,
+        teacherId: person.id,
+        isGroupSubject: false,
+      });
+
+      const [s1, s2] = await getTeacherSessionsForDate(person.id, MONDAY);
+      await saveSessionRecords(s1.id, [
+        { inscriptionId: inscription.id, status: 'absent', reason: 'Enfermo' },
+      ], person.id);
+
+      const detail = await getSessionDetail(s2.id);
+      expect(detail.roster.find(r => r.inscriptionId === inscription.id)!.priorBlock).toBeNull();
+    });
+
+    it('el bloqueo por inasistencia se libra con un desbloqueo en la sesión', async () => {
+      const { structure, person, schedule } = await setupTeacherWithSchedule('Lunes', 'm1');
+      const { inscription } = await setupStudent(structure, 'A');
+      await ScheduleEntry.create({
+        scheduleId: schedule.id,
+        day: 'Lunes',
+        periodId: 'm2',
+        subjectId: null,
+        teacherId: person.id,
+        isGroupSubject: false,
+      });
+
+      const [s1, s2] = await getTeacherSessionsForDate(person.id, MONDAY);
+      await saveSessionRecords(s1.id, [
+        { inscriptionId: inscription.id, status: 'absent' },
+      ], person.id);
+      await listClearanceReasons();
+      await clearSessionBlock(s2.id, inscription.id, person.id, 'parent_note', null);
+
+      const detail = await getSessionDetail(s2.id);
+      const entry = detail.roster.find(r => r.inscriptionId === inscription.id);
+      expect(entry!.priorBlock).toBeNull();
+      expect(entry!.status).toBe('present');
+    });
+
+    it('presente y luego ausente en el mismo turno se reporta como jubilado, no inasistente', async () => {
+      const { structure, person, schedule } = await setupTeacherWithSchedule('Lunes', 'm1');
+      const { inscription } = await setupStudent(structure, 'A');
+      for (const periodId of ['m2', 'm4']) {
+        await ScheduleEntry.create({
+          scheduleId: schedule.id, day: 'Lunes', periodId,
+          subjectId: null, teacherId: person.id, isGroupSubject: false,
+        });
+      }
+      const [sM1, sM2, sM4] = await getTeacherSessionsForDate(person.id, MONDAY);
+
+      await saveSessionRecords(sM1.id, [{ inscriptionId: inscription.id, status: 'present' }], person.id);
+      await saveSessionRecords(sM2.id, [{ inscriptionId: inscription.id, status: 'absent' }], person.id);
+
+      const detail = await getSessionDetail(sM4.id);
+      const entry = detail.roster.find(r => r.inscriptionId === inscription.id);
+      expect(entry!.priorBlock).not.toBeNull();
+      expect(entry!.priorBlock!.kind).toBe('retired');
+      expect(entry!.priorBlock!.periodId).toBe('m2');
+    });
+
+    it('una nueva ausencia tras el desbloqueo vuelve a bloquear al estudiante (se jubiló)', async () => {
+      const { structure, person, schedule } = await setupTeacherWithSchedule('Lunes', 'm1');
+      const { inscription } = await setupStudent(structure, 'A');
+      for (const periodId of ['m2', 'm4', 'm6']) {
+        await ScheduleEntry.create({
+          scheduleId: schedule.id, day: 'Lunes', periodId,
+          subjectId: null, teacherId: person.id, isGroupSubject: false,
+        });
+      }
+      const [sM1, sM2, sM4, sM6] = await getTeacherSessionsForDate(person.id, MONDAY);
+
+      await saveSessionRecords(sM1.id, [{ inscriptionId: inscription.id, status: 'absent' }], person.id);
+      await listClearanceReasons();
+      await clearSessionBlock(sM2.id, inscription.id, person.id, 'parent_note', null);
+      // Llegó tarde, pero luego se jubiló: ausente sin justificar en m4.
+      await saveSessionRecords(sM4.id, [{ inscriptionId: inscription.id, status: 'absent' }], person.id);
+
+      const detail = await getSessionDetail(sM6.id);
+      const entry = detail.roster.find(r => r.inscriptionId === inscription.id);
+      expect(entry!.priorBlock).not.toBeNull();
+      expect(entry!.priorBlock!.kind).toBe('retired');
+      expect(entry!.priorBlock!.periodId).toBe('m4');
+    });
+
     it('no retorna priorBlock en la primera sesión del día', async () => {
       const { structure, person } = await setupTeacherWithSchedule('Lunes', 'm1');
       const { inscription } = await setupStudent(structure, 'A');
@@ -613,7 +755,9 @@ describe('attendanceService', () => {
       const [sM1, sM2, sT1] = await getTeacherSessionsForDate(person.id, MONDAY);
 
       await saveSessionRecords(sM1.id, [{ inscriptionId: inscription.id, status: 'absent' }], person.id);
-      await saveSessionRecords(sM2.id, [{ inscriptionId: inscription.id, status: 'present' }], person.id);
+      // Llegó tarde: el profesor de m2 lo desbloquea (present + clearance).
+      await listClearanceReasons();
+      await clearSessionBlock(sM2.id, inscription.id, person.id, 'parent_note', null);
 
       const detail = await getSessionDetail(sT1.id);
       expect(detail.roster.find(r => r.inscriptionId === inscription.id)!.priorBlock).toBeNull();
@@ -670,7 +814,10 @@ describe('attendanceService', () => {
 
       await saveSessionRecords(sM1.id, [{ inscriptionId: inscription.id, status: 'present' }], person.id);
       await saveSessionRecords(sM2.id, [{ inscriptionId: inscription.id, status: 'absent' }], person.id);
-      await saveSessionRecords(sM4.id, [{ inscriptionId: inscription.id, status: 'present' }], person.id);
+      // El bloqueo por inasistencia exige desbloqueo antes de marcar presente;
+      // la ausencia desencadenante queda sin clearedAt -> sigue jubilado en la tarde.
+      await listClearanceReasons();
+      await clearSessionBlock(sM4.id, inscription.id, person.id, 'parent_note', null);
 
       const detail = await getSessionDetail(sT1.id);
       expect(detail.roster.find(r => r.inscriptionId === inscription.id)!.priorBlock?.kind).toBe('retired');

@@ -23,7 +23,7 @@ const InstallAttendanceAppLink: React.FC = () => {
         size="small"
         icon={<DownloadOutlined />}
         title="Abre la app independiente de asistencias, desde donde se puede instalar sola"
-        onClick={() => window.location.assign('/asistencias.html')}
+        onClick={() => window.location.assign('/tomar-asistencia.html')}
       >
         Instalar app de asistencias
       </Button>

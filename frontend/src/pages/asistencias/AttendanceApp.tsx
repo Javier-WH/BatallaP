@@ -10,7 +10,7 @@ import InstallAppButton from '@/components/InstallAppButton';
 import TeacherAttendanceTab from './TeacherAttendanceTab';
 
 /**
- * Standalone, installable "Tomar Asistencia" app (asistencias.html): only the teacher
+ * Standalone, installable "Tomar Asistencia" app (tomar-asistencia.html): only the teacher
  * attendance view, with its own inline login. The install button sits in a slim header that
  * disappears once the app is installed, so the installed app gets the whole screen.
  */

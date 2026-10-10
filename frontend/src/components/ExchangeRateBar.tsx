@@ -84,7 +84,7 @@ const ExchangeRateBar: React.FC<ExchangeRateBarProps> = ({ usdRate, eurRate, rat
                 size="small"
                 icon={<DownloadOutlined />}
                 title="Abre la calculadora independiente, desde donde se puede instalar sola"
-                onClick={() => window.location.assign('/calculadora.html')}
+                onClick={() => window.location.assign('/calculadora-tasas.html')}
               >
                 Instalar calculadora
               </Button>

@@ -49,6 +49,12 @@ describe('attendanceReportService', () => {
     it('does not mark jubilado when the later absence is justified', () => {
       expect(summarizeDay([rec(1, 'm1', 'present'), rec(2, 'm3', 'absent', 'Justificado')], 'M')?.code).toBe('absent');
     });
+    it('does not mark jubilado across shifts (morning presence + afternoon absence)', () => {
+      expect(summarizeDay([rec(1, 'm1', 'present'), rec(2, 't1', 'absent')], 'M')?.code).toBe('absent');
+    });
+    it('marks jubilado within the afternoon shift', () => {
+      expect(summarizeDay([rec(1, 't1', 'present'), rec(2, 't3', 'absent')], 'M')?.code).toBe('jubilado');
+    });
     it('Expulsado wins over later records', () => {
       expect(summarizeDay([rec(1, 'm1', 'present'), rec(2, 'm3', 'kicked', 'Comportamiento'), rec(3, 'm5', 'absent')], 'M')?.code)
         .toBe('kicked');
@@ -74,6 +80,27 @@ describe('attendanceReportService', () => {
       expect(cells['s1|m1']).toBeNull();
       expect(cells['g7|m3']?.code).toBe('absent');
       expect(cells['s2|m5']).toBeNull();
+    });
+
+    it('does not flag jubilado when the attendance was in a different shift', () => {
+      const shifted = [col('s1|m1', ['m1']), col('s2|t1', ['t1']), col('s3|t3', ['t3'])];
+      const cells = dayCells(shifted, [
+        rec(1, 'm1', 'present', null, 's1'),
+        rec(2, 't1', 'absent', null, 's2'),
+      ], 'F');
+      expect(cells['s1|m1']?.code).toBe('present');
+      expect(cells['s2|t1']?.code).toBe('absent');
+      expect(cells['s3|t3']).toBeNull();
+    });
+
+    it('flags jubilado for an unjustified absence later in the same shift', () => {
+      const shifted = [col('s2|t1', ['t1']), col('s3|t3', ['t3'])];
+      const cells = dayCells(shifted, [
+        rec(1, 't1', 'present', null, 's2'),
+        rec(2, 't3', 'absent', null, 's3'),
+      ], 'M');
+      expect(cells['s2|t1']?.code).toBe('present');
+      expect(cells['s3|t3']?.code).toBe('jubilado');
     });
   });
 });

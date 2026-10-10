@@ -13,7 +13,7 @@ import {
   Grade,
   Section,
 } from '@/models';
-import { getDayNameForDate, getPeriodInfoMap, periodSortKey, type AttendanceStatus } from './attendanceService';
+import { getDayNameForDate, getPeriodInfoMap, periodSortKey, shiftOfKey, type AttendanceStatus } from './attendanceService';
 import { compareStudents } from './studentSortService';
 
 /**
@@ -193,7 +193,10 @@ export function summarizeDay(records: DayRecord[] | undefined, gender: 'M' | 'F'
   if (
     last.status === 'absent'
     && !isJustifiedAbsence(last.status, last.reason)
-    && records.some(r => r.sortKey < last.sortKey && isAttended(r.status))
+    // Jubilado only counts within the same shift: attending an earlier block
+    // and then skipping a later one. Attendance in another shift (e.g. the
+    // morning) does not retire the student in the afternoon.
+    && records.some(r => r.sortKey < last.sortKey && shiftOfKey(r.sortKey) === shiftOfKey(last.sortKey) && isAttended(r.status))
   ) {
     return { code: 'jubilado', label: jubiladoLabel(gender), reason: last.reason };
   }
@@ -329,7 +332,8 @@ export function dayCells(
   for (const [key, rec] of latestByColumn) {
     const jubilado = rec.status === 'absent'
       && !isJustifiedAbsence(rec.status, rec.reason)
-      && records.some(r => r.sortKey < rec.sortKey && isAttended(r.status));
+      // Same shift only — presence in another shift does not trigger it.
+      && records.some(r => r.sortKey < rec.sortKey && shiftOfKey(r.sortKey) === shiftOfKey(rec.sortKey) && isAttended(r.status));
     cells[key] = jubilado
       ? { code: 'jubilado', label: jubiladoLabel(gender), reason: rec.reason }
       : cellFor(rec.status, rec.reason);
