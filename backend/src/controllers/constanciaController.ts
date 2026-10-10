@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { ConstanciaTemplate, Person, Inscription, Matriculation, SchoolPeriod, Grade, Section, Subject, SubjectFinalGrade, InscriptionSubject, SubjectTermGrade, Qualification, EvaluationPlan, CouncilPoint, CouncilChecklist, Term, PeriodGrade, PeriodGradeSubject, Setting } from '@/models';
+import { ConstanciaTemplate, Person, Inscription, Matriculation, SchoolPeriod, Grade, Section, Subject, SubjectFinalGrade, InscriptionSubject, SubjectTermGrade, Qualification, EvaluationPlan, CouncilPoint, CouncilChecklist, Term, PeriodGrade, PeriodGradeSubject, Setting, StudentPeriodOutcome } from '@/models';
 import sequelize from '@/config/database';
 import GradeCalculationService from '@/services/gradeCalculationService';
 import { getSubjectOrderMapByGradeAndPeriod, sortSubjectsByOrder } from '@/services/subjectOrderService';
@@ -138,6 +138,7 @@ async function resolveVariables(personId: number, schoolPeriodId: number, custom
     include: [
       { model: Grade, as: 'grade' },
       { model: Section, as: 'section' },
+      { model: StudentPeriodOutcome, as: 'periodOutcome' },
     ],
   }) as any;
 
@@ -311,6 +312,21 @@ async function resolveVariables(personId: number, schoolPeriodId: number, custom
     'student.inscrito': gender === 'F' ? 'Inscrita' : 'Inscrito',
     'student.aceptado': gender === 'F' ? 'Aceptada' : 'Aceptado',
     'student.retirado': gender === 'F' ? 'Retirada' : 'Retirado',
+    // Promotion verdict from the closure outcome (StudentPeriodOutcome).
+    // 'materias_pendientes' still promotes, so it reads "aprobó"; with no
+    // outcome yet (open period / never evaluated) the variables stay empty.
+    'student.aprobado': (() => {
+      const s = inscription?.periodOutcome?.status;
+      if (s === 'aprobado' || s === 'materias_pendientes') return 'aprobó';
+      if (s === 'reprobado') return 'no aprobó';
+      return '';
+    })(),
+    'student.aprobadoSatisfactoriamente': (() => {
+      const s = inscription?.periodOutcome?.status;
+      if (s === 'aprobado' || s === 'materias_pendientes') return 'aprobó satisfactoriamente';
+      if (s === 'reprobado') return 'no aprobó';
+      return '';
+    })(),
     // Worker (staff) — same person data, plus hireDate for work certificates.
     // hireDate is only meaningful for staff; for students it will be empty.
     'worker.firstName': firstName,
@@ -337,6 +353,7 @@ async function resolveVariables(personId: number, schoolPeriodId: number, custom
     'institution.address': settingsMap['institution_address'] || '',
     'institution.phone': settingsMap['institution_phone'] || '',
     'institution.municipality': settingsMap['institution_municipality'] || '',
+    'institution.parish': settingsMap['institution_parish'] || '',
     'institution.state': settingsMap['institution_state'] || '',
     'institution.director': settingsMap['director_first_names'] && settingsMap['director_last_names']
       ? `${settingsMap['director_first_names']} ${settingsMap['director_last_names']}`
@@ -660,6 +677,8 @@ export const getVariables = async (_req: Request, res: Response) => {
     { group: 'Estudiante', key: 'student.inscrito', label: 'Inscrito/Inscrita (según sexo)' },
     { group: 'Estudiante', key: 'student.aceptado', label: 'Aceptado/Aceptada (según sexo)' },
     { group: 'Estudiante', key: 'student.retirado', label: 'Retirado/Retirada (según sexo)' },
+    { group: 'Estudiante', key: 'student.aprobado', label: 'aprobó / no aprobó (resultado del año)' },
+    { group: 'Estudiante', key: 'student.aprobadoSatisfactoriamente', label: 'aprobó satisfactoriamente / no aprobó' },
     // Worker (staff) — for work certificates (constancias de trabajo)
     { group: 'Trabajador', key: 'worker.firstName', label: 'Nombre' },
     { group: 'Trabajador', key: 'worker.lastName', label: 'Apellido' },
@@ -683,6 +702,7 @@ export const getVariables = async (_req: Request, res: Response) => {
     { group: 'Institución', key: 'institution.address', label: 'Dirección' },
     { group: 'Institución', key: 'institution.phone', label: 'Teléfono' },
     { group: 'Institución', key: 'institution.municipality', label: 'Municipio' },
+    { group: 'Institución', key: 'institution.parish', label: 'Parroquia' },
     { group: 'Institución', key: 'institution.state', label: 'Estado' },
     { group: 'Institución', key: 'institution.director', label: 'Director' },
     { group: 'Institución', key: 'institution.directorDocument', label: 'Cédula del director' },

@@ -21,6 +21,7 @@ export interface TableAttrs {
   height: number | null;
   cells: TableCell[][];
   colWidths: number[] | null;
+  rowHeights: (number | null)[] | null;
   borderColor: string;
   borderWidth: number;
   fontSize: string | null;
@@ -28,7 +29,9 @@ export interface TableAttrs {
 }
 
 const MIN_WIDTH = 60;
-const MIN_ROW_HEIGHT = 18;
+// An empty printed cell collapses to padding+borders (~6px); the editor must
+// allow the same floor so rows can be made as small as they render.
+const MIN_ROW_HEIGHT = 6;
 const MIN_COL_PERCENT = 5;
 const ALIGNS: CellAlign[] = ['left', 'center', 'right', 'justify'];
 const RESIZE_DIRECTIONS = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'] as const;
@@ -47,6 +50,9 @@ function normalize(attrs: Record<string, unknown>): TableAttrs {
     height: toNumber(attrs.height),
     cells,
     colWidths: Array.isArray(attrs.colWidths) ? (attrs.colWidths as number[]) : null,
+    rowHeights: Array.isArray(attrs.rowHeights)
+      ? (attrs.rowHeights as unknown[]).map((v) => toNumber(v))
+      : null,
     borderColor: (attrs.borderColor as string) || '#000000',
     borderWidth: Math.max(0, toNumber(attrs.borderWidth) ?? 1),
     fontSize: (attrs.fontSize as string) || null,
@@ -111,6 +117,20 @@ export function sanitizeCellHtml(html: string): string {
     });
   };
   walk(root);
+  // Chrome appends bogus <br>s when an editable cell is blurred — a trailing
+  // run of <br>s (optionally inside empty trailing blocks) is an editing
+  // artifact that inflates the row, so it is dropped from the stored markup.
+  const stripTrailingBreaks = (element: Element) => {
+    for (;;) {
+      while (element.lastElementChild?.tagName === 'BR') element.lastElementChild.remove();
+      const last = element.lastElementChild;
+      if (!last || (last.tagName !== 'DIV' && last.tagName !== 'P')) return;
+      stripTrailingBreaks(last);
+      if (last.textContent?.trim() || last.children.length > 0) return;
+      last.remove();
+    }
+  };
+  stripTrailingBreaks(root);
   const clean = root.innerHTML;
   // A lone <br> is what browsers leave behind in an emptied cell.
   return clean === '<br>' ? '' : clean;
@@ -132,13 +152,17 @@ function buildTable(a: TableAttrs, onCell?: (td: HTMLTableCellElement, row: numb
   const colTotal = columnCount(a);
   const cellEls = a.cells.map((row, r) => {
     const tr = document.createElement('tr');
+    const rowHeight = a.rowHeights?.[r];
+    if (rowHeight) tr.style.height = `${rowHeight}px`;
     tbody.appendChild(tr);
     return Array.from({ length: colTotal }, (_, c) => {
       const cell = row[c] ?? { html: '', align: 'left' as CellAlign };
       const td = document.createElement('td');
       td.dataset.align = cell.align;
       td.setAttribute('style', cellStyle(a, cell));
-      td.innerHTML = cell.html;
+      // Sanitize here too: legacy templates may carry bogus <br>s saved by an
+      // editable cell, and this function also builds the preview/print markup.
+      td.innerHTML = sanitizeCellHtml(cell.html);
       onCell?.(td, r, c);
       tr.appendChild(td);
       return td;
@@ -155,7 +179,11 @@ export function addTableRow(attrs: Record<string, unknown>, afterRow?: number): 
   const index = afterRow === undefined ? a.cells.length : afterRow + 1;
   const cells = a.cells.slice();
   cells.splice(index, 0, createCells(1, columnCount(a))[0]);
-  return { cells, height: a.height ? a.height + Math.round(a.height / a.cells.length) : null };
+  // The new row gets an auto height; explicit heights of the others are kept.
+  const rowHeights = a.rowHeights
+    ? [...a.rowHeights.slice(0, index), null, ...a.rowHeights.slice(index)]
+    : null;
+  return { cells, rowHeights, height: a.height ? a.height + Math.round(a.height / a.cells.length) : null };
 }
 
 export function removeTableRow(attrs: Record<string, unknown>, row?: number): Partial<TableAttrs> | null {
@@ -163,7 +191,8 @@ export function removeTableRow(attrs: Record<string, unknown>, row?: number): Pa
   if (a.cells.length <= 1) return null;
   const index = row ?? a.cells.length - 1;
   const cells = a.cells.filter((_, r) => r !== index);
-  return { cells, height: a.height ? Math.max(MIN_ROW_HEIGHT * cells.length, a.height - Math.round(a.height / a.cells.length)) : null };
+  const rowHeights = a.rowHeights ? a.rowHeights.filter((_, r) => r !== index) : null;
+  return { cells, rowHeights, height: a.height ? Math.max(MIN_ROW_HEIGHT * cells.length, a.height - Math.round(a.height / a.cells.length)) : null };
 }
 
 export function addTableColumn(attrs: Record<string, unknown>, afterCol?: number): Partial<TableAttrs> {
@@ -257,6 +286,36 @@ export function insertIntoActiveCell(html: string): boolean {
   return true;
 }
 
+// Applies an inline style to the cell selection (or the whole cell when the
+// caret is collapsed) by wrapping it in a <span> — the only tag whose style
+// survives sanitizeCellHtml. Covers what execCommand can't: font family/size,
+// color and text-transform.
+export function styleActiveCell(style: Record<string, string>): boolean {
+  if (!restoreCellSelection()) return false;
+  const td = activeCell!.td;
+  const selection = window.getSelection();
+  const range = selection && selection.rangeCount > 0 && td.contains(selection.getRangeAt(0).commonAncestorContainer)
+    ? selection.getRangeAt(0)
+    : null;
+  const span = document.createElement('span');
+  Object.entries(style).forEach(([prop, value]) => span.style.setProperty(prop, value));
+  if (!range || range.collapsed) {
+    while (td.firstChild) span.appendChild(td.firstChild);
+    td.appendChild(span);
+  } else {
+    try {
+      range.surroundContents(span);
+    } catch {
+      // The range partially selects elements — wrap its extracted contents.
+      span.appendChild(range.extractContents());
+      range.insertNode(span);
+    }
+  }
+  // Commit through the same path as typing so the change is stored in the node.
+  td.dispatchEvent(new Event('input', { bubbles: true }));
+  return true;
+}
+
 // ── Node ──
 
 const dataAttr = (name: string, fallback: string | number | null) => ({
@@ -283,6 +342,17 @@ export const FloatingTable = Node.create({
       borderWidth: dataAttr('border-width', 1),
       fontSize: dataAttr('font-size', null),
       layer: dataAttr('layer', 'front'),
+      rowHeights: {
+        default: null,
+        parseHTML: (element: HTMLElement) => {
+          const heights = Array.from(element.querySelectorAll('tr')).map((tr) => {
+            const h = parseFloat(tr.style.height);
+            return Number.isNaN(h) ? null : h;
+          });
+          return heights.some((h) => h !== null) ? heights : null;
+        },
+        renderHTML: () => ({}),
+      },
       cells: {
         default: createCells(2, 2),
         parseHTML: (element: HTMLElement) => {
@@ -391,6 +461,10 @@ export const FloatingTable = Node.create({
       resizers.className = 'ftable-col-resizers';
       box.appendChild(resizers);
 
+      const rowResizers = document.createElement('div');
+      rowResizers.className = 'ftable-row-resizers';
+      box.appendChild(rowResizers);
+
       const attrs = () => normalize(current.attrs);
       const commit = (patch: Partial<TableAttrs> & { pageTop?: number }) =>
         commitPlacement(editor, getPos, current, patch);
@@ -402,11 +476,12 @@ export const FloatingTable = Node.create({
         });
       };
 
-      const commitCellHtml = (row: number, col: number) => {
+      const commitCellHtml = (row: number, col: number): string => {
         const td = cellEls[row]?.[col];
-        if (!td) return;
+        if (!td) return '';
         const html = sanitizeCellHtml(td.innerHTML);
         if (attrs().cells[row]?.[col]?.html !== html) updateCell(row, col, { html });
+        return html;
       };
 
       let cellMenu: HTMLElement | null = null;
@@ -456,18 +531,42 @@ export const FloatingTable = Node.create({
       };
 
       const wireCell = (td: HTMLTableCellElement, row: number, col: number) => {
-        td.contentEditable = 'true';
-        // Clicking a cell places the caret; it must not start a table drag.
-        td.addEventListener('mousedown', (event) => event.stopPropagation());
+        // An empty editable cell forces a caret line (~1 line-height) that a
+        // printed cell never has. Cells stay non-editable while empty and get
+        // contentEditable on click — blur drops it again if nothing was typed,
+        // so the editor shows the same collapsed rows the preview prints.
+        td.contentEditable = td.innerHTML.trim() !== '' ? 'true' : 'false';
+        // Chrome appends bogus <br>s on blur; the last input snapshot (or the
+        // content at focus time if nothing was typed) is the truthful markup,
+        // so it is what gets committed and painted back.
+        let lastInputHtml: string | null = null;
+        td.addEventListener('mousedown', (event) => {
+          // Clicking a cell places the caret; it must not start a table drag.
+          event.stopPropagation();
+          // Set before the default action runs so the caret can land even in a
+          // cell that was non-editable a moment ago.
+          td.contentEditable = 'true';
+        });
         td.addEventListener('contextmenu', (event) => openCellMenu(event, row, col));
         td.addEventListener('focus', () => {
+          lastInputHtml = td.innerHTML;
           if (activeCell?.td !== td) {
             activeCell = { owner: box, td, row, col, range: null, setAlign: (align) => updateCell(row, col, { align }) };
           }
           selectNodeAt(editor, getPos, false);
         });
-        td.addEventListener('input', () => commitCellHtml(row, col));
-        td.addEventListener('blur', () => commitCellHtml(row, col));
+        td.addEventListener('input', () => { lastInputHtml = commitCellHtml(row, col); });
+        td.addEventListener('blur', () => {
+          if (lastInputHtml !== null) td.innerHTML = lastInputHtml;
+          // Commit and paint back the sanitized markup so bogus <br>s Chrome
+          // injected on blur never reach the DOM nor the stored template.
+          const html = commitCellHtml(row, col);
+          td.innerHTML = html;
+          if (html === '') {
+            td.innerHTML = '';
+            td.contentEditable = 'false';
+          }
+        });
         td.addEventListener('paste', (event) => {
           event.preventDefault();
           document.execCommand('insertText', false, event.clipboardData?.getData('text/plain') ?? '');
@@ -476,7 +575,12 @@ export const FloatingTable = Node.create({
           if (event.key !== 'Tab') return;
           event.preventDefault();
           const flat = cellEls.flat();
-          flat[flat.indexOf(td) + (event.shiftKey ? -1 : 1)]?.focus();
+          const next = flat[flat.indexOf(td) + (event.shiftKey ? -1 : 1)];
+          if (next) {
+            // An empty cell is non-editable, so enable it before focusing.
+            next.contentEditable = 'true';
+            next.focus();
+          }
         });
       };
 
@@ -492,6 +596,60 @@ export const FloatingTable = Node.create({
           bar.addEventListener('mousedown', (event) => startColumnResize(event, i));
           resizers.appendChild(bar);
         });
+        // Column drags reflow cell text, so row boundaries can move mid-drag.
+        paintRows();
+      };
+
+      // Row-boundary handles are measured from the rendered rows so they track
+      // text wrapping, not just the stored heights.
+      const paintRows = () => {
+        rowResizers.innerHTML = '';
+        if (!tableEl || !box.isConnected) return;
+        const boxRect = box.getBoundingClientRect();
+        cellEls.slice(0, -1).forEach((row, i) => {
+          const tr = row[0]?.parentElement;
+          if (!tr) return;
+          const bar = document.createElement('div');
+          bar.className = 'ftable-row-resizer';
+          bar.style.top = `${tr.getBoundingClientRect().bottom - boxRect.top}px`;
+          bar.addEventListener('mousedown', (event) => startRowResize(event, i));
+          rowResizers.appendChild(bar);
+        });
+      };
+
+      const applyRowHeights = (heights: (number | null)[]) => {
+        cellEls.forEach((row, r) => {
+          const tr = row[0]?.parentElement;
+          if (tr) tr.style.height = heights[r] ? `${heights[r]}px` : '';
+        });
+      };
+
+      const startRowResize = (event: MouseEvent, index: number) => {
+        event.preventDefault();
+        event.stopPropagation();
+        selectNodeAt(editor, getPos);
+        const a = attrs();
+        // The drag snapshots the rendered heights — whatever the user sees is
+        // what becomes explicit (auto rows get their measured height).
+        const startHeights = cellEls.map(
+          (row) => row[0]?.parentElement?.getBoundingClientRect().height || MIN_ROW_HEIGHT,
+        );
+        const fixedTotal = a.height !== null;
+        const pair = (startHeights[index] ?? 0) + (startHeights[index + 1] ?? 0);
+        let heights = startHeights;
+        trackPointer(event, (_dx, dy) => {
+          heights = startHeights.slice();
+          if (fixedTotal && index + 1 < heights.length) {
+            // Fixed-height table: a taller row borrows space from the next one.
+            const upper = Math.min(Math.max(startHeights[index] + dy, MIN_ROW_HEIGHT), pair - MIN_ROW_HEIGHT);
+            heights[index] = upper;
+            heights[index + 1] = pair - upper;
+          } else {
+            heights[index] = Math.max(MIN_ROW_HEIGHT, startHeights[index] + dy);
+          }
+          applyRowHeights(heights);
+          paintRows();
+        }, () => commit({ rowHeights: heights.map((h) => Math.round(h)) }));
       };
 
       const startColumnResize = (event: MouseEvent, index: number) => {
@@ -545,13 +703,25 @@ export const FloatingTable = Node.create({
           cellEls = built.cellEls;
         } else {
           tableEl.setAttribute('style', tableStyle(a));
-          cellEls.forEach((row, r) => row.forEach((td, c) => {
-            const cell = a.cells[r]?.[c] ?? { html: '', align: 'left' as CellAlign };
-            td.dataset.align = cell.align;
-            td.setAttribute('style', cellStyle(a, cell));
-            // Never rewrite the cell being typed in, or the caret would jump.
-            if (document.activeElement !== td && td.innerHTML !== cell.html) td.innerHTML = cell.html;
-          }));
+          cellEls.forEach((row, r) => {
+            const tr = row[0]?.parentElement;
+            if (tr) {
+              const h = a.rowHeights?.[r];
+              tr.style.height = h ? `${h}px` : '';
+            }
+            row.forEach((td, c) => {
+              const cell = a.cells[r]?.[c] ?? { html: '', align: 'left' as CellAlign };
+              td.dataset.align = cell.align;
+              td.setAttribute('style', cellStyle(a, cell));
+              // Never rewrite the cell being typed in, or the caret would jump.
+              if (document.activeElement !== td) {
+                const clean = sanitizeCellHtml(cell.html);
+                if (td.innerHTML !== clean) td.innerHTML = clean;
+                // Keep the editable state in sync (e.g. after "vaciar celda").
+                td.contentEditable = cell.html !== '' ? 'true' : 'false';
+              }
+            });
+          });
         }
 
         box.classList.toggle('ftable-ghost', isInvisibleBorder(a));
@@ -617,6 +787,12 @@ export const FloatingTable = Node.create({
               height: Math.round(next.height),
             };
             paintBox({ ...a, ...next, height: resizesHeight ? next.height : a.height }, next.top);
+            // Explicit row heights scale with the table so the proportions hold.
+            if (resizesHeight && a.rowHeights) {
+              const factor = next.height / start.height;
+              applyRowHeights(a.rowHeights.map((h) => (h === null ? null : h * factor)));
+              paintRows();
+            }
           }, () => {
             dragging = false;
             commit({
@@ -624,6 +800,9 @@ export const FloatingTable = Node.create({
               pageTop: next.top,
               width: next.width,
               height: resizesHeight ? next.height : a.height,
+              rowHeights: resizesHeight && a.rowHeights
+                ? a.rowHeights.map((h) => (h === null ? null : Math.max(MIN_ROW_HEIGHT, Math.round((h * next.height) / start.height))))
+                : a.rowHeights,
             });
           });
         });

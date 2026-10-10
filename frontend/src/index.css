@@ -694,7 +694,8 @@ input[type=number] {
   display: block;
 }
 
-.ftable-col-resizers {
+.ftable-col-resizers,
+.ftable-row-resizers {
   position: absolute;
   inset: 0;
   pointer-events: none;
@@ -712,8 +713,25 @@ input[type=number] {
   z-index: 35;
 }
 
-.fobj-box.is-selected .ftable-col-resizer {
+.fobj-box.is-selected .ftable-col-resizer,
+.fobj-box.is-selected .ftable-row-resizer {
   display: block;
+}
+
+.ftable-row-resizer {
+  display: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 7px;
+  margin-top: -3px;
+  cursor: row-resize;
+  pointer-events: auto;
+  z-index: 35;
+}
+
+.ftable-row-resizer:hover {
+  background: rgba(24, 144, 255, 0.35);
 }
 
 /* Right-click menu for table rows/columns */

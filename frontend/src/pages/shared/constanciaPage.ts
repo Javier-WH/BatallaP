@@ -73,6 +73,17 @@ export function buildConstanciaPageHtml(html: string): string {
     if (lastChildOfSpan?.tagName === 'BR') paragraph.appendChild(doc.createElement('br'));
   });
 
+  // Variable badges are an editor-only affordance — in preview/print the resolved
+  // value must look like the surrounding text, not like a highlighted pill.
+  body.querySelectorAll<HTMLElement>('span[data-variable]').forEach((span) => {
+    span.style.removeProperty('background-color');
+    span.style.removeProperty('padding');
+    span.style.removeProperty('border-radius');
+    if (span.style.color === 'rgb(22, 119, 255)') span.style.removeProperty('color');
+    if (span.style.fontWeight === '600') span.style.removeProperty('font-weight');
+    if (!span.getAttribute('style')?.trim()) span.removeAttribute('style');
+  });
+
   const behind = doc.createElement('div');
   behind.className = 'constancia-layer constancia-layer-behind';
   const front = doc.createElement('div');

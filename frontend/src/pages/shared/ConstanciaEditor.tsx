@@ -12,6 +12,7 @@ import { FloatingLine } from './FloatingLine';
 import {
   FloatingTable, createCells, addTableRow, removeTableRow, addTableColumn, removeTableColumn,
   getActiveCellPosition, formatActiveCell, alignActiveCell, insertIntoActiveCell, clearActiveCell,
+  styleActiveCell,
 } from './FloatingTable';
 import type { CellAlign } from './FloatingTable';
 import { insertFloatingNode, setAnchorMode, listAnchorBlocks, floatingAnchorBlockPos, reanchorFloating } from './floatingObject';
@@ -386,6 +387,14 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
     editor.chain().focus().setTextAlign(value).run();
   };
 
+  // Text-style tools (font, size, color, case) also work inside the focused
+  // table cell — its DOM range is not a ProseMirror selection, so the
+  // cell-aware path runs first and falls back to the document marks.
+  const applyTextStyle = (pmAttrs: Record<string, unknown>, cellStyle: Record<string, string>) => {
+    if (styleActiveCell(cellStyle)) return;
+    editor.chain().focus().setMark('textStyle', pmAttrs).run();
+  };
+
   // Group variables for dropdown
   const groupedVars = variables.reduce((acc, v) => {
     if (!acc[v.group]) acc[v.group] = [];
@@ -417,7 +426,7 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
           defaultValue="'Times New Roman', serif"
           size="small"
           style={{ width: 160 }}
-          onChange={(value) => editor.chain().focus().setMark('textStyle', { fontFamily: value }).run()}
+          onChange={(value) => applyTextStyle({ fontFamily: value }, { 'font-family': value })}
           options={[
             { value: "'Times New Roman', serif", label: 'Times New Roman' },
             { value: "'Arial', sans-serif", label: 'Arial' },
@@ -438,7 +447,7 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
           defaultValue="12pt"
           size="small"
           style={{ width: 90 }}
-          onChange={(value) => editor.chain().focus().setMark('textStyle', { fontSize: value }).run()}
+          onChange={(value) => applyTextStyle({ fontSize: value }, { 'font-size': value })}
           options={[
             { value: '8pt', label: '8' },
             { value: '10pt', label: '10' },
@@ -456,7 +465,7 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
 
         <input
           type="color"
-          onChange={(e) => editor.chain().focus().setColor(e.target.value).run()}
+          onChange={(e) => applyTextStyle({ color: e.target.value }, { color: e.target.value })}
           value={editor.getAttributes('textStyle').color || '#000000'}
           style={{ width: 32, height: 32, cursor: 'pointer', border: '1px solid #d9d9d9', borderRadius: 4 }}
         />
@@ -789,9 +798,9 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
           value={editor.getAttributes('textStyle').textTransform || undefined}
           onChange={(value) => {
             if (value) {
-              editor.chain().focus().setMark('textStyle', { textTransform: value }).run();
+              applyTextStyle({ textTransform: value }, { 'text-transform': value });
             } else {
-              editor.chain().focus().setMark('textStyle', { textTransform: null }).run();
+              applyTextStyle({ textTransform: null }, { 'text-transform': 'none' });
             }
           }}
           options={[
