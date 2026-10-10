@@ -669,9 +669,21 @@ const MatriculationEnrollment: React.FC = () => {
   }, [matriculations, fetchData]);
 
   const handleUpdateRow = useCallback(<K extends keyof TempData>(id: number, field: K, value: TempData[K]) => {
-    setMatriculations(prev => prev.map(row => (
-      row.id === id ? { ...row, tempData: { ...row.tempData, [field]: value } } : row
-    )));
+    setMatriculations(prev => prev.map(row => {
+      if (row.id !== id) return row;
+      return {
+        ...row,
+        // phone1 also drives whatsapp on the backend (same payload rule) —
+        // mirror it in tempData so a stale whatsapp can't be emitted later.
+        tempData: { ...row.tempData, [field]: value, ...(field === 'phone1' ? { whatsapp: value } : {}) },
+        // Student email is displayed from tempData but the edit modal reads
+        // student.contact.email — keep both in sync so the modal never opens
+        // with a stale value that would then overwrite the cell edit on save.
+        ...(field === 'email'
+          ? { student: { ...row.student, contact: { ...row.student.contact, email: value as string } } }
+          : {}),
+      };
+    }));
     const payload: Record<string, unknown> = {};
     if (field === 'birthdate' && value) {
       payload[field as string] = (value as dayjs.Dayjs).format('YYYY-MM-DD');
@@ -684,9 +696,16 @@ const MatriculationEnrollment: React.FC = () => {
 
   // Batch update of multiple tempData fields (used by cascading location selects)
   const handleUpdateFields = useCallback((id: number, changes: Partial<TempData>) => {
-    setMatriculations(prev => prev.map(row => (
-      row.id === id ? { ...row, tempData: { ...row.tempData, ...changes } } : row
-    )));
+    setMatriculations(prev => prev.map(row => {
+      if (row.id !== id) return row;
+      return {
+        ...row,
+        tempData: { ...row.tempData, ...changes },
+        ...(changes.email !== undefined
+          ? { student: { ...row.student, contact: { ...row.student.contact, email: changes.email as string } } }
+          : {}),
+      };
+    }));
     const payload: Record<string, unknown> = {};
     Object.entries(changes).forEach(([k, v]) => {
       if (k === 'birthdate' && v) {
@@ -1098,6 +1117,7 @@ const MatriculationEnrollment: React.FC = () => {
     }
     if (key === 'edit-student') {
       if (contextMenuState.rowId !== null) {
+        agGridRef.current?.stopEditing();
         setEditStudentRowId(contextMenuState.rowId);
         setEditStudentModalVisible(true);
       }
@@ -1293,6 +1313,7 @@ const MatriculationEnrollment: React.FC = () => {
   }, [contextMenuState.rowId, matriculations, saveFieldChange]);
 
   const handleOpenMissingEditor = useCallback((rowId: number) => {
+    agGridRef.current?.stopEditing();
     setEditStudentRowId(rowId);
     setEditStudentModalVisible(true);
   }, []);
@@ -2520,7 +2541,7 @@ const MatriculationEnrollment: React.FC = () => {
           livingWith: td.livingWith,
           phone1: td.phone1,
           whatsapp: td.whatsapp,
-          email: row.student.contact?.email,
+          email: (td.email as string) ?? row.student.contact?.email,
           documents: row.documents ?? row.matriculation?.documents ?? undefined,
           escolaridad: td.escolaridad,
           mother: toModalGuardian(td.mother),

@@ -19,7 +19,7 @@ export const DOCUMENT_TYPE_OPTIONS: DocumentTypeOption[] = [
 /** Guardians cannot have a school ID (Cédula Escolar). */
 export const GUARDIAN_DOCUMENT_TYPE_OPTIONS = DOCUMENT_TYPE_OPTIONS.filter((option) => option.value !== 'Cedula Escolar');
 
-export const PHONE_PREFIXES = ['0414', '0416', '0412', '0424', '0422'];
+export const PHONE_PREFIXES = ['0414', '0424', '0416', '0426', '0412', '0422'];
 export const PHONE_NUMBER_LENGTH = 7;
 
 /**

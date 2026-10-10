@@ -73,6 +73,7 @@ function syncPinnedColumns(api: GridApi<MatriculationRow>, state: GridState, mob
 export interface MatriculationAgGridHandle {
   pinColumn: (colId: string, pinned: 'left' | 'right' | null) => void;
   startEditingCell: (rowIndex: number, colKey: string) => void;
+  stopEditing: () => void;
   getVisibleColumnIds: () => string[];
   getDisplayedRows: () => MatriculationRow[] | null;
 }
@@ -521,6 +522,7 @@ const MatriculationAgGrid = React.forwardRef<MatriculationAgGridHandle, Matricul
   React.useImperativeHandle(ref, () => ({
     pinColumn: handlePinColumn,
     startEditingCell: handleStartEditingCell,
+    stopEditing: () => gridApi?.stopEditing(),
     getVisibleColumnIds: () => {
       if (!gridApi) return [];
       return gridApi.getAllGridColumns()
@@ -543,6 +545,10 @@ const MatriculationAgGrid = React.forwardRef<MatriculationAgGridHandle, Matricul
       // Suppress the browser's native context menu
       event.event?.preventDefault();
       event.event?.stopPropagation();
+      // Commit any in-flight cell edit before the menu opens — right-click
+      // does not blur the cell editor, so stopEditingWhenCellsLoseFocus
+      // would otherwise leave the typed value uncommitted.
+      event.api.stopEditing();
       if (!event.data) return;
       // Select the row on right-click
       event.api.forEachNode(node => {
