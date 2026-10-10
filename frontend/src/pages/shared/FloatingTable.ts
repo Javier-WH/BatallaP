@@ -99,6 +99,22 @@ function tableStyle(a: TableAttrs): string {
 // toolbar can produce (bold/italic/underline, line breaks) plus inserted variables.
 const ALLOWED_TAGS = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'BR', 'DIV', 'P', 'SPAN']);
 
+// Chrome appends bogus <br>s when an editable cell is blurred — a trailing run
+// of <br>s (optionally inside empty trailing blocks) is an editing artifact
+// that inflates the row, so it is dropped everywhere cell content is handled.
+// Operates in place so earlier text nodes (and any saved selection range)
+// survive untouched.
+function stripTrailingBreaks(element: Element): void {
+  for (;;) {
+    while (element.lastElementChild?.tagName === 'BR') element.lastElementChild.remove();
+    const last = element.lastElementChild;
+    if (!last || (last.tagName !== 'DIV' && last.tagName !== 'P')) return;
+    stripTrailingBreaks(last);
+    if (last.textContent?.trim() || last.children.length > 0) return;
+    last.remove();
+  }
+}
+
 export function sanitizeCellHtml(html: string): string {
   const doc = new DOMParser().parseFromString(`<div>${html}</div>`, 'text/html');
   const root = doc.body.firstElementChild;
@@ -117,19 +133,6 @@ export function sanitizeCellHtml(html: string): string {
     });
   };
   walk(root);
-  // Chrome appends bogus <br>s when an editable cell is blurred — a trailing
-  // run of <br>s (optionally inside empty trailing blocks) is an editing
-  // artifact that inflates the row, so it is dropped from the stored markup.
-  const stripTrailingBreaks = (element: Element) => {
-    for (;;) {
-      while (element.lastElementChild?.tagName === 'BR') element.lastElementChild.remove();
-      const last = element.lastElementChild;
-      if (!last || (last.tagName !== 'DIV' && last.tagName !== 'P')) return;
-      stripTrailingBreaks(last);
-      if (last.textContent?.trim() || last.children.length > 0) return;
-      last.remove();
-    }
-  };
   stripTrailingBreaks(root);
   const clean = root.innerHTML;
   // A lone <br> is what browsers leave behind in an emptied cell.
@@ -536,10 +539,6 @@ export const FloatingTable = Node.create({
         // contentEditable on click — blur drops it again if nothing was typed,
         // so the editor shows the same collapsed rows the preview prints.
         td.contentEditable = td.innerHTML.trim() !== '' ? 'true' : 'false';
-        // Chrome appends bogus <br>s on blur; the last input snapshot (or the
-        // content at focus time if nothing was typed) is the truthful markup,
-        // so it is what gets committed and painted back.
-        let lastInputHtml: string | null = null;
         td.addEventListener('mousedown', (event) => {
           // Clicking a cell places the caret; it must not start a table drag.
           event.stopPropagation();
@@ -549,19 +548,18 @@ export const FloatingTable = Node.create({
         });
         td.addEventListener('contextmenu', (event) => openCellMenu(event, row, col));
         td.addEventListener('focus', () => {
-          lastInputHtml = td.innerHTML;
           if (activeCell?.td !== td) {
             activeCell = { owner: box, td, row, col, range: null, setAlign: (align) => updateCell(row, col, { align }) };
           }
           selectNodeAt(editor, getPos, false);
         });
-        td.addEventListener('input', () => { lastInputHtml = commitCellHtml(row, col); });
+        td.addEventListener('input', () => commitCellHtml(row, col));
         td.addEventListener('blur', () => {
-          if (lastInputHtml !== null) td.innerHTML = lastInputHtml;
-          // Commit and paint back the sanitized markup so bogus <br>s Chrome
-          // injected on blur never reach the DOM nor the stored template.
+          // Chrome appends bogus <br>s on blur — strip them in place (no
+          // innerHTML rewrite) so the saved selection range keeps pointing at
+          // live nodes; the toolbar may style that selection right after.
+          stripTrailingBreaks(td);
           const html = commitCellHtml(row, col);
-          td.innerHTML = html;
           if (html === '') {
             td.innerHTML = '';
             td.contentEditable = 'false';

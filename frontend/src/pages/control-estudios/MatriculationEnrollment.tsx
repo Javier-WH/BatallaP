@@ -685,7 +685,7 @@ const MatriculationEnrollment: React.FC = () => {
         ...row,
         // phone1 also drives whatsapp on the backend (same payload rule) —
         // mirror it in tempData so a stale whatsapp can't be emitted later.
-        tempData: { ...row.tempData, [field]: value, ...(field === 'phone1' ? { whatsapp: value } : {}) },
+        tempData: { ...row.tempData, [field]: value, ...(field === 'phone1' ? { whatsapp: value as TempData['whatsapp'] } : {}) },
         // Student email is displayed from tempData but the edit modal reads
         // student.contact.email — keep both in sync so the modal never opens
         // with a stale value that would then overwrite the cell edit on save.

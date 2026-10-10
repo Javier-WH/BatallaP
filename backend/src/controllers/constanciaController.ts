@@ -104,51 +104,36 @@ function parseLocalDate(s: string): Date {
   return new Date(y, m - 1, d);
 }
 
-// Build only the date.* variables from a given Date — used when there is no person
-// but the user still wants to override the current date.
-function buildDateVars(d: Date): Record<string, string> {
-  const formatDate = (date: Date): string => {
-    const months = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-    return `${date.getDate()} de ${months[date.getMonth()]} de ${date.getFullYear()}`;
-  };
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return {
-    'date': `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
-    'date.long': formatDate(d),
-    'date.day': String(d.getDate()),
-    'date.dayOrdinal': toOrdinal(d.getDate()),
-    'date.dayWords': toSpanishWords(d.getDate()),
-    'date.month': d.toLocaleString('es-ES', { month: 'long' }),
-    'date.year': String(d.getFullYear()),
-  };
-}
-
-async function resolveVariables(personId: number, schoolPeriodId: number, customDate: string | null = null): Promise<Record<string, string>> {
-  const person = await Person.findByPk(personId);
-  if (!person) throw new Error('Estudiante no encontrado');
+async function resolveVariables(personId: number | null, schoolPeriodId: number | null, customDate: string | null = null): Promise<Record<string, string>> {
+  // personId may be null for templates with no student/worker variables —
+  // institution, period and date variables must still resolve.
+  const person = personId ? await Person.findByPk(personId) : null;
+  if (personId && !person) throw new Error('Estudiante no encontrado');
 
   // Institution settings
   const settings = await Setting.findAll();
   const settingsMap: Record<string, string> = {};
   settings.forEach(s => { settingsMap[s.key] = s.value; });
 
-  // Find inscription for this period
-  const inscription = await Inscription.findOne({
-    where: { personId, schoolPeriodId },
-    include: [
-      { model: Grade, as: 'grade' },
-      { model: Section, as: 'section' },
-      { model: StudentPeriodOutcome, as: 'periodOutcome' },
-    ],
-  }) as any;
+  // Find inscription for this period (only when a person was provided)
+  const inscription = person
+    ? await Inscription.findOne({
+        where: { personId: person.id, ...(schoolPeriodId ? { schoolPeriodId } : {}) },
+        include: [
+          { model: Grade, as: 'grade' },
+          { model: Section, as: 'section' },
+          { model: StudentPeriodOutcome, as: 'periodOutcome' },
+        ],
+      }) as any
+    : null;
 
   // Fallback: a not-yet-enrolled student has no Inscription but still carries
   // grade/section info in their Matriculation (the grade they're being
   // enrolled into). Used to resolve grade.* and section.* variables.
   let academicSource: any = inscription;
-  if (!academicSource) {
+  if (person && !academicSource) {
     academicSource = await Matriculation.findOne({
-      where: { personId, ...(schoolPeriodId ? { schoolPeriodId } : {}) },
+      where: { personId: person.id, ...(schoolPeriodId ? { schoolPeriodId } : {}) },
       include: [
         { model: Grade, as: 'grade' },
         { model: Section, as: 'section' },
@@ -157,7 +142,7 @@ async function resolveVariables(personId: number, schoolPeriodId: number, custom
     }) as any;
   }
 
-  const period = await SchoolPeriod.findByPk(schoolPeriodId);
+  const period = schoolPeriodId ? await SchoolPeriod.findByPk(schoolPeriodId) : null;
 
   // ── Subjects (numbered variables: subject.N.*) ──
   // Numbering follows the canonical subject order of the grade
@@ -252,12 +237,12 @@ async function resolveVariables(personId: number, schoolPeriodId: number, custom
     }
   }
 
-  // Student data
-  const firstName = person.firstName || '';
-  const lastName = person.lastName || '';
+  // Student data (empty when the constancia has no person attached)
+  const firstName = person?.firstName || '';
+  const lastName = person?.lastName || '';
   const fullName = `${firstName} ${lastName}`.trim();
-  const documentType = person.documentType || '';
-  const document = person.document || '';
+  const documentType = person?.documentType || '';
+  const document = person?.document || '';
   const documentTypeLabel = ({
     Venezolano: 'Cédula de Identidad',
     Extranjero: 'Cédula de Identidad',
@@ -277,8 +262,8 @@ async function resolveVariables(personId: number, schoolPeriodId: number, custom
   const docDigits = document.replace(/^(V|E|P|CE)[-.\s]*/i, '').replace(/[^0-9]/g, '');
   const docGrouped = docDigits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   const fullDocument = `${docPrefix}${docPrefix && docGrouped ? '-' : ''}${docGrouped}`;
-  const birthdate = person.birthdate ? parseLocalDate(String(person.birthdate)) : null;
-  const gender = person.gender || '';
+  const birthdate = person?.birthdate ? parseLocalDate(String(person.birthdate)) : null;
+  const gender = person?.gender || '';
 
   // Format date in Spanish
   const formatDate = (d: Date): string => {
@@ -342,8 +327,8 @@ async function resolveVariables(personId: number, schoolPeriodId: number, custom
     'worker.gender': gender,
     'worker.article': gender === 'F' ? 'la' : 'el',
     'worker.ciudadano': gender === 'F' ? 'ciudadana' : 'ciudadano',
-    'worker.hireDate': person.hireDate ? (() => { const h = parseLocalDate(String(person.hireDate)); return `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, '0')}-${String(h.getDate()).padStart(2, '0')}`; })() : '',
-    'worker.hireDateLong': person.hireDate ? formatDate(parseLocalDate(String(person.hireDate))) : '',
+    'worker.hireDate': person?.hireDate ? (() => { const h = parseLocalDate(String(person.hireDate)); return `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, '0')}-${String(h.getDate()).padStart(2, '0')}`; })() : '',
+    'worker.hireDateLong': person?.hireDate ? formatDate(parseLocalDate(String(person.hireDate))) : '',
     // Institution
     'institution.name': settingsMap['institution_name'] || '',
     // institution_dea_code is the institution (plantel) code; institution_code is the
@@ -632,15 +617,12 @@ export const generatePreview = async (req: Request, res: Response) => {
     const template = await ConstanciaTemplate.findByPk(Number(templateId));
     if (!template) return res.status(404).json({ message: 'Plantilla no encontrada' });
 
-    // Resolve system variables if personId is provided
-    let vars: Record<string, string> = {};
-    if (personId) {
-      const periodId = schoolPeriodId || null;
-      vars = await resolveVariables(Number(personId), periodId, customDate || null);
-    } else if (customDate) {
-      // No person, but a custom date — still populate date variables.
-      vars = buildDateVars(parseLocalDate(customDate));
-    }
+    // Resolve system variables — even without a person, institution/period/date
+    // variables (and empties for the rest) must be produced.
+    const periodId = schoolPeriodId || null;
+    const vars: Record<string, string> = await resolveVariables(
+      personId ? Number(personId) : null, periodId, customDate || null,
+    );
 
     // Merge custom variables (user-provided text inputs)
     if (customVars && typeof customVars === 'object') {

@@ -18,7 +18,7 @@ import type { CellAlign } from './FloatingTable';
 import { insertFloatingNode, setAnchorMode, listAnchorBlocks, floatingAnchorBlockPos, reanchorFloating } from './floatingObject';
 import type { AnchorMode } from './floatingObject';
 import { CONSTANCIA_PAGE_CSS, CONSTANCIA_PAGE_STYLE, CONSTANCIA_MARGIN_OPTIONS } from './constanciaPage';
-import { Button, Space, Select, Dropdown, Upload, Popover, InputNumber, message } from 'antd';
+import { Button, Space, Select, Dropdown, Upload, Popover, InputNumber, message, ColorPicker } from 'antd';
 import {
   BoldOutlined, ItalicOutlined, UnderlineOutlined,
   UnorderedListOutlined, OrderedListOutlined,
@@ -219,6 +219,21 @@ function imageFileToDataUrl(file: File): Promise<string> {
 // Keeps the caret inside a table cell (or the editor) while a toolbar button is clicked.
 const keepFocus = (event: React.MouseEvent) => event.preventDefault();
 
+// Shared swatch palette for every color picker (text, table border, line) —
+// quick clicks for common colors; the gradient picker stays available below.
+const COLOR_PRESETS = [
+  {
+    label: 'Básicos',
+    colors: [
+      '#000000', '#434343', '#808080', '#b7b7b7', '#d9d9d9', '#ffffff',
+      '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff',
+      '#4a86e8', '#0000ff', '#9900ff', '#ff00ff', '#e6b8af', '#f4cccc',
+      '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3',
+      '#d9d2e9', '#ead1dc',
+    ],
+  },
+];
+
 export interface VariableDef {
   group: string;
   key: string;
@@ -268,6 +283,10 @@ const AnchorBlockSelect: React.FC<{ editor: Editor }> = ({ editor }) => {
 
 const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, variables, margin, onMarginChange }) => {
   const [tablePickerOpen, setTablePickerOpen] = useState(false);
+  // Last color picked — ProseMirror's textStyle attr only reflects document
+  // selections, so without this the picker would snap back to black after
+  // coloring text inside a table cell.
+  const [pickedColor, setPickedColor] = useState('#000000');
   // Lets clicks pass through the text so objects placed behind it can be selected.
   const [objectsMode, setObjectsMode] = useState(false);
 
@@ -463,12 +482,27 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
           ]}
         />
 
-        <input
-          type="color"
-          onChange={(e) => applyTextStyle({ color: e.target.value }, { color: e.target.value })}
-          value={editor.getAttributes('textStyle').color || '#000000'}
-          style={{ width: 32, height: 32, cursor: 'pointer', border: '1px solid #d9d9d9', borderRadius: 4 }}
-        />
+        {/* keepFocus on the trigger so opening the picker never steals the
+            text/cell selection — without it the picked color has nothing to
+            apply to (and inside table cells the blur also detached the range). */}
+        <span onMouseDown={keepFocus}>
+          <ColorPicker
+            size="small"
+            value={editor.getAttributes('textStyle').color || pickedColor}
+            presets={COLOR_PRESETS}
+            allowClear
+            // onChangeComplete (not onChange): a mid-drag pick would wrap the
+            // cell selection in a new <span> on every pixel of the gradient.
+            onChangeComplete={(color) => {
+              setPickedColor(color.toHexString());
+              applyTextStyle({ color: color.toHexString() }, { color: color.toHexString() });
+            }}
+            onClear={() => {
+              if (styleActiveCell({ color: 'inherit' })) return;
+              editor.chain().focus().unsetColor().run();
+            }}
+          />
+        </span>
 
         <div className="w-px h-6 bg-slate-300 mx-1" />
 
@@ -654,13 +688,14 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
                 { value: 'dotted', label: 'Punteada' },
               ]}
             />
-            <input
-              type="color"
-              title="Color de la línea"
-              value={lineAttrs.color || '#000000'}
-              onChange={(e) => updateObject('floatingLine', { color: e.target.value })}
-              style={{ width: 28, height: 28, cursor: 'pointer', border: '1px solid #d9d9d9', borderRadius: 4 }}
-            />
+            <span onMouseDown={keepFocus} title="Color de la línea">
+              <ColorPicker
+                size="small"
+                value={lineAttrs.color || '#000000'}
+                presets={COLOR_PRESETS}
+                onChangeComplete={(color) => updateObject('floatingLine', { color: color.toHexString() })}
+              />
+            </span>
             <Select
               size="small"
               style={{ width: 150 }}
@@ -725,13 +760,14 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
             >
               -Col
             </Button>
-            <input
-              type="color"
-              title="Color del borde"
-              value={tableAttrs.borderColor && tableAttrs.borderColor !== 'transparent' ? tableAttrs.borderColor : '#000000'}
-              onChange={(e) => updateObject('floatingTable', { borderColor: e.target.value })}
-              style={{ width: 28, height: 28, cursor: 'pointer', border: '1px solid #d9d9d9', borderRadius: 4 }}
-            />
+            <span onMouseDown={keepFocus} title="Color del borde">
+              <ColorPicker
+                size="small"
+                value={tableAttrs.borderColor && tableAttrs.borderColor !== 'transparent' ? tableAttrs.borderColor : '#000000'}
+                presets={COLOR_PRESETS}
+                onChangeComplete={(color) => updateObject('floatingTable', { borderColor: color.toHexString() })}
+              />
+            </span>
             <Select
               size="small"
               style={{ width: 120 }}
