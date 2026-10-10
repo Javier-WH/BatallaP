@@ -142,13 +142,28 @@ const Constancias: React.FC = () => {
   // a slow earlier request can't overwrite a newer one with stale/empty data.
   const studentSearchSeq = useRef(0);
   const workerSearchSeq = useRef(0);
+  // Last student query — re-run when the reference period changes so graduated
+  // students of the newly selected (closed) period become searchable.
+  const lastStudentQuery = useRef('');
 
   // Search students (uses /users/search and filters by Alumno role client-side)
-  const searchStudents = useCallback(async (query: string) => {
+  // periodId lets callers (e.g. the period selector onChange) search against a
+  // period that hasn't been committed to state yet.
+  const searchStudents = useCallback(async (query: string, periodId?: number | null) => {
+    lastStudentQuery.current = query;
     if (query.trim().length < 2) { setSearchResults([]); return; }
     const seq = ++studentSearchSeq.current;
     try {
-      const res = await api.get('/users', { params: { q: query, activeOnly: true } });
+      const res = await api.get('/users', {
+        params: {
+          q: query,
+          activeOnly: true,
+          // activeOnly filters by enrollment in this period — scoping it to the
+          // selected reference period is what makes graduates of past periods
+          // findable for constancias de culminación.
+          schoolPeriodId: periodId ?? selectedPeriodId ?? activePeriod?.id,
+        },
+      });
       if (seq !== studentSearchSeq.current) return;
       // Filter to students only
       const students = (res.data?.data || res.data || [])
@@ -166,7 +181,7 @@ const Constancias: React.FC = () => {
       setSearchResults([]);
       message.error('No se pudo buscar estudiantes. Intente de nuevo.');
     }
-  }, []);
+  }, [selectedPeriodId, activePeriod]);
 
   // Search staff (workers) — filters by staff roles
   const searchWorkers = useCallback(async (query: string) => {
@@ -483,7 +498,16 @@ const Constancias: React.FC = () => {
                 <Select
                   className="w-full"
                   value={selectedPeriodId ?? activePeriod?.id}
-                  onChange={(v) => { setSelectedPeriodId(v); setPreviewHtml(null); setPreviewVars(null); }}
+                  onChange={(v) => {
+                    setSelectedPeriodId(v);
+                    setPreviewHtml(null);
+                    setPreviewVars(null);
+                    // Re-run the pending student search against the new period
+                    // so graduates of a closed period appear in the dropdown.
+                    if (lastStudentQuery.current.trim().length >= 2) {
+                      searchStudents(lastStudentQuery.current, v);
+                    }
+                  }}
                   options={allPeriods.map((p: any) => ({
                     value: p.id,
                     label: `${p.name || p.period}${p.status === 'historico' ? ' (cerrado)' : ''}`,
