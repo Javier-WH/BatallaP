@@ -87,6 +87,8 @@ interface SectionDetail {
   teacherName: string;
   hasPlan: boolean;
   hasGrades: boolean;
+  planPct: number;
+  gradesPct: number;
   disabled?: boolean;
 }
 
@@ -342,9 +344,8 @@ const GradeProgressCard: React.FC<{
   const gradePct = (grade: GradeProgress): number => {
     // Exclude disabled sections (e.g. MP subjects with no students) from the total
     const activeSections = grade.subjects.flatMap(s => s.sections.filter(sec => !sec.disabled));
-    const totalDone = activeSections.filter(sec => mode === 'plan' ? sec.hasPlan : sec.hasGrades).length;
-    const totalSections = activeSections.length;
-    return totalSections > 0 ? Math.round((totalDone / totalSections) * 100) : 0;
+    const values = activeSections.map(sec => mode === 'plan' ? sec.planPct : sec.gradesPct);
+    return avgOf(values);
   };
 
   const activeGradeData = byGrade.find(g => g.gradeId.toString() === activeGrade) || byGrade[0];
@@ -437,7 +438,7 @@ const GradeProgressCard: React.FC<{
                   const colValues = activeGradeData.subjects.map(s => {
                     const sec = s.sections.find(x => x.sectionId === c.sectionId);
                     if (!sec || sec.disabled) return null;
-                    return (mode === 'plan' ? sec.hasPlan : sec.hasGrades) ? 100 : 0;
+                    return mode === 'plan' ? sec.planPct : sec.gradesPct;
                   }).filter((v: number | null): v is number => v !== null) as number[];
                   const colAvg = avgOf(colValues);
                   return (
@@ -488,7 +489,7 @@ const GradeProgressCard: React.FC<{
                           </td>
                         );
                       }
-                      const v = sec ? ((mode === 'plan' ? sec.hasPlan : sec.hasGrades) ? 100 : 0) : -1;
+                      const v = sec ? (mode === 'plan' ? sec.planPct : sec.gradesPct) : -1;
                       if (v < 0) {
                         return (
                           <td key={col.sectionId} className="px-3 py-1.5 border-b border-slate-100 last:border-0 text-center">

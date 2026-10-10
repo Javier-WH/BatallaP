@@ -82,6 +82,8 @@ interface SectionDetail {
   teacherName: string;
   hasPlan: boolean;
   hasGrades: boolean;
+  planPct: number;
+  gradesPct: number;
   disabled?: boolean;
 }
 
@@ -251,54 +253,94 @@ const buildAcademicSnapshot = async (schoolPeriodId?: number, isPrivileged = fal
     };
   }
 
-  const evaluationPlanCountsRaw = await EvaluationPlan.findAll({
-    attributes: [
-      'periodGradeSubjectId',
-      'sectionId',
-      [fn('COUNT', literal('*')), 'planCount']
-    ],
-    where: {
-      periodGradeSubjectId: { [Op.in]: periodGradeSubjectIds },
-      sectionId: { [Op.in]: sectionIds },
-      ...(activeTermId ? { termId: activeTermId } : {})
-    },
-    group: ['periodGradeSubjectId', 'sectionId'],
-    raw: true
-  });
+  const [evaluationPlanCountsRaw, qualificationCountsRaw, enrolledCountsRaw] = await Promise.all([
+    EvaluationPlan.findAll({
+      attributes: [
+        'periodGradeSubjectId',
+        'sectionId',
+        [fn('COUNT', literal('*')), 'planCount'],
+        [fn('SUM', col('percentage')), 'planWeightSum'],
+        [fn('COUNT', fn('DISTINCT', col('termId'))), 'planTermCount']
+      ],
+      where: {
+        periodGradeSubjectId: { [Op.in]: periodGradeSubjectIds },
+        sectionId: { [Op.in]: sectionIds },
+        ...(activeTermId ? { termId: activeTermId } : {})
+      },
+      group: ['periodGradeSubjectId', 'sectionId'],
+      raw: true
+    }),
+    Qualification.findAll({
+      attributes: [
+        [col('evaluationPlan.periodGradeSubjectId'), 'periodGradeSubjectId'],
+        [col('evaluationPlan.sectionId'), 'sectionId'],
+        [fn('COUNT', literal('*')), 'qualificationCount']
+      ],
+      include: [
+        {
+          model: EvaluationPlan,
+          as: 'evaluationPlan',
+          attributes: [],
+          required: true,
+          where: activeTermId ? { termId: activeTermId } : {}
+        }
+      ],
+      group: ['evaluationPlan.periodGradeSubjectId', 'evaluationPlan.sectionId'],
+      raw: true
+    }),
+    // Enrolled (non-withdrawn) students per subject + current section — the
+    // denominator for grade coverage: each enrolled student is expected to
+    // receive one qualification per evaluation plan.
+    InscriptionSubject.findAll({
+      attributes: [
+        'subjectId',
+        [col('inscription.sectionId'), 'sectionId'],
+        [fn('COUNT', literal('*')), 'studentCount']
+      ],
+      include: [
+        {
+          model: Inscription,
+          as: 'inscription',
+          attributes: [],
+          required: true,
+          where: { schoolPeriodId: viewPeriod.id, withdrawnAt: null }
+        }
+      ],
+      group: ['InscriptionSubject.subjectId', 'inscription.sectionId'],
+      raw: true
+    })
+  ]);
   const evaluationPlanCounts = evaluationPlanCountsRaw as unknown as {
     periodGradeSubjectId: number;
     sectionId: number;
     planCount: number;
+    planWeightSum: number | string | null;
+    planTermCount: number;
   }[];
-
-  const qualificationCountsRaw = await Qualification.findAll({
-    attributes: [
-      [col('evaluationPlan.periodGradeSubjectId'), 'periodGradeSubjectId'],
-      [col('evaluationPlan.sectionId'), 'sectionId'],
-      [fn('COUNT', literal('*')), 'qualificationCount']
-    ],
-    include: [
-      {
-        model: EvaluationPlan,
-        as: 'evaluationPlan',
-        attributes: [],
-        required: true,
-        where: activeTermId ? { termId: activeTermId } : {}
-      }
-    ],
-    group: ['evaluationPlan.periodGradeSubjectId', 'evaluationPlan.sectionId'],
-    raw: true
-  });
   const qualificationCounts = qualificationCountsRaw as unknown as {
     periodGradeSubjectId: number;
     sectionId: number;
     qualificationCount: number;
   }[];
+  const enrolledCounts = enrolledCountsRaw as unknown as {
+    subjectId: number;
+    sectionId: number;
+    studentCount: number;
+  }[];
 
-  const planMap = new Map<string, number>();
+  const planMap = new Map<string, { planCount: number; planWeightSum: number; planTermCount: number }>();
   evaluationPlanCounts.forEach(record => {
     const key = assignmentKey(record.periodGradeSubjectId, record.sectionId);
-    planMap.set(key, record.planCount);
+    planMap.set(key, {
+      planCount: Number(record.planCount) || 0,
+      planWeightSum: Number(record.planWeightSum) || 0,
+      planTermCount: Math.max(1, Number(record.planTermCount) || 0)
+    });
+  });
+
+  const enrolledMap = new Map<string, number>();
+  enrolledCounts.forEach(record => {
+    enrolledMap.set(`${record.subjectId}:${record.sectionId}`, Number(record.studentCount) || 0);
   });
 
   const qualificationMap = new Map<string, number>();
@@ -478,8 +520,24 @@ const buildAcademicSnapshot = async (schoolPeriodId?: number, isPrivileged = fal
     const subjProgress = gradeEntry.subjects.get(subject.id)!;
 
     const key = assignmentKey(assignment.periodGradeSubjectId, assignment.sectionId);
-    let hasPlan = !!planMap.get(key);
-    let hasGrades = !!qualificationMap.get(key);
+    const planInfo = planMap.get(key);
+    const planCount = planInfo?.planCount ?? 0;
+    const qualCount = Number(qualificationMap.get(key) ?? 0);
+    let hasPlan = planCount > 0;
+    let hasGrades = qualCount > 0;
+
+    // Plan coverage: plans carry weight percentages that must sum ≤ 100 per
+    // term, so the per-term average of the summed weight is the coverage %.
+    let planPct = hasPlan
+      ? Math.min(100, Math.round(planInfo!.planWeightSum / planInfo!.planTermCount))
+      : 0;
+    // Grades coverage: loaded qualifications over the expected matrix
+    // (plans × enrolled, non-withdrawn students).
+    const enrolledCount = enrolledMap.get(`${subject.id}:${assignment.sectionId}`) ?? 0;
+    const expectedGrades = planCount * enrolledCount;
+    let gradesPct = expectedGrades > 0
+      ? Math.min(100, Math.round((qualCount * 100) / expectedGrades))
+      : 0;
 
     // For Materia Pendiente section, use PendingSubject + encounters logic
     let mpDisabled = false;
@@ -496,6 +554,8 @@ const buildAcademicSnapshot = async (schoolPeriodId?: number, isPrivileged = fal
         hasPlan = false;
         hasGrades = false;
       }
+      planPct = hasPlan ? 100 : 0;
+      gradesPct = hasGrades ? 100 : 0;
     }
     const teacherName = assignment.teacher
       ? `${assignment.teacher.firstName} ${assignment.teacher.lastName}`
@@ -510,7 +570,7 @@ const buildAcademicSnapshot = async (schoolPeriodId?: number, isPrivileged = fal
       if (hasPlan) subjProgress.withPlan += 1; else subjProgress.withoutPlan += 1;
       if (hasGrades) subjProgress.withGrades += 1; else subjProgress.withoutGrades += 1;
     }
-    subjProgress.sections.push({ sectionId, sectionName, sectionColor, teacherName, hasPlan, hasGrades, disabled: mpDisabled });
+    subjProgress.sections.push({ sectionId, sectionName, sectionColor, teacherName, hasPlan, hasGrades, planPct, gradesPct, disabled: mpDisabled });
   });
 
   // Convert maps to sorted arrays: grades by Grade.order, sections alphabetically
