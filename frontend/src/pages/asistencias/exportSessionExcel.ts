@@ -51,7 +51,7 @@ export async function exportDatasheetExcel(opts: {
 
   rows.forEach((r, i) => {
     const row = ws.addRow([
-      i + 1,
+      r.number ?? i + 1,
       ...r.lead,
       ...columns.map(c => (r.disabled?.has(c.key) ? '' : r.cells[c.key]?.label ?? '—')),
     ]);
@@ -152,7 +152,7 @@ export async function exportSessionRosterExcel(sessionId: number): Promise<void>
   roster.forEach((r, i) => {
     const [last, first] = splitName(r.fullName ?? '');
     const row = ws.addRow([
-      i + 1,
+      r.rosterNumber ?? i + 1,
       r.document ?? '',
       last,
       first,

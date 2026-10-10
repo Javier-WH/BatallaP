@@ -28,6 +28,7 @@ import { getSubjectOrderMap, getSubjectNotRepairableMapByGradeAndPeriod } from '
 import { roundFinalGrade, MIN_FINAL_GRADE, resolveGradeStatus } from '@/services/gradeEvaluationService';
 import { AcademicContextError, getInscriptionAcademicContext, resolveAcademicContext } from '@/services/academicContextService';
 import { logGradeChange } from '@/services/gradeChangeLogService';
+import { renumberSectionRoster } from '@/services/rosterNumberService';
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
@@ -367,6 +368,7 @@ export const registerStudentsInMp = async (req: Request, res: Response) => {
           originPeriodId: sourceInscription.originPeriodId || sourceInscription.schoolPeriodId,
           isRepeater: false,
         }, { transaction: t });
+        await renumberSectionRoster(activePeriod.id, gradeId, mpSection.id, t);
       }
 
       // Create InscriptionSubject if not exists

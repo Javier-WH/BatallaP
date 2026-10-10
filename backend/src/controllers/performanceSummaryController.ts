@@ -395,7 +395,7 @@ function fillSheetByNamedRanges(
     const student = ins.student;
     const residence = student?.residence;
 
-    setByRange('std_num_' + n, String(studentIdx + 1).padStart(2, '0'));
+    setByRange('std_num_' + n, String(ins.rosterNumber ?? studentIdx + 1).padStart(2, '0'));
 
     const documentType = student?.documentType;
     // Stored documents may already contain a type prefix (e.g. V777777).
@@ -2745,6 +2745,7 @@ export const getBoletinData = async (req: Request, res: Response) => {
         }));
         return {
           inscriptionId: ins.id,
+          rosterNumber: ins.rosterNumber ?? null,
           firstName: ins.student?.firstName || '',
           lastName: ins.student?.lastName || '',
           document: ins.student?.document || '',
@@ -2830,6 +2831,7 @@ export const getBoletinData = async (req: Request, res: Response) => {
 
       return {
         inscriptionId: ins.id,
+        rosterNumber: ins.rosterNumber ?? null,
         firstName: ins.student?.firstName || '',
         lastName: ins.student?.lastName || '',
         document: ins.student?.document || '',

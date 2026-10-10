@@ -24,6 +24,7 @@ import { StudentPromotionEngine } from './studentPromotionEngine';
 import * as SchoolPeriodService from './schoolPeriodService';
 import { TermSectionClosureService } from './termSectionClosureService';
 import { loadClosureStudentGroups, sortClosureStudentGroups } from './periodClosureStudentService';
+import { renumberRosters } from './rosterNumberService';
 
 interface ClosureValidationResult {
   valid: boolean;
@@ -286,6 +287,13 @@ export class PeriodClosureExecutor {
 
       const processLog: Record<string, unknown>[] = [];
 
+      // Sections of the next period that receive students — renumbered once
+      // at the end so every new roster gets its canonical list numbers.
+      const newRosterScopes = new Map<string, { schoolPeriodId: number; gradeId: number; sectionId: number }>();
+      const addRosterScope = (gradeId: number | undefined | null, sectionId: number | undefined | null) => {
+        if (gradeId && sectionId) newRosterScopes.set(`${gradeId}|${sectionId}`, { schoolPeriodId: nextPeriod.id, gradeId, sectionId });
+      };
+
       // Fetch revision period for locking at the end of closure
       const revisionPeriod = await RevisionPeriod.findOne({ where: { schoolPeriodId }, transaction });
 
@@ -404,6 +412,7 @@ export class PeriodClosureExecutor {
             },
             { transaction }
           );
+          addRosterScope(targetGradeId, finalSectionId);
 
           // Create the Matriculation record so the promoted student appears
           // in the matriculation list. The unique constraint on
@@ -553,6 +562,7 @@ export class PeriodClosureExecutor {
                   originPeriodId: schoolPeriodId,
                   isRepeater: false
                 }, { transaction });
+                addRosterScope(mpGradeId, mpSection.id);
 
                 stats.newInscriptions++;
 
@@ -635,6 +645,9 @@ export class PeriodClosureExecutor {
           closedAt: new Date(),
         }, { transaction });
       }
+
+      // Assign canonical list numbers to every new-period section roster.
+      await renumberRosters([...newRosterScopes.values()], transaction);
 
       await transaction.commit();
 

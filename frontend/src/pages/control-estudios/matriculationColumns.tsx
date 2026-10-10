@@ -190,6 +190,7 @@ export interface MatriculationRow {
   sectionId?: number | null;
   status: 'pending' | 'completed' | 'withdrawn';
   inscriptionId?: number | null;
+  rosterNumber?: number | null;
   student: {
     id: number;
     firstName: string;
@@ -239,6 +240,7 @@ export interface ColumnOption {
 // Column options organized in two groups
 export const BASE_COLUMN_OPTIONS: ColumnOption[] = [
   // Estudiante
+  { key: 'rosterNumber', label: 'N° Lista', group: 'Estudiante' },
   { key: 'nationality', label: 'Nacionalidad', group: 'Estudiante' },
   { key: 'document', label: 'Cédula', group: 'Estudiante' },
   { key: 'firstName', label: 'Nombres', group: 'Estudiante' },
@@ -861,6 +863,21 @@ export function buildColumnDefs(params: BuildColumnDefsParams): (ColDef<Matricul
 
   // ---- Estudiante columns ----
   const estudianteCols: ColDef<MatriculationRow>[] = [];
+
+  if (isCol('rosterNumber')) {
+    estudianteCols.push({
+      colId: 'rosterNumber',
+      headerName: 'N°',
+      width: 42,
+      minWidth: 30,
+      maxWidth: 60,
+      editable: false,
+      sortable: true,
+      resizable: true,
+      pinned: disablePinned ? undefined : 'left',
+      valueGetter: (p) => p.data?.rosterNumber ?? '',
+    });
+  }
 
   if (isCol('nationality')) {
     estudianteCols.push({

@@ -89,7 +89,7 @@ const StudentReportTab: React.FC = () => {
       key: c.key, label: c.label, title: c.title, sub: timeRange(c.start, c.end),
     }));
     rows = dayData.students.map(s => ({
-      key: s.inscriptionId, lead: [s.document, s.lastName, s.firstName], cells: s.cells,
+      key: s.inscriptionId, number: s.rosterNumber, lead: [s.document, s.lastName, s.firstName], cells: s.cells,
     }));
     subtitle = `${identity} · ${DAY_FULL_BY_SHORT[dayData.dayShort] ?? dayData.dayShort} ${dayjs(dayData.date).format('DD/MM/YYYY')}`;
   } else if (!day && weeksData) {

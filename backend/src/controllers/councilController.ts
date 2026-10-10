@@ -194,6 +194,7 @@ export const getCouncilData = async (req: Request, res: Response) => {
 
       return {
         id: ins.id,
+        rosterNumber: insAny.rosterNumber ?? null,
         studentName: `${insAny.student?.lastName} ${insAny.student?.firstName}`,
         studentDni: insAny.student?.document,
         documentType: insAny.student?.documentType,

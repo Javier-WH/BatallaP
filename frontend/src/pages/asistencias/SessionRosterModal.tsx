@@ -321,7 +321,7 @@ const SessionRosterModal: React.FC<SessionRosterModalProps> = ({
                     background: needsReason ? '#fff7ed' : '#ffffff',
                   }}
                 >
-                  <div className="roster-mono" style={{ width: 52, flexShrink: 0, paddingLeft: 16, boxSizing: 'border-box', fontSize: 13, color: '#475467' }}>{i + 1}</div>
+                  <div className="roster-mono" style={{ width: 52, flexShrink: 0, paddingLeft: 16, boxSizing: 'border-box', fontSize: 13, color: '#475467' }}>{r.rosterNumber ?? i + 1}</div>
                   <div className="roster-mono" style={{ width: 110, flexShrink: 0, fontSize: 14 }}>{r.document}</div>
                   <div style={{ width: 210, flexShrink: 0, fontSize: 14, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={last}>{last}</div>
                   <div style={{ width: 200, flexShrink: 0, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={first}>{first}</div>

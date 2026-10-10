@@ -16,6 +16,7 @@ import { EscolaridadStatus } from '@/types/enrollment';
 import { registerAndEnrollStudent, EnrollmentValidationError, GUARDIAN_FIELD_LABELS } from '@/services/studentEnrollmentService';
 import { generateEnrollmentReport } from '@/services/enrollmentReportService';
 import { sortInscriptions, canonicalInscriptionOrder, numericDocumentSQL, fieldExpr, quoteQualified, lower } from '@/services/studentSortService';
+import { renumberSectionRoster, renumberRosters, rosterScopeOf } from '@/services/rosterNumberService';
 import { parsePagination, buildPaginatedResponse } from '@/services/paginationService';
 
 const ESCOLARIDAD_VALUES: EscolaridadStatus[] = ['regular', 'repitiente', 'materia_pendiente'];
@@ -423,7 +424,8 @@ export const getMatriculations = async (req: Request, res: Response) => {
           { model: SchoolPeriod, as: 'period' },
           { model: Grade, as: 'grade' },
           { model: Section, as: 'section' },
-          { model: EnrollmentDocument, as: 'documents' }
+          { model: EnrollmentDocument, as: 'documents' },
+          { model: Inscription, as: 'inscription' }
         ],
         order: [literal(fieldExpr(quoteQualified('Matriculation', 'id'), ids.map(String)))],
       });
@@ -730,6 +732,7 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
       // The student already has an inscription in this period (e.g. was previously
       // matriculated then "un-matriculated"). Reuse it instead of blocking — just
       // update the section and clear any withdrawn state.
+      const prevScope = rosterScopeOf(existingInscription as any);
       existingInscription.sectionId = targetSectionId;
       existingInscription.escolaridad = escolaridadValue;
       (existingInscription as any).withdrawnAt = null;
@@ -746,6 +749,11 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
         { sectionId: targetSectionId },
         { where: { inscriptionId: existingInscription.id }, transaction: t }
       );
+
+      await renumberRosters([
+        prevScope,
+        { schoolPeriodId: targetPeriodId, gradeId: targetGradeId, sectionId: targetSectionId },
+      ], t);
 
       await t.commit();
       const result = await Matriculation.findByPk(matriculation.id, {
@@ -819,6 +827,8 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
     } catch (reportError) {
       console.warn('[enrollMatriculated] No se pudo generar reporte:', reportError);
     }
+
+    await renumberSectionRoster(targetPeriodId, targetGradeId, targetSectionId, t);
 
     await t.commit();
     const result = await Matriculation.findByPk(id, {
@@ -1545,6 +1555,7 @@ export const updateInscription = async (req: Request, res: Response) => {
     }
 
     const oldGradeId = inscription.gradeId;
+    const prevScope = rosterScopeOf(inscription as any);
 
     // A matriculated student can't lose their section here (only via "Sacar de
     // Matrícula") and any new grade/section combo must be valid.
@@ -1696,6 +1707,10 @@ export const updateInscription = async (req: Request, res: Response) => {
         }
       }
     }
+
+    // Grade/section moves and student data edits can shift the canonical
+    // order — renumber the affected rosters (previous and current).
+    await renumberRosters([prevScope, rosterScopeOf(inscription as any)], t);
 
     await t.commit();
     res.json({ message: 'Datos actualizados correctamente', inscription });
@@ -2018,9 +2033,13 @@ export const updateMatriculation = async (req: Request, res: Response) => {
     await matriculation.save({ transaction: t });
 
     // Sync Inscription if it exists (completed status)
+    let inscriptionPrevScope: ReturnType<typeof rosterScopeOf> | null = null;
+    let syncedInscription: typeof matriculation.inscription | null = null;
     if (matriculation.status === 'completed' && matriculation.inscription) {
       const inscription = matriculation.inscription;
       const oldGradeId = inscription.gradeId;
+      inscriptionPrevScope = rosterScopeOf(inscription as any);
+      syncedInscription = inscription;
 
       if (gradeId !== undefined) inscription.gradeId = gradeId;
       if (sectionId !== undefined) inscription.sectionId = sectionId;
@@ -2122,6 +2141,13 @@ export const updateMatriculation = async (req: Request, res: Response) => {
       } else {
         await EnrollmentDocument.create({ matriculationId: matriculation.id, ...documents }, { transaction: t });
       }
+    }
+
+    if (syncedInscription) {
+      await renumberRosters(
+        [inscriptionPrevScope, rosterScopeOf(syncedInscription as any)].filter(Boolean) as any,
+        t
+      );
     }
 
     await t.commit();
@@ -2387,8 +2413,11 @@ export const unmatriculateInscription = async (req: Request, res: Response) => {
     }
 
     // Clear section on inscription (keep the inscription itself!)
+    const prevScope = rosterScopeOf(inscription as any);
     (inscription as any).sectionId = null;
+    (inscription as any).rosterNumber = null;
     await inscription.save({ transaction: t });
+    await renumberSectionRoster(prevScope.schoolPeriodId, prevScope.gradeId, prevScope.sectionId, t);
 
     // Set matriculation back to pending so the student reappears in "No Matriculados"
     matriculation.status = 'pending';
@@ -2422,9 +2451,13 @@ const withdrawMatriculationCore = async (matriculation: Matriculation, t: Transa
   if (matriculation.inscriptionId) {
     const inscription = await Inscription.findByPk(matriculation.inscriptionId, { transaction: t });
     if (inscription) {
+      const prevScope = rosterScopeOf(inscription as any);
       (inscription as any).sectionId = null;
       (inscription as any).withdrawnAt = new Date();
+      (inscription as any).rosterNumber = null;
       await inscription.save({ transaction: t });
+      // The student leaves the section list — the rest renumber.
+      await renumberSectionRoster(prevScope.schoolPeriodId, prevScope.gradeId, prevScope.sectionId, t);
     }
   }
   matriculation.status = 'withdrawn';

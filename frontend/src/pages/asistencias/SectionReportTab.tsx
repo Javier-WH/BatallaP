@@ -92,7 +92,7 @@ const SectionReportTab: React.FC = () => {
       key: c.key, label: c.label, title: c.title, sub: timeRange(c.start, c.end),
     }));
     rows = dayData.students.map(s => ({
-      key: s.inscriptionId, lead: [s.document, s.lastName, s.firstName], cells: s.cells,
+      key: s.inscriptionId, number: s.rosterNumber, lead: [s.document, s.lastName, s.firstName], cells: s.cells,
     }));
     subtitle = `${DAY_FULL_BY_SHORT[dayData.dayShort] ?? dayData.dayShort} ${dayjs(dayData.date).format('DD/MM/YYYY')}`;
   } else if (!day && weekData) {
@@ -104,7 +104,7 @@ const SectionReportTab: React.FC = () => {
       onClick: () => setDay(d.date),
     }));
     rows = weekData.students.map(s => ({
-      key: s.inscriptionId, lead: [s.document, s.lastName, s.firstName], cells: s.cells,
+      key: s.inscriptionId, number: s.rosterNumber, lead: [s.document, s.lastName, s.firstName], cells: s.cells,
     }));
     subtitle = `Semana del ${dayjs(weekData.dateFrom).format('DD/MM/YYYY')} al ${dayjs(weekData.dateTo).format('DD/MM/YYYY')}`;
   }

@@ -927,7 +927,7 @@ function RosterScreen({
           reason: normalizeAttendanceReason(r.reason),
           baseStatus: baselineRef.current.get(r.inscriptionId)?.status ?? null,
           baseReason: baselineRef.current.get(r.inscriptionId)?.reason ?? null,
-          listNumber: index + 1,
+          listNumber: r.rosterNumber ?? index + 1,
           fullName: r.fullName,
         }]),
       });
@@ -1212,14 +1212,14 @@ function RosterOverview({ roster, title, subtitle, onClose, onPick }: {
                 aria-label={`Ver a ${student.fullName}`}
                 className={`flex w-full items-center gap-2.5 border-b border-slate-200 px-2 py-2.5 text-left ${pending ? 'bg-amber-50/70' : ''}`}
               >
-                <span className="w-6 shrink-0 text-[11px] tabular-nums text-slate-400">{String(index + 1).padStart(2, '0')}</span>
+                <span className="w-6 shrink-0 text-[11px] tabular-nums text-slate-400">{String(student.rosterNumber ?? index + 1).padStart(2, '0')}</span>
                 <span className="min-w-0 flex-1 text-sm font-medium leading-tight text-slate-700">
                   {student.fullName}
                   {student.sectionLabel && <span className="block text-[10px] font-normal text-slate-400">{student.sectionLabel}</span>}
                 </span>
                 {blocked ? (
                   <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800">
-                    {student.priorBlock?.kind === 'retired' ? 'Jubilado' : 'Bloqueado'}
+                    {student.priorBlock?.kind === 'retired' ? 'Jubilado' : student.priorBlock?.kind === 'absent' ? 'Inasistente' : 'Bloqueado'}
                   </span>
                 ) : (
                   <StatusBadges student={student} />
@@ -1250,7 +1250,7 @@ function StudentListRow({ student, index, onClick }: {
       className="w-full flex items-center gap-2.5 px-2 py-2.5 border-b border-slate-200 text-left bg-slate-100/70 text-slate-500 opacity-75 transition-colors hover:opacity-100 hover:bg-slate-200/80"
     >
       <span className="w-6 shrink-0 text-[11px] text-slate-400 tabular-nums">
-        {String(index + 1).padStart(2, '0')}
+        {String(student.rosterNumber ?? index + 1).padStart(2, '0')}
       </span>
       <span className="flex-1 min-w-0 truncate text-sm font-medium text-slate-700 att-font-body">
         {student.fullName}
@@ -1260,7 +1260,7 @@ function StudentListRow({ student, index, onClick }: {
       )}
       {blocked ? (
         <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800">
-          {student.priorBlock?.kind === 'retired' ? 'Jubilado' : 'Bloqueado'}
+          {student.priorBlock?.kind === 'retired' ? 'Jubilado' : student.priorBlock?.kind === 'absent' ? 'Inasistente' : 'Bloqueado'}
         </span>
       ) : (
         <StatusBadges student={student} />
@@ -1329,7 +1329,7 @@ function SelectedStudentEditor({
 
       <div className="mb-2 px-1">
         <p className="text-[11px] text-slate-400 tabular-nums m-0">
-          {String(index + 1).padStart(2, '0')}
+          {String(student.rosterNumber ?? index + 1).padStart(2, '0')}
           {student.sectionLabel ? <span className="ml-2 font-semibold text-slate-500">{student.sectionLabel}</span> : null}
         </p>
         <h2 className="att-font-head text-xl leading-tight text-slate-900 m-0 line-clamp-2 min-h-12">{student.fullName}</h2>

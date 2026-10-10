@@ -48,6 +48,7 @@ export interface ReportStudent {
   gender: 'M' | 'F' | null;
   gradeName: string;
   sectionName: string;
+  rosterNumber: number | null;
 }
 
 export interface ReportDayColumn {
@@ -213,6 +214,7 @@ function toReportStudent(ins: any): ReportStudent {
     gender: ins.student?.gender ?? null,
     gradeName: ins.grade?.name ?? '',
     sectionName: shortSectionName(ins.section?.name),
+    rosterNumber: ins.rosterNumber ?? null,
   };
 }
 

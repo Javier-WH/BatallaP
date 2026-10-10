@@ -256,7 +256,7 @@ const PerformanceSummary: React.FC = () => {
   const [boletinPeriodId, setBoletinPeriodId] = useState<number | null>(null);
   const [boletinGradeId, setBoletinGradeId] = useState<number | null>(null);
   const [boletinSectionId, setBoletinSectionId] = useState<number | null>(null);
-  const [boletinStudents, setBoletinStudents] = useState<{ inscriptionId: number; firstName: string; lastName: string; document: string; documentType?: string }[]>([]);
+  const [boletinStudents, setBoletinStudents] = useState<{ inscriptionId: number; firstName: string; lastName: string; document: string; documentType?: string; rosterNumber?: number | null }[]>([]);
   const [letterGrades, setLetterGrades] = useState<LetterGrade[]>([]);
   const [maxGrade, setMaxGrade] = useState<number>(20);
   const [boletinLogoBase64, setBoletinLogoBase64] = useState<string | null>(null);
@@ -466,6 +466,7 @@ const PerformanceSummary: React.FC = () => {
         lastName: ins.student?.lastName || '',
         document: ins.student?.document || '',
         documentType: ins.student?.documentType || '',
+        rosterNumber: ins.rosterNumber ?? null,
       })).sort((a: any, b: any) => compareStudents(a, b));
       setBoletinStudents(list);
     }).catch(() => { if (!cancelled) setBoletinStudents([]); });
@@ -832,7 +833,7 @@ const PerformanceSummary: React.FC = () => {
       const profesorNameCell = worksheet.getCell(4, 3);
       const guideTeacher = data.students[0]?.guideTeacher || '';
       profesorNameCell.value = guideTeacher
-        ? guideTeacher.toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase())
+        ? guideTeacher.toLowerCase().replace(/(^|[^a-záéíóúñ])([a-záéíóúñ])/gi, (_m: string, p1: string, p2: string) => p1 + p2.toUpperCase())
         : '';
       profesorNameCell.alignment = { horizontal: 'left', vertical: 'middle' };
       profesorNameCell.font = { bold: true, size: 14, color: { argb: '17324D' } };
@@ -955,7 +956,7 @@ const PerformanceSummary: React.FC = () => {
             : student.documentType === 'Extranjero' ? 'E'
             : student.documentType === 'Pasaporte' ? 'P' : 'CE'}-${student.document || '—'}`;
         const row: (string | number)[] = [
-          studentIndex + 1,
+          student.rosterNumber ?? studentIndex + 1,
           documentCell,
           `${student.lastName} ${student.firstName}`.trim(),
           positionMap.get(student.inscriptionId) ?? studentIndex + 1,
@@ -1844,7 +1845,7 @@ const PerformanceSummary: React.FC = () => {
                           className={`rb-student-item${isSelected ? ' selected' : ''}`}
                           onClick={() => handlePreviewStudentHtml(stu.inscriptionId)}
                         >
-                          <span className="rb-student-num">{idx + 1}</span>
+                          <span className="rb-student-num">{stu.rosterNumber ?? idx + 1}</span>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div className="rb-student-name">{stu.lastName} {stu.firstName}</div>
                             <div className="rb-student-doc">C.I. {stu.document || '—'}</div>

@@ -25,6 +25,7 @@ export interface BoletinHTMLStudent {
   rankTrend?: 'up' | 'down' | 'same' | null;
   observation?: string;
   listNumber?: number;
+  rosterNumber?: number | null;
   rankPosition?: number;
   rankTotal?: number;
   hasBackendRank?: boolean;
@@ -279,7 +280,8 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
   const sortedStudents = [...data.students];
   sortBoletinStudents(sortedStudents);
 
-  // Compute list number (index within section, sorted by cédula as in nómina)
+  // Official section list number (persisted on the inscription); fall back to
+  // the position within this rendered set when it isn't available.
   let currentSection = '';
   let sectionCounter = 0;
   const studentsWithList = sortedStudents.map((s) => {
@@ -288,7 +290,7 @@ export const generateBoletinHTML = (data: BoletinHTMLData): string => {
       sectionCounter = 0;
     }
     sectionCounter++;
-    return { ...s, listNumber: sectionCounter };
+    return { ...s, listNumber: s.rosterNumber ?? sectionCounter };
   });
 
   // Compute rank position by general average (definitiva) within the whole set

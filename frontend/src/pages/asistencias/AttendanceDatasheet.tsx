@@ -17,6 +17,8 @@ export interface DatasheetColumn {
 
 export interface DatasheetRow {
   key: string | number;
+  /** Roster list number shown in the N° column (falls back to row index). */
+  number?: number | null;
   lead: string[];
   cells: Record<string, ReportCell | null | undefined>;
   /** Column keys rendered as unavailable (e.g. days outside the range). */
@@ -106,7 +108,7 @@ const AttendanceDatasheet: React.FC<AttendanceDatasheetProps> = ({
             <tr><td style={{ ...td, color: '#64748b' }} colSpan={1 + leadColumns.length + columns.length}>{emptyText}</td></tr>
           ) : rows.map((row, i) => (
             <tr key={row.key} style={{ background: i % 2 ? '#f8fafc' : '#ffffff' }}>
-              <td style={{ ...td, textAlign: 'right', color: '#64748b' }}>{i + 1}</td>
+              <td style={{ ...td, textAlign: 'right', color: '#64748b' }}>{row.number ?? i + 1}</td>
               {row.lead.map((value, li) => (
                 <td
                   key={li}

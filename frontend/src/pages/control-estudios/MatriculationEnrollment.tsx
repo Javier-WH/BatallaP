@@ -208,6 +208,7 @@ interface MatriculationRow {
   sectionId?: number | null;
   status: 'pending' | 'completed' | 'withdrawn';
   inscriptionId?: number | null;
+  rosterNumber?: number | null;
   student: StudentData;
   tempData: TempData;
   hiddenFromControlEstudios?: boolean;
@@ -236,6 +237,8 @@ interface MatriculationApiResponse {
   inscriptionId?: number | null;
   student: StudentData;
   escolaridad?: EscolaridadStatus;
+  rosterNumber?: number | null;
+  inscription?: { rosterNumber?: number | null } | null;
   matriculation?: MatriculationApiResponse | null;
   subjects?: { id: number; name: string; subjectGroupId?: number | null }[];
   documents?: EnrollmentDocumentInfo | null;
@@ -324,7 +327,13 @@ const MatriculationEnrollment: React.FC = () => {
 
   const [searchValue, setSearchValue] = useState(savedFilters.searchValue || '');
   const [questions, setQuestions] = useState<EnrollmentQuestionResponse[]>([]);
-  const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[]>(() => savedFilters.visibleColumnKeys || AG_BASE_COLUMN_OPTIONS.map((option: { key: string }) => option.key));
+  const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[]>(() => {
+    const base = AG_BASE_COLUMN_OPTIONS.map((option: { key: string }) => option.key);
+    const saved = savedFilters.visibleColumnKeys;
+    // Columns added after a filter set was saved (e.g. rosterNumber) must still
+    // appear — merge missing base keys into the saved selection.
+    return saved ? [...saved, ...base.filter(k => !saved.includes(k))] : base;
+  });
   const [columnPopoverOpen, setColumnPopoverOpen] = useState(false);
   const [filterGrade, setFilterGrade] = useState<number | null>(savedFilters.filterGrade ?? null);
   const [filterSection, setFilterSection] = useState<number | null>(savedFilters.filterSection ?? null);
@@ -550,6 +559,7 @@ const MatriculationEnrollment: React.FC = () => {
 
           return {
             ...m,
+            rosterNumber: isInscription ? item.rosterNumber : item.inscription?.rosterNumber,
             documents: item.documents ?? item.matriculation?.documents ?? null,
             tempData: {
               ...student,
@@ -1455,6 +1465,7 @@ const MatriculationEnrollment: React.FC = () => {
 
       // Mapeo de columnas con sus extractores y formateadores
       const columnConfig: Record<string, { header: string; getValue: (record: MatriculationRow) => string }> = {
+        rosterNumber: { header: 'N°', getValue: (r) => r.rosterNumber?.toString() || '' },
         nationality: { header: 'Nac.', getValue: (r) => r.tempData.documentType === 'Venezolano' ? 'V' : 'E' },
         document: { header: 'Cédula', getValue: (r) => r.tempData.document || '' },
         firstName: { header: 'Nombres', getValue: (r) => r.tempData.firstName || '' },

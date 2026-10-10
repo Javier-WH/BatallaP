@@ -16,12 +16,13 @@ interface InscriptionAttributes {
   originPeriodId?: number | null;
   isRepeater: boolean;
   withdrawnAt?: Date | null;
+  rosterNumber?: number | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 interface InscriptionCreationAttributes
-  extends Optional<InscriptionAttributes, 'id' | 'sectionId' | 'originPeriodId' | 'isRepeater' | 'withdrawnAt'> { }
+  extends Optional<InscriptionAttributes, 'id' | 'sectionId' | 'originPeriodId' | 'isRepeater' | 'withdrawnAt' | 'rosterNumber'> { }
 
 class Inscription extends Model<InscriptionAttributes, InscriptionCreationAttributes> implements InscriptionAttributes {
   public id!: number;
@@ -33,6 +34,7 @@ class Inscription extends Model<InscriptionAttributes, InscriptionCreationAttrib
   public originPeriodId!: number | null;
   public isRepeater!: boolean;
   public withdrawnAt!: Date | null;
+  public rosterNumber!: number | null;
 
   public readonly subjects?: import('./Subject').default[];
   public readonly student?: Person;
@@ -88,6 +90,15 @@ Inscription.init(
     },
     withdrawnAt: {
       type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: null
+    },
+    /**
+     * List number of the student within their section, recomputed in
+     * canonical nomina order by renumberSectionRoster on every roster change.
+     */
+    rosterNumber: {
+      type: DataTypes.INTEGER,
       allowNull: true,
       defaultValue: null
     }

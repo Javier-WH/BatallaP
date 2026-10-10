@@ -51,7 +51,7 @@
 | `EnrollmentQuestion` | Pregunta configurable del formulario de inscripción (ordenable, activable). |
 | `EnrollmentAnswer` | Respuesta de la persona a una pregunta. |
 | `EnrollmentReport` | Reporte PDF generado para una matrícula (tiene `uuid` público). |
-| `Inscription` | Inscripción formal del estudiante a un `SchoolPeriod` + `Grade` + `Section` (+ opcional `originPeriodId` si proviene de un cierre). `escolaridad` puede ser `regular`, `repitiente`, `materia_pendiente` o `transferencia` (esta última para inscripciones externas creadas por el flujo de notas externas). |
+| `Inscription` | Inscripción formal del estudiante a un `SchoolPeriod` + `Grade` + `Section` (+ opcional `originPeriodId` si proviene de un cierre). `escolaridad` puede ser `regular`, `repitiente`, `materia_pendiente` o `transferencia` (esta última para inscripciones externas creadas por el flujo de notas externas). `rosterNumber` = número de lista en la sección (orden canónico), recalculado por `rosterNumberService` ante cada cambio de nómina; NULL si retirado o sin sección. |
 | `InscriptionSubject` | Materia cursada por el estudiante dentro de una inscripción (M:N Inscription↔Subject). |
 
 ### ✏️ Evaluación y calificaciones

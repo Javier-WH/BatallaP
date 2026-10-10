@@ -5,6 +5,7 @@ import { Op, literal } from 'sequelize';
 import { fieldExpr, quoteQualified } from '@/services/studentSortService';
 import bcrypt from 'bcrypt';
 import { parsePagination, buildPaginatedResponse } from '@/services/paginationService';
+import { renumberSectionsForPerson } from '@/services/rosterNumberService';
 
 // Canonical role name sets used by the activeOnly filter.
 const EXEMPT_ROLES = ['Master', 'Administrador', 'Control de Estudios', 'Profesor', 'Representante'];
@@ -400,6 +401,8 @@ export const updateUser = async (req: Request, res: Response) => {
 
     // Update Person Data (Allowed for all admins)
     await person.update({ firstName, lastName, documentType, document, gender, birthdate, hireDate: hireDate || null });
+    // Identity fields can shift the canonical order — renumber their sections.
+    await renumberSectionsForPerson(Number(id));
 
     // Update User (Account/Security) - Protected for Admin/Master by non-Master
     if (!targetHasRestrictedRoles || isMaster) {

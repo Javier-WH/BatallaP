@@ -24,6 +24,7 @@
 | `externalGradeService` | Registro de notas externas (transferencia/equivalencia) con plantel emisor y período externo. | `externalGradeController` |
 | `thematicScopeService` | `resolveContentTeacherId(pgsId, sectionId)`: el contenido temático (`ThematicComponent.teacherId`) es por profesor — compartido entre las secciones del mismo año/materia que da ese profesor, invisible para otros profesores de la materia. | `thematicComponentController`, `revisionGradeController`, `evaluationController` |
 | `teacherWorkloadService` | Carga semanal derivada por profesor: `Σ(subject.weeklyBlocks ?? pgs.weeklyBlocks)` por unidad docente (links/grupos cuentan una vez) × horas/bloque + horas admin (excluye sección MP). | `teacherWorkloadController` |
+| `rosterNumberService` | Mantiene `Inscription.rosterNumber` = posición en orden canónico (`compareStudents`) dentro de la sección. Se renumera ante cualquier cambio de nómina (inscripción, retiro, cambio de sección/grado, edición de datos del estudiante, cierre de período). Retirados → NULL. | `inscriptionController`, `pendingSubjectController`, `userController`, `periodClosureExecutor` |
 
 ## Guías
 

@@ -414,6 +414,8 @@ export interface SessionRosterEntry {
   personId: number;
   document: string;
   fullName: string;
+  /** Official section list number (Inscription.rosterNumber). */
+  rosterNumber: number | null;
   /** Section label (e.g. 'A', or 'Cuarto año A' in mixed-grade group classes). */
   sectionLabel: string | null;
   status: AttendanceStatus | null;
@@ -545,6 +547,8 @@ export interface RosterIdentity {
   document: string;
   fullName: string;
   sectionLabel: string | null;
+  /** Section list number in canonical order; null when not yet assigned. */
+  rosterNumber: number | null;
 }
 
 function rosterIdentity(ins: any, sectionLabelByKey: Map<string, string>): RosterIdentity {
@@ -554,6 +558,7 @@ function rosterIdentity(ins: any, sectionLabelByKey: Map<string, string>): Roste
     document: ins.student?.document ?? '',
     fullName: `${ins.student?.lastName ?? ''}, ${ins.student?.firstName ?? ''}`.trim(),
     sectionLabel: sectionLabelByKey.get(`${ins.gradeId}|${ins.sectionId}`) ?? null,
+    rosterNumber: ins.rosterNumber ?? null,
   };
 }
 
@@ -942,7 +947,7 @@ export async function saveOfflineRecords(
     if (!alreadyApplied && !untouched) {
       conflicts.push({
         inscriptionId: current.inscriptionId,
-        listNumber: idx + 1,
+        listNumber: current.rosterNumber ?? idx + 1,
         fullName: current.fullName,
         serverStatus: current.status,
         serverReason: current.reason,
@@ -954,7 +959,7 @@ export async function saveOfflineRecords(
     if (blockMap.has(input.inscriptionId) && input.status !== 'absent' && !alreadyApplied) {
       blockedStudents.push({
         inscriptionId: current.inscriptionId,
-        listNumber: idx + 1,
+        listNumber: current.rosterNumber ?? idx + 1,
         fullName: current.fullName,
       });
       continue;

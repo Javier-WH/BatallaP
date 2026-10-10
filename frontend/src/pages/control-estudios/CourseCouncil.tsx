@@ -51,6 +51,7 @@ interface PeriodGradeStructure {
 
 interface CouncilStudent {
   id: number;
+  rosterNumber?: number | null;
   studentName: string;
   studentDni: string;
   documentType: string;
@@ -299,7 +300,7 @@ async function buildCouncilWorkbook(p: CouncilExcelParams): Promise<ArrayBuffer>
       : `${student.documentType === 'Venezolano' ? 'V' : student.documentType === 'Extranjero' ? 'E' : student.documentType === 'Pasaporte' ? 'P' : 'CE'}-${student.studentDni}`;
   p.students.forEach((student, studentIndex) => {
     const row: (string | number)[] = [
-      studentIndex + 1,
+      student.rosterNumber ?? studentIndex + 1,
       formatDocumentCell(student),
       student.studentName,
       positionMap.get(student.id) ?? studentIndex + 1,
@@ -1545,8 +1546,8 @@ const CourseCouncil: React.FC = () => {
         width: 50,
         fixed: 'left' as const,
         align: 'center' as const,
-        render: (_: any, __: CouncilStudent, index: number) => (
-          <Text style={{ fontWeight: 700, fontSize: 12, color: '#8c8c8c' }}>{index + 1}</Text>
+        render: (_: any, record: CouncilStudent, index: number) => (
+          <Text style={{ fontWeight: 700, fontSize: 12, color: '#8c8c8c' }}>{record.rosterNumber ?? index + 1}</Text>
         )
       },
       {

@@ -47,6 +47,8 @@ export interface RosterEntry {
   document: string;
   fullName: string;
   sectionLabel?: string | null;
+  /** Section list number in canonical order; null until assigned. */
+  rosterNumber?: number | null;
   status: AttendanceStatus | null;
   reason: string | null;
   blocked: boolean;
@@ -113,6 +115,7 @@ export interface ReportStudent {
   gender: 'M' | 'F' | null;
   gradeName: string;
   sectionName: string;
+  rosterNumber: number | null;
 }
 
 export interface ReportDayColumn {
