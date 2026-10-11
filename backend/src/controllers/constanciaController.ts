@@ -89,9 +89,9 @@ function parseLetterGrades(raw?: string): { letter: string; max: number }[] {
 }
 
 // Format a resolved score for the document: letter for literal subjects
-// (same as the boletín), rounded integer otherwise, empty when null.
+// (same as the boletín), rounded integer otherwise, an em dash when null.
 function formatScoreVar(score: number | null, usesLiteral: boolean, letterGrades: { letter: string; max: number }[]): string {
-  if (score === null || score === undefined) return '';
+  if (score === null || score === undefined) return '—';
   if (usesLiteral) return numericToLetter(score, letterGrades);
   return String(Math.round(score));
 }
@@ -375,14 +375,14 @@ async function resolveVariables(personId: number | null, schoolPeriodId: number 
 
   subjectRows.forEach((row, idx) => {
     const n = idx + 1;
-    vars[`subject.${n}.name`] = row.name;
-    vars[`subject.${n}.abbr`] = row.abbr;
-    vars[`subject.${n}.score`] = '';
-    vars[`subject.${n}.scoreWords`] = '';
-    vars[`subject.${n}.status`] = '';
+    vars[`subject.${n}.name`] = row.name || '—';
+    vars[`subject.${n}.abbr`] = row.abbr || '—';
+    vars[`subject.${n}.score`] = '—';
+    vars[`subject.${n}.scoreWords`] = '—';
+    vars[`subject.${n}.status`] = '—';
     for (const term of terms) {
-      vars[`subject.${n}.term.${term.order}.score`] = '';
-      vars[`subject.${n}.term.${term.order}.scoreWords`] = '';
+      vars[`subject.${n}.term.${term.order}.score`] = '—';
+      vars[`subject.${n}.term.${term.order}.scoreWords`] = '—';
     }
 
     const is = row.insSub;
@@ -404,7 +404,7 @@ async function resolveVariables(personId: number | null, schoolPeriodId: number 
       const m = term.order;
       vars[`subject.${n}.term.${m}.score`] = formatScoreVar(score, row.usesLiteral, letterGrades);
       vars[`subject.${n}.term.${m}.scoreWords`] =
-        row.usesLiteral ? '' : (score !== null ? toSpanishWords(Math.round(score)) : '');
+        row.usesLiteral ? '' : (score !== null ? toSpanishWords(Math.round(score)) : '—');
       lapsos.push({ termId: term.id, finalScore: score });
     }
 
@@ -422,14 +422,14 @@ async function resolveVariables(personId: number | null, schoolPeriodId: number 
     vars[`subject.${n}.status`] = is.finalGrade?.status ||
       (finalScore !== null && finalScore !== undefined
         ? GradeCalculationService.resolveStatus(finalScore, passingGrade)
-        : '');
+        : '—');
   });
 
   // Legacy per-subject-name aliases → final score (e.g. {{subject.matem_tica}}).
   subjectRows.forEach((row, idx) => {
     const slug = row.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
     if (!slug) return;
-    vars[`subject.${slug}`] = vars[`subject.${idx + 1}.score`] || '';
+    vars[`subject.${slug}`] = vars[`subject.${idx + 1}.score`] || '—';
   });
 
   return vars;
@@ -439,7 +439,12 @@ async function resolveVariables(personId: number | null, schoolPeriodId: number 
 function renderTemplate(html: string, vars: Record<string, string>): string {
   return html.replace(/\{\{([^}]+)\}\}/g, (match, varName: string) => {
     const key = varName.trim();
-    return vars[key] !== undefined ? vars[key] : match;
+    if (vars[key] !== undefined) return vars[key];
+    // Subject variables beyond the grade plan (e.g. {{subject.10.name}} when
+    // the grade only has 9 subjects) render as a dash instead of leaking the
+    // raw placeholder into the document.
+    if (key.startsWith('subject.')) return '—';
+    return match;
   });
 }
 
