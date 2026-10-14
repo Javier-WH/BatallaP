@@ -12,6 +12,7 @@ import {
   createExpectedLearning,
   updateExpectedLearning,
   deleteExpectedLearning,
+  copyThematicComponents,
 } from '@/controllers/thematicComponentController';
 
 const router = Router();
@@ -22,6 +23,7 @@ router.post('/', createThematicComponent);
 router.put('/:id', updateThematicComponent);
 router.delete('/:id', deleteThematicComponent);
 router.patch('/reorder', reorderThematicComponents);
+router.post('/copy', copyThematicComponents);
 
 // Thematic Contents (nested under component)
 router.post('/:id/contents', createThematicContent);

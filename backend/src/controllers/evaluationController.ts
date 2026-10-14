@@ -48,6 +48,7 @@ import {
 import { filterActiveGroupSubjects, filterActiveGroupSubjectsForTerm, resolveActiveGroupSubjectIds } from '@/services/subjectGroupService';
 import { resolveGradeStatus, MIN_FINAL_GRADE, roundFinalGrade } from '@/services/gradeEvaluationService';
 import { resolveContentTeacherId } from '@/services/thematicScopeService';
+import { mapThematicIdsByTitle, ThematicIdMaps } from '@/services/thematicCopyService';
 import { sanitizeText } from '@/utils/sanitizeText';
 import type { Transaction } from 'sequelize';
 
@@ -3041,9 +3042,22 @@ export const getAllQualificationAudits = async (_req: Request, res: Response) =>
 
 export const copyEvaluationPlan = async (req: Request, res: Response) => {
   try {
-    const { sourcePeriodGradeSubjectId, sourceSectionId, targetPeriodGradeSubjectId, targetSectionIds, termId } = req.body;
+    const { sourcePeriodGradeSubjectId, sourceSectionId, termId } = req.body;
+    // Legacy single-target shape is still accepted: targetPeriodGradeSubjectId
+    // + targetSectionIds. The newer `targets` array allows several
+    // PeriodGradeSubjects (cross-grade copies of group subjects).
+    const rawTargets: any[] = Array.isArray(req.body.targets) && req.body.targets.length > 0
+      ? req.body.targets
+      : [{ periodGradeSubjectId: req.body.targetPeriodGradeSubjectId, sectionIds: req.body.targetSectionIds }];
 
-    if (!sourcePeriodGradeSubjectId || !sourceSectionId || !targetPeriodGradeSubjectId || !Array.isArray(targetSectionIds) || targetSectionIds.length === 0 || !termId) {
+    const targets = rawTargets
+      .map((t) => ({
+        periodGradeSubjectId: Number(t?.periodGradeSubjectId),
+        sectionIds: (Array.isArray(t?.sectionIds) ? t.sectionIds : []).map(Number).filter(Number.isInteger),
+      }))
+      .filter((t) => Number.isInteger(t.periodGradeSubjectId) && t.sectionIds.length > 0);
+
+    if (!sourcePeriodGradeSubjectId || !sourceSectionId || targets.length === 0 || !termId) {
       return res.status(400).json({ message: 'Faltan parámetros requeridos' });
     }
 
@@ -3056,20 +3070,77 @@ export const copyEvaluationPlan = async (req: Request, res: Response) => {
     if (term.isBlocked) {
       return res.status(403).json({ message: 'El lapso está bloqueado' });
     }
-    // Derive gradeId from target PeriodGradeSubject → PeriodGrade
-    const targetPgs = await PeriodGradeSubject.findByPk(targetPeriodGradeSubjectId, { attributes: ['id', 'periodGradeId'] });
-    if (!targetPgs) {
-      return res.status(404).json({ message: 'PeriodGradeSubject no encontrado' });
+
+    const sourcePgs = await PeriodGradeSubject.findByPk(Number(sourcePeriodGradeSubjectId), {
+      attributes: ['id', 'periodGradeId', 'subjectId'],
+      include: [{ model: Subject, as: 'subject', attributes: ['id', 'subjectGroupId'] }],
+    });
+    if (!sourcePgs) {
+      return res.status(404).json({ message: 'PeriodGradeSubject origen no encontrado' });
     }
-    const targetPg = await PeriodGrade.findByPk(targetPgs.periodGradeId, { attributes: ['id', 'gradeId'] });
-    if (!targetPg) {
+    const sourcePg = await PeriodGrade.findByPk(sourcePgs.periodGradeId, { attributes: ['id', 'gradeId', 'schoolPeriodId'] });
+    if (!sourcePg) {
       return res.status(404).json({ message: 'PeriodGrade no encontrado' });
     }
-    for (const secId of targetSectionIds) {
-      const isClosed = await TermSectionClosureService.isSectionClosed(termId, secId, targetPg.gradeId);
-      if (isClosed) {
-        return res.status(403).json({ message: `El lapso está cerrado para la sección ${secId}` });
+
+    const user = (req.session as any)?.user;
+    const roles: string[] = user?.roles || [];
+    const isStaff = roles.some((r: string) => ['Master', 'Administrador', 'Director', 'Control de Estudios'].includes(r));
+
+    const sourceTeacherId = await resolveContentTeacherId(Number(sourcePeriodGradeSubjectId), Number(sourceSectionId));
+    if (!isStaff && sourceTeacherId !== user?.personId) {
+      return res.status(403).json({ message: 'Solo puedes copiar planes de tus propias asignaciones' });
+    }
+
+    // Resolve each target PeriodGradeSubject once and validate cross-grade rules
+    interface TargetGroup {
+      periodGradeSubjectId: number;
+      sectionIds: number[];
+      gradeId: number;
+      crossGrade: boolean;
+    }
+    const targetGroups: TargetGroup[] = [];
+    for (const target of targets) {
+      const targetPgs = await PeriodGradeSubject.findByPk(target.periodGradeSubjectId, {
+        attributes: ['id', 'periodGradeId', 'subjectId'],
+      });
+      if (!targetPgs) {
+        return res.status(404).json({ message: 'PeriodGradeSubject no encontrado' });
       }
+      const targetPg = await PeriodGrade.findByPk(targetPgs.periodGradeId, { attributes: ['id', 'gradeId', 'schoolPeriodId'] });
+      if (!targetPg) {
+        return res.status(404).json({ message: 'PeriodGrade no encontrado' });
+      }
+      const crossGrade = Number(targetPgs.id) !== Number(sourcePgs.id);
+      if (crossGrade) {
+        if (Number(targetPgs.subjectId) !== Number(sourcePgs.subjectId)) {
+          return res.status(400).json({ message: 'Solo se puede copiar el plan a la misma materia en otro grado' });
+        }
+        if ((sourcePgs as any).subject?.subjectGroupId == null) {
+          return res.status(400).json({ message: 'La copia entre grados solo está disponible para materias de grupo' });
+        }
+        if (Number(targetPg.schoolPeriodId) !== Number(sourcePg.schoolPeriodId)) {
+          return res.status(400).json({ message: 'Solo se puede copiar dentro del mismo período escolar' });
+        }
+      }
+      for (const secId of target.sectionIds) {
+        const isClosed = await TermSectionClosureService.isSectionClosed(Number(termId), secId, targetPg.gradeId);
+        if (isClosed) {
+          return res.status(403).json({ message: `El lapso está cerrado para la sección ${secId}` });
+        }
+        if (!isStaff) {
+          const targetTeacherId = await resolveContentTeacherId(target.periodGradeSubjectId, secId);
+          if (targetTeacherId !== user?.personId) {
+            return res.status(403).json({ message: 'Solo puedes copiar planes a tus propias asignaciones' });
+          }
+        }
+      }
+      targetGroups.push({
+        periodGradeSubjectId: target.periodGradeSubjectId,
+        sectionIds: target.sectionIds,
+        gradeId: targetPg.gradeId,
+        crossGrade,
+      });
     }
 
     // Get source plan items with criteria and indicators
@@ -3085,71 +3156,110 @@ export const copyEvaluationPlan = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'No hay evaluaciones en la sección origen para copiar' });
     }
 
-    // Thematic content is per teacher: links only stay valid when the target
-    // section is taught by the same teacher as the source section.
-    const sourceTeacherId = await resolveContentTeacherId(Number(sourcePeriodGradeSubjectId), Number(sourceSectionId));
-
     const t = await sequelize.transaction();
     try {
-      const results: { sectionId: number; created: number; skipped: number }[] = [];
+      const results: { periodGradeSubjectId: number; sectionId: number; created: number; skipped: number }[] = [];
+      // Thematic remap per (targetPgs, targetTeacher): content is per teacher.
+      const thematicMaps = new Map<string, ThematicIdMaps>();
 
-      for (const targetSectionId of targetSectionIds) {
-        const targetTeacherId = await resolveContentTeacherId(Number(targetPeriodGradeSubjectId), Number(targetSectionId));
-        const keepThematicLinks = sourceTeacherId !== null && sourceTeacherId === targetTeacherId
-          && Number(sourcePeriodGradeSubjectId) === Number(targetPeriodGradeSubjectId);
-        // Check if target already has plan items
-        const existingCount = await EvaluationPlan.count({
-          where: { periodGradeSubjectId: targetPeriodGradeSubjectId, sectionId: targetSectionId, termId },
-          transaction: t,
-        });
+      for (const group of targetGroups) {
+        for (const targetSectionId of group.sectionIds) {
+          const targetTeacherId = await resolveContentTeacherId(group.periodGradeSubjectId, targetSectionId);
+          let componentIdMap: Map<number, number> | null = null;
+          let contentIdMap: Map<number, number> | null = null;
+          if (!group.crossGrade) {
+            // Same pgs: ids stay valid only when the same teacher owns both ends.
+            if (sourceTeacherId !== null && sourceTeacherId === targetTeacherId) {
+              componentIdMap = new Map();
+              contentIdMap = new Map();
+            }
+          } else if (sourceTeacherId !== null && targetTeacherId !== null) {
+            const key = `${group.periodGradeSubjectId}:${targetTeacherId}`;
+            let maps = thematicMaps.get(key);
+            if (!maps) {
+              maps = await mapThematicIdsByTitle(
+                Number(sourcePeriodGradeSubjectId),
+                group.periodGradeSubjectId,
+                Number(termId),
+                sourceTeacherId,
+                targetTeacherId,
+                t,
+              );
+              thematicMaps.set(key, maps);
+            }
+            componentIdMap = maps.componentIdMap;
+            contentIdMap = maps.contentIdMap;
+          }
+          // Check if target already has plan items
+          const existingCount = await EvaluationPlan.count({
+            where: { periodGradeSubjectId: group.periodGradeSubjectId, sectionId: targetSectionId, termId },
+            transaction: t,
+          });
 
-        if (existingCount > 0) {
-          results.push({ sectionId: targetSectionId, created: 0, skipped: existingCount });
-          continue;
-        }
+          if (existingCount > 0) {
+            results.push({ periodGradeSubjectId: group.periodGradeSubjectId, sectionId: targetSectionId, created: 0, skipped: existingCount });
+            continue;
+          }
 
-        let created = 0;
-        for (const item of sourceItems) {
-          const newItem = await EvaluationPlan.create({
-            periodGradeSubjectId: targetPeriodGradeSubjectId,
-            sectionId: targetSectionId,
-            termId,
-            description: item.description,
-            percentage: item.percentage,
-            date: item.date,
-            thematicComponentId: keepThematicLinks ? item.thematicComponentId : null,
-            thematicContentIds: keepThematicLinks ? item.thematicContentIds : null,
-            evaluationType: item.evaluationType,
-            tecnicaId: item.tecnicaId,
-            instrumentoId: item.instrumentoId,
-            estrategiaId: item.estrategiaId,
-            shortDescription: item.shortDescription,
-          }, { transaction: t });
-
-          // Copy criteria and indicators
-          const itemWithCriteria = item as any;
-          if (itemWithCriteria.criteria && itemWithCriteria.criteria.length > 0) {
-            for (const c of itemWithCriteria.criteria) {
-              const criterion = await EvaluationCriteria.create({
-                evaluationPlanId: newItem.id,
-                name: c.name,
-                points: c.points,
-              }, { transaction: t });
-              if (c.indicators && c.indicators.length > 0) {
-                await EvaluationIndicator.bulkCreate(
-                  c.indicators.map((ind: any) => ({
-                    evaluationCriteriaId: criterion.id,
-                    name: ind.name,
-                    points: ind.points,
-                  })),
-                  { transaction: t }
-                );
+          let created = 0;
+          for (const item of sourceItems) {
+            let thematicComponentId: number | null = null;
+            let thematicContentIds: number[] | null = null;
+            if (componentIdMap && contentIdMap) {
+              if (group.crossGrade) {
+                thematicComponentId = item.thematicComponentId != null
+                  ? (componentIdMap.get(item.thematicComponentId) ?? null)
+                  : null;
+                const mapped = (Array.isArray(item.thematicContentIds) ? item.thematicContentIds : [])
+                  .map((id: number) => contentIdMap!.get(id))
+                  .filter((id): id is number => id !== undefined);
+                thematicContentIds = mapped.length > 0 ? mapped : null;
+              } else {
+                thematicComponentId = item.thematicComponentId ?? null;
+                thematicContentIds = item.thematicContentIds ?? null;
               }
             }
+            const newItem = await EvaluationPlan.create({
+              periodGradeSubjectId: group.periodGradeSubjectId,
+              sectionId: targetSectionId,
+              termId,
+              description: item.description,
+              percentage: item.percentage,
+              date: item.date,
+              thematicComponentId,
+              thematicContentIds,
+              evaluationType: item.evaluationType,
+              tecnicaId: item.tecnicaId,
+              instrumentoId: item.instrumentoId,
+              estrategiaId: item.estrategiaId,
+              shortDescription: item.shortDescription,
+            }, { transaction: t });
+
+            // Copy criteria and indicators
+            const itemWithCriteria = item as any;
+            if (itemWithCriteria.criteria && itemWithCriteria.criteria.length > 0) {
+              for (const c of itemWithCriteria.criteria) {
+                const criterion = await EvaluationCriteria.create({
+                  evaluationPlanId: newItem.id,
+                  name: c.name,
+                  points: c.points,
+                }, { transaction: t });
+                if (c.indicators && c.indicators.length > 0) {
+                  await EvaluationIndicator.bulkCreate(
+                    c.indicators.map((ind: any) => ({
+                      evaluationCriteriaId: criterion.id,
+                      name: ind.name,
+                      points: ind.points,
+                    })),
+                    { transaction: t }
+                  );
+                }
+              }
+            }
+            created++;
           }
-          created++;
+          results.push({ periodGradeSubjectId: group.periodGradeSubjectId, sectionId: targetSectionId, created, skipped: 0 });
         }
-        results.push({ sectionId: targetSectionId, created, skipped: 0 });
       }
 
       await t.commit();

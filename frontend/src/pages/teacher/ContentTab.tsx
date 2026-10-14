@@ -40,6 +40,7 @@ interface ThematicComponentData {
 interface ContentTabProps {
   thematicComponents: ThematicComponentData[];
   isBlocked: boolean;
+  extraHeaderAction?: React.ReactNode;
   onCreateComponent: (title: string) => Promise<void>;
   onUpdateComponent: (id: number, title: string) => void;
   onDeleteComponent: (id: number) => void;
@@ -239,6 +240,7 @@ const SortableContentItem: React.FC<SortableContentItemProps> = ({
 const ContentTab: React.FC<ContentTabProps> = ({
   thematicComponents,
   isBlocked,
+  extraHeaderAction,
   onCreateComponent,
   onUpdateComponent,
   onDeleteComponent,
@@ -550,7 +552,10 @@ const ContentTab: React.FC<ContentTabProps> = ({
             <h3 className="content-section-heading">Componentes temáticos</h3>
             <p className="content-section-description">Organiza los contenidos que desarrollarás durante el lapso.</p>
           </div>
-          <Tag color="blue">{thematicComponents.length} {thematicComponents.length === 1 ? 'componente' : 'componentes'}</Tag>
+          <Space size={8}>
+            {extraHeaderAction}
+            <Tag color="blue">{thematicComponents.length} {thematicComponents.length === 1 ? 'componente' : 'componentes'}</Tag>
+          </Space>
         </div>
       <DndContext
         sensors={sensors}

@@ -158,6 +158,20 @@ Ver [`flows/enrollment.md`](./flows/enrollment.md).
 | GET | `/final-grades-by-period` | Notas finales del período (filtros por query). |
 | GET | `/export-planning/:assignmentId` | Excel de planificación del lapso, con contenidos, aprendizajes y proceso evaluativo. |
 | GET | `/export-grades-oficial/:assignmentId` | Acta oficial de notas en Excel. |
+| POST | `/copy-plan` | Copia el plan de una sección a otras. Body: `sourcePeriodGradeSubjectId`, `sourceSectionId`, `termId` y `targets: [{ periodGradeSubjectId, sectionIds }]` (legacy: `targetPeriodGradeSubjectId` + `targetSectionIds`). Cross-grade solo si ambos PeriodGradeSubject son la misma materia de un `SubjectGroup` en el mismo período; los vínculos a contenidos se remapean por título. Secciones con plan existente se omiten. |
+
+## 🧩 Contenidos temáticos – `/api/thematic-components` (`thematicComponentRoutes.ts`)
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/` | Componentes+contenidos+aprendizajes (`?pgsId&termId&sectionId`). |
+| POST | `/` | Crear componente. |
+| PUT/DELETE | `/:id` | Editar/eliminar componente. |
+| POST | `/:id/contents` | Crear contenido dentro de un componente. |
+| PUT/DELETE | `/contents/:id` | Editar/eliminar contenido. |
+| PATCH | `/reorder`, `/contents/reorder` | Reordenar. |
+| POST/PUT/DELETE | `/learnings`, `/learnings/:id` | CRUD de aprendizajes esperados. |
+| POST | `/copy` | Clona el árbol temático del lapso a otro grado (misma materia de grupo, mismo período). Body: `sourcePeriodGradeSubjectId`, `sourceSectionId`, `targetPeriodGradeSubjectId`, `targetSectionId`, `termId`. Aditivo: omite componentes/contenidos con el mismo título. Profesores solo entre sus propias asignaciones. |
 
 Ver [`flows/grading.md`](./flows/grading.md).
 

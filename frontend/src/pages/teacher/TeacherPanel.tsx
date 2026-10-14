@@ -163,6 +163,7 @@ interface EvaluationPlanItem {
 interface Subject {
   id: number;
   name: string;
+  subjectGroupId?: number | null;
 }
 
 interface Grade {
@@ -328,7 +329,9 @@ const TeacherPanel: React.FC = () => {
   const [datesSaving, setDatesSaving] = useState(false);
   const [revisionLoading, setRevisionLoading] = useState(false);
   const [copyModalOpen, setCopyModalOpen] = useState(false);
-  const [copyTargetSectionIds, setCopyTargetSectionIds] = useState<number[]>([]);
+  const [copyTargetAssignmentIds, setCopyTargetAssignmentIds] = useState<number[]>([]);
+  const [contentCopyModalOpen, setContentCopyModalOpen] = useState(false);
+  const [contentCopySubmitting, setContentCopySubmitting] = useState(false);
   const [copySubmitting, setCopySubmitting] = useState(false);
   const [editRequestModalOpen, setEditRequestModalOpen] = useState(false);
   const [editRequestQualificationId, setEditRequestQualificationId] = useState<number | null>(null);
@@ -1005,16 +1008,45 @@ const TeacherPanel: React.FC = () => {
     }
   }, [availableSections, selectedAssignmentId, assignments]);
 
-  // Target sections for copy: same subject + same grade + same teacher, excluding current section
+  // Target sections for plan copy: same subject + same grade + same teacher,
+  // excluding the current section. Group subjects can also target other grades
+  // (the same Subject exists as a different PeriodGradeSubject per grade).
   const copyTargetAssignments = useMemo(() => {
     if (!selectedAssignmentId) return [];
     const current = assignments.find(a => a.id === selectedAssignmentId);
     if (!current) return [];
-    return assignments.filter(a =>
-      a.id !== selectedAssignmentId &&
-      a.periodGradeSubjectId === current.periodGradeSubjectId &&
-      a.sectionId !== current.sectionId
-    );
+    const subjectId = current.periodGradeSubject?.subject?.id;
+    const isGroupSubject = current.periodGradeSubject?.subject?.subjectGroupId != null;
+    return assignments.filter(a => {
+      if (a.id === selectedAssignmentId) return false;
+      if (a.periodGradeSubjectId === current.periodGradeSubjectId) {
+        return a.sectionId !== current.sectionId;
+      }
+      return isGroupSubject && a.periodGradeSubject?.subject?.id === subjectId;
+    });
+  }, [assignments, selectedAssignmentId]);
+
+  // Targets for content copy: one entry per other-grade PeriodGradeSubject of
+  // the same group subject taught by this teacher (content is per teacher).
+  const contentCopyTargets = useMemo(() => {
+    if (!selectedAssignmentId) return [];
+    const current = assignments.find(a => a.id === selectedAssignmentId);
+    if (!current) return [];
+    const subjectId = current.periodGradeSubject?.subject?.id;
+    if (current.periodGradeSubject?.subject?.subjectGroupId == null) return [];
+    const seen = new Set<number>();
+    return assignments
+      .filter(a =>
+        a.id !== selectedAssignmentId &&
+        a.periodGradeSubjectId !== current.periodGradeSubjectId &&
+        a.periodGradeSubject?.subject?.id === subjectId &&
+        !seen.has(a.periodGradeSubjectId) && !!seen.add(a.periodGradeSubjectId)
+      )
+      .map(a => ({
+        periodGradeSubjectId: a.periodGradeSubjectId,
+        sectionId: a.sectionId,
+        gradeName: a.periodGradeSubject?.periodGrade?.grade?.name || '',
+      }));
   }, [assignments, selectedAssignmentId]);
 
   if (!loading && assignments.length === 0) {
@@ -1305,16 +1337,27 @@ const handleToggleAbsent = async (enrollment: StudentEnrollment, evalPlanId: num
 const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?.percentage || 0), 0) || 0;
 
   const handleCopyPlan = async () => {
-    if (!selectedAssignmentId || copyTargetSectionIds.length === 0) return;
+    if (!selectedAssignmentId || copyTargetAssignmentIds.length === 0) return;
     const current = assignments.find(a => a.id === selectedAssignmentId);
     if (!current || !selectedTerm) return;
     setCopySubmitting(true);
     try {
+      // Selected checkboxes are assignment ids — group sections by their
+      // PeriodGradeSubject so cross-grade targets go in separate groups.
+      const selected = copyTargetAssignments.filter(a => copyTargetAssignmentIds.includes(a.id));
+      const byPgs = new Map<number, number[]>();
+      for (const a of selected) {
+        const list = byPgs.get(a.periodGradeSubjectId) || [];
+        list.push(a.sectionId);
+        byPgs.set(a.periodGradeSubjectId, list);
+      }
       const res = await api.post('/evaluation/copy-plan', {
         sourcePeriodGradeSubjectId: current.periodGradeSubjectId,
         sourceSectionId: current.sectionId,
-        targetPeriodGradeSubjectId: current.periodGradeSubjectId,
-        targetSectionIds: copyTargetSectionIds,
+        targets: [...byPgs.entries()].map(([periodGradeSubjectId, sectionIds]) => ({
+          periodGradeSubjectId,
+          sectionIds,
+        })),
         termId: selectedTerm,
       });
       const data = res.data;
@@ -1328,11 +1371,41 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
         message.info('Las secciones seleccionadas ya tenían un plan de evaluación');
       }
       setCopyModalOpen(false);
-      setCopyTargetSectionIds([]);
+      setCopyTargetAssignmentIds([]);
     } catch (error: any) {
       message.error(error.response?.data?.message || 'Error al copiar el plan');
     } finally {
       setCopySubmitting(false);
+    }
+  };
+
+  const handleCopyContent = async (target: { periodGradeSubjectId: number; sectionId: number; gradeName: string }) => {
+    const current = assignments.find(a => a.id === selectedAssignmentId);
+    if (!current || !selectedTerm) return;
+    setContentCopySubmitting(true);
+    try {
+      const res = await api.post('/thematic-components/copy', {
+        sourcePeriodGradeSubjectId: current.periodGradeSubjectId,
+        sourceSectionId: current.sectionId,
+        targetPeriodGradeSubjectId: target.periodGradeSubjectId,
+        targetSectionId: target.sectionId,
+        termId: selectedTerm,
+      });
+      const d = res.data;
+      const parts: string[] = [];
+      if (d.createdComponents) parts.push(`${d.createdComponents} componente${d.createdComponents > 1 ? 's' : ''}`);
+      if (d.createdContents) parts.push(`${d.createdContents} contenido${d.createdContents > 1 ? 's' : ''}`);
+      if (d.createdLearnings) parts.push(`${d.createdLearnings} aprendizaje${d.createdLearnings > 1 ? 's' : ''}`);
+      if (parts.length === 0) {
+        message.info(`${target.gradeName} ya tenía este contenido`);
+      } else {
+        message.success(`Copiado a ${target.gradeName}: ${parts.join(', ')}`);
+      }
+      setContentCopyModalOpen(false);
+    } catch (error: any) {
+      message.error(error.response?.data?.message || 'Error al copiar el contenido');
+    } finally {
+      setContentCopySubmitting(false);
     }
   };
 
@@ -2112,6 +2185,13 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                   <ContentTab
                     thematicComponents={thematicComponents}
                     isBlocked={isSelectedTermBlocked || isReadOnly}
+                    extraHeaderAction={
+                      contentCopyTargets.length > 0 && !isSelectedTermBlocked && !isReadOnly ? (
+                        <Button size="small" icon={<CopyOutlined />} onClick={() => setContentCopyModalOpen(true)}>
+                          Copiar a otro año
+                        </Button>
+                      ) : undefined
+                    }
                     onCreateComponent={handleCreateComponent}
                     onUpdateComponent={handleUpdateComponent}
                     onDeleteComponent={handleDeleteComponent}
@@ -2490,7 +2570,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                     <div
                       className="mt-3 w-full h-14 flex items-center justify-center gap-3 rounded-xl transition-all cursor-pointer border-none shadow-sm hover:scale-[1.01]"
                       style={{ backgroundColor: '#16a34a', color: '#fff' }}
-                      onClick={() => { setCopyTargetSectionIds([]); setCopyModalOpen(true); }}
+                      onClick={() => { setCopyTargetAssignmentIds([]); setCopyModalOpen(true); }}
                     >
                       <CopyOutlined className="text-2xl font-bold" />
                       <span className="text-lg font-bold">Listo 100% — Copiar a otras secciones</span>
@@ -3025,31 +3105,75 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
       <Modal
         title="Copiar plan de evaluación a otras secciones"
         open={copyModalOpen}
-        onCancel={() => { setCopyModalOpen(false); setCopyTargetSectionIds([]); }}
+        onCancel={() => { setCopyModalOpen(false); setCopyTargetAssignmentIds([]); }}
         onOk={handleCopyPlan}
         confirmLoading={copySubmitting}
         okText="Copiar"
         cancelText="Cancelar"
-        okButtonProps={{ disabled: copyTargetSectionIds.length === 0 }}
+        okButtonProps={{ disabled: copyTargetAssignmentIds.length === 0 }}
       >
         <p className="mb-4" style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
           Selecciona las secciones donde quieres copiar el plan actual ({totalPercentage}% completado).
           Las secciones que ya tengan un plan serán omitidas.
         </p>
         <Checkbox.Group
-          value={copyTargetSectionIds}
-          onChange={(values) => setCopyTargetSectionIds(values as number[])}
+          value={copyTargetAssignmentIds}
+          onChange={(values) => setCopyTargetAssignmentIds(values as number[])}
           className="flex flex-col gap-2"
         >
-          {copyTargetAssignments.map(a => (
-            <Checkbox key={a.id} value={a.sectionId}>
-              Sección {a.section.name}
-            </Checkbox>
-          ))}
+          {(() => {
+            const current = assignments.find(a => a.id === selectedAssignmentId);
+            const currentGradeName = current?.periodGradeSubject?.periodGrade?.grade?.name;
+            const groups = new Map<string, typeof copyTargetAssignments>();
+            copyTargetAssignments.forEach(a => {
+              const gradeName = a.periodGradeSubject?.periodGrade?.grade?.name || '';
+              const list = groups.get(gradeName) || [];
+              list.push(a);
+              groups.set(gradeName, list);
+            });
+            return [...groups.entries()].map(([gradeName, items]) => (
+              <div key={gradeName}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: 4 }}>
+                  {gradeName === currentGradeName ? 'Este año' : gradeName}
+                </div>
+                {items.map(a => (
+                  <Checkbox key={a.id} value={a.id} style={{ marginInlineStart: 0 }}>
+                    {gradeName === currentGradeName
+                      ? `Sección ${a.section.name}`
+                      : `Sección ${a.section.name}`}
+                  </Checkbox>
+                ))}
+              </div>
+            ));
+          })()}
         </Checkbox.Group>
         {copyTargetAssignments.length === 0 && (
           <Empty description="No hay otras secciones con esta materia asignada a ti" />
         )}
+      </Modal>
+
+      <Modal
+        title="Copiar contenido a otro año"
+        open={contentCopyModalOpen}
+        onCancel={() => setContentCopyModalOpen(false)}
+        footer={null}
+      >
+        <p className="mb-4" style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
+          Copia los componentes, contenidos y aprendizajes del lapso actual a otro año donde das esta misma materia.
+          Los elementos que ya existan en el destino se omiten; los planes de evaluación copiados después se vincularán por título.
+        </p>
+        <div className="flex flex-col gap-2">
+          {contentCopyTargets.map(t => (
+            <Button
+              key={t.periodGradeSubjectId}
+              onClick={() => handleCopyContent(t)}
+              loading={contentCopySubmitting}
+              disabled={contentCopySubmitting}
+            >
+              Copiar a {t.gradeName}
+            </Button>
+          ))}
+        </div>
       </Modal>
 
       <Modal

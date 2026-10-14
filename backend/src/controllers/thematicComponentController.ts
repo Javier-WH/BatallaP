@@ -6,8 +6,14 @@ import {
   ThematicContent,
   ExpectedLearning,
   ExpectedLearningContent,
+  PeriodGradeSubject,
+  PeriodGrade,
+  Subject,
+  Term,
 } from '@/models/index';
-import { resolveRequestTeacherId } from '@/services/thematicScopeService';
+import { resolveRequestTeacherId, resolveContentTeacherId } from '@/services/thematicScopeService';
+import { copyThematicTree } from '@/services/thematicCopyService';
+import { TermSectionClosureService } from '@/services/termSectionClosureService';
 
 // ── Thematic Components ──────────────────────────────────────────
 
@@ -453,5 +459,129 @@ export const deleteExpectedLearning = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('[deleteExpectedLearning] Error:', error);
     return res.status(500).json({ message: error.message || 'Error al eliminar' });
+  }
+};
+
+// ── Cross-grade copy (group subjects) ────────────────────────────
+
+/**
+ * Copies the thematic tree (components -> contents -> learnings) of a lapso
+ * from one PeriodGradeSubject to another. Only allowed when both ends are the
+ * same Subject of a SubjectGroup in the same school period — e.g. Artes
+ * Gráficas shared between 1ro and 2do.
+ *
+ * Teachers may only copy between their own assignments (same resolved
+ * teacherId on both sides); staff roles may copy between any teachers — the
+ * copied tree is owned by the target section's teacher.
+ *
+ * Body: { sourcePeriodGradeSubjectId, sourceSectionId,
+ *         targetPeriodGradeSubjectId, targetSectionId, termId }
+ */
+export const copyThematicComponents = async (req: Request, res: Response) => {
+  try {
+    const {
+      sourcePeriodGradeSubjectId,
+      sourceSectionId,
+      targetPeriodGradeSubjectId,
+      targetSectionId,
+      termId,
+    } = req.body;
+    if (!sourcePeriodGradeSubjectId || !sourceSectionId || !targetPeriodGradeSubjectId || !targetSectionId || !termId) {
+      return res.status(400).json({ message: 'Faltan campos requeridos' });
+    }
+
+    const [sourcePgs, targetPgs, term] = await Promise.all([
+      PeriodGradeSubject.findByPk(Number(sourcePeriodGradeSubjectId), {
+        include: [{ model: PeriodGrade, as: 'periodGrade' }, { model: Subject, as: 'subject' }],
+      }),
+      PeriodGradeSubject.findByPk(Number(targetPeriodGradeSubjectId), {
+        include: [{ model: PeriodGrade, as: 'periodGrade' }, { model: Subject, as: 'subject' }],
+      }),
+      Term.findByPk(Number(termId)),
+    ]);
+    if (!sourcePgs || !targetPgs) {
+      return res.status(404).json({ message: 'Asignatura del período no encontrada' });
+    }
+    if (!term) {
+      return res.status(404).json({ message: 'Lapso no encontrado' });
+    }
+    if (term.isBlocked) {
+      return res.status(403).json({ message: 'El lapso está bloqueado' });
+    }
+
+    const sourcePg = (sourcePgs as any).periodGrade;
+    const targetPg = (targetPgs as any).periodGrade;
+    const subject = (sourcePgs as any).subject;
+    if (!sourcePg || !targetPg) {
+      return res.status(404).json({ message: 'Estructura académica no encontrada' });
+    }
+    if (Number(sourcePgs.id) === Number(targetPgs.id)) {
+      return res.status(400).json({ message: 'El origen y el destino son la misma materia' });
+    }
+    if (sourcePgs.subjectId !== targetPgs.subjectId) {
+      return res.status(400).json({ message: 'Solo se puede copiar contenido a la misma materia en otro grado' });
+    }
+    if (subject?.subjectGroupId == null || (targetPgs as any).subject?.subjectGroupId == null) {
+      return res.status(400).json({ message: 'La copia entre grados solo está disponible para materias de grupo' });
+    }
+    if (Number(sourcePg.schoolPeriodId) !== Number(targetPg.schoolPeriodId)) {
+      return res.status(400).json({ message: 'Solo se puede copiar dentro del mismo período escolar' });
+    }
+    if (Number(term.schoolPeriodId) !== Number(sourcePg.schoolPeriodId)) {
+      return res.status(400).json({ message: 'El lapso no pertenece al período de la materia' });
+    }
+
+    const targetClosed = await TermSectionClosureService.isSectionClosed(
+      Number(termId), Number(targetSectionId), targetPg.gradeId,
+    );
+    if (targetClosed) {
+      return res.status(403).json({ message: 'El lapso está cerrado para la sección destino' });
+    }
+
+    // Resolve the content owner on each side. Teachers can only copy between
+    // their own assignments; staff can copy freely (the copy is owned by the
+    // target section's teacher).
+    const user = (req.session as any)?.user;
+    const roles: string[] = user?.roles || [];
+    const isStaff = roles.some((r) => STAFF_ROLES.includes(r));
+
+    const sourceTeacherId = await resolveContentTeacherId(Number(sourcePeriodGradeSubjectId), Number(sourceSectionId));
+    const targetTeacherId = await resolveContentTeacherId(Number(targetPeriodGradeSubjectId), Number(targetSectionId));
+    if (!sourceTeacherId) {
+      return res.status(400).json({ message: 'La sección origen no tiene un profesor asignado para esta materia' });
+    }
+    if (!targetTeacherId) {
+      return res.status(400).json({ message: 'La sección destino no tiene un profesor asignado para esta materia' });
+    }
+    if (!isStaff && (sourceTeacherId !== user?.personId || targetTeacherId !== user?.personId)) {
+      return res.status(403).json({ message: 'Solo puedes copiar contenido entre tus propias asignaciones' });
+    }
+
+    const transaction = await sequelize.transaction();
+    try {
+      const result = await copyThematicTree({
+        sourcePeriodGradeSubjectId: Number(sourcePeriodGradeSubjectId),
+        targetPeriodGradeSubjectId: Number(targetPeriodGradeSubjectId),
+        termId: Number(termId),
+        sourceTeacherId,
+        targetTeacherId,
+        transaction,
+      });
+      await transaction.commit();
+      return res.json({
+        message: 'Contenido copiado correctamente',
+        createdComponents: result.createdComponents,
+        createdContents: result.createdContents,
+        createdLearnings: result.createdLearnings,
+        skippedComponents: result.skippedComponents,
+        skippedContents: result.skippedContents,
+      });
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
+  } catch (error: any) {
+    console.error('[copyThematicComponents] Error:', error);
+    return res.status(500).json({ message: error.message || 'Error al copiar el contenido' });
   }
 };
