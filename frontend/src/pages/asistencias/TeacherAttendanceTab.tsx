@@ -399,7 +399,10 @@ const TeacherAttendanceTab: React.FC<{ onExit?: () => void; fill?: boolean }> = 
           ? 'w-full max-w-sm bg-slate-50 sm:rounded-[2rem] sm:border sm:border-slate-300 sm:shadow-xl overflow-hidden flex flex-col'
           : 'w-full max-w-sm bg-slate-50 rounded-[2rem] border border-slate-300 shadow-xl overflow-hidden flex flex-col'}
         style={fill
-          ? (openSession ? { height: '100%' } : { minHeight: '100%' })
+          // The standalone shell gives the frame exactly the viewport height;
+          // each screen scrolls internally (minHeight would let the frame
+          // overflow its overflow:hidden bounds and clip the list off-screen).
+          ? { height: '100%' }
           : (openSession
             ? { height: 'min(760px, calc(100dvh - 220px))', minHeight: 440 }
             : { minHeight: 560 })}
@@ -474,7 +477,7 @@ function ScheduleScreen({
 }) {
   const weeks = weeksOfMonth(month);
   return (
-    <div className="att-font-body">
+    <div className="att-font-body flex flex-col h-full min-h-0">
       <div className="px-5 pt-6 pb-4 border-b border-slate-200">
         <div className="flex items-center justify-between">
           {onExit ? (
@@ -617,7 +620,9 @@ function ScheduleScreen({
         </p>
       </div>
 
-      <div className="px-5 py-5">
+      {/* The session list scrolls inside the frame so afternoon blocks are
+          always reachable on short phone screens (overscroll kept local). */}
+      <div className="px-5 py-5 flex-1 min-h-0 overflow-y-auto overscroll-contain">
         {loading ? (
           <div className="flex justify-center py-16"><Spin /></div>
         ) : sessions.length === 0 ? (
