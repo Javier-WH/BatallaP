@@ -261,11 +261,29 @@ function restoreCellSelection(): boolean {
     activeCell = null;
     return false;
   }
-  activeCell.td.focus();
+  const td = activeCell.td;
+  // The blur handler may have emptied the cell and dropped contentEditable —
+  // a non-editable cell cannot be focused and its old range nodes are detached.
+  td.contentEditable = 'true';
+  td.focus();
   const selection = window.getSelection();
-  if (activeCell.range && selection) {
-    selection.removeAllRanges();
-    selection.addRange(activeCell.range);
+  if (selection) {
+    let range = activeCell.range;
+    if (!range || !td.contains(range.startContainer) || !td.contains(range.endContainer)) {
+      range = document.createRange();
+      range.selectNodeContents(td);
+      range.collapse(false);
+    }
+    try {
+      selection.removeAllRanges();
+      selection.addRange(range);
+    } catch {
+      const fresh = document.createRange();
+      fresh.selectNodeContents(td);
+      fresh.collapse(false);
+      selection.removeAllRanges();
+      selection.addRange(fresh);
+    }
   }
   return true;
 }

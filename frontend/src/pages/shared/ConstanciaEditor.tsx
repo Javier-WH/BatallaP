@@ -445,7 +445,9 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
           defaultValue="'Times New Roman', serif"
           size="small"
           style={{ width: 160 }}
-          onChange={(value) => applyTextStyle({ fontFamily: value }, { 'font-family': value })}
+          // onSelect (not onChange): antd dedupes onChange when the picked value
+          // matches the current one, so re-picking the same font would no-op.
+          onSelect={(value) => applyTextStyle({ fontFamily: value }, { 'font-family': value })}
           options={[
             { value: "'Times New Roman', serif", label: 'Times New Roman' },
             { value: "'Arial', sans-serif", label: 'Arial' },
@@ -466,7 +468,7 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
           defaultValue="12pt"
           size="small"
           style={{ width: 90 }}
-          onChange={(value) => applyTextStyle({ fontSize: value }, { 'font-size': value })}
+          onSelect={(value) => applyTextStyle({ fontSize: value }, { 'font-size': value })}
           options={[
             { value: '8pt', label: '8' },
             { value: '10pt', label: '10' },
@@ -825,20 +827,21 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
 
         <div className="w-px h-6 bg-slate-300 mx-1" />
 
-        {/* Text transform (uppercase / lowercase / capitalize) */}
+        {/* Text transform (uppercase / lowercase / capitalize).
+            value=null (not undefined) keeps the Select fully controlled —
+            undefined makes antd fall back to its internal last-picked value,
+            which would wrongly show the previous transform on new selections
+            and swallow onChange for that same option. onSelect fires on every
+            pick so the same option can be applied to consecutive selections;
+            onClear (the ✕) removes it. */}
         <Select
           size="small"
           style={{ width: 130 }}
           placeholder="Mayús/Minús"
           allowClear
-          value={editor.getAttributes('textStyle').textTransform || undefined}
-          onChange={(value) => {
-            if (value) {
-              applyTextStyle({ textTransform: value }, { 'text-transform': value });
-            } else {
-              applyTextStyle({ textTransform: null }, { 'text-transform': 'none' });
-            }
-          }}
+          value={editor.getAttributes('textStyle').textTransform ?? null}
+          onSelect={(value) => applyTextStyle({ textTransform: value }, { 'text-transform': value })}
+          onClear={() => applyTextStyle({ textTransform: null }, { 'text-transform': 'none' })}
           options={[
             { value: 'uppercase', label: 'MAYÚSCULAS' },
             { value: 'lowercase', label: 'minúsculas' },
@@ -852,13 +855,12 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
           style={{ width: 110 }}
           placeholder="Interlineado"
           allowClear
-          value={editor.getAttributes('paragraph').lineHeight || undefined}
-          onChange={(value) => {
-            if (value) {
-              editor.chain().focus().updateAttributes('paragraph', { lineHeight: value }).run();
-            } else {
-              editor.chain().focus().resetAttributes('paragraph', 'lineHeight').run();
-            }
+          value={editor.getAttributes('paragraph').lineHeight ?? null}
+          onSelect={(value) => {
+            editor.chain().focus().updateAttributes('paragraph', { lineHeight: value }).run();
+          }}
+          onClear={() => {
+            editor.chain().focus().resetAttributes('paragraph', 'lineHeight').run();
           }}
           options={[
             { value: '1.0', label: 'Sencillo' },
@@ -876,13 +878,12 @@ const ConstanciaEditor: React.FC<ConstanciaEditorProps> = ({ content, onChange, 
           style={{ width: 110 }}
           placeholder="Sangría"
           allowClear
-          value={editor.getAttributes('paragraph').textIndent || undefined}
-          onChange={(value) => {
-            if (value) {
-              editor.chain().focus().updateAttributes('paragraph', { textIndent: value }).run();
-            } else {
-              editor.chain().focus().resetAttributes('paragraph', 'textIndent').run();
-            }
+          value={editor.getAttributes('paragraph').textIndent ?? null}
+          onSelect={(value) => {
+            editor.chain().focus().updateAttributes('paragraph', { textIndent: value }).run();
+          }}
+          onClear={() => {
+            editor.chain().focus().resetAttributes('paragraph', 'textIndent').run();
           }}
           options={[
             { value: '0.5cm', label: '0.5 cm' },
