@@ -1,7 +1,7 @@
 # 🌐 Referencia de API REST
 
 > Base URL por defecto: `http://localhost:3000/api`
-> Todas las rutas (excepto `/auth/login`, `/auth/register`, `/health`, y GETs públicos puntuales) requieren una sesión válida (cookie `connect.sid`).
+> Todas las rutas (excepto `/auth/login`, `/health`, y GETs públicos puntuales) requieren una sesión válida (cookie `connect.sid`). `/auth/register` permite registro abierto únicamente cuando no existe ningún usuario (bootstrap).
 
 Los namespaces están registrados en [`backend/src/app.ts`](../backend/src/app.ts). Cada uno corresponde a un archivo en `backend/src/routes/`.
 
@@ -12,7 +12,7 @@ Los namespaces están registrados en [`backend/src/app.ts`](../backend/src/app.t
 | POST | `/login` | `authController.login` | Iniciar sesión con `username` + `password`. Crea sesión. |
 | POST | `/logout` | `authController.logout` | Destruye la sesión actual. |
 | GET | `/me` | `authController.me` | Devuelve usuario autenticado + roles. |
-| POST | `/register` | `authController.register` | Registro público (debe protegerse/retirarse en producción). |
+| POST | `/register` | `authController.register` | Registrar usuario con roles. Requiere sesión `Master` o `Administrador`; los roles privilegiados (`Master`, `Administrador`, `Director`) solo los asigna `Master`. Sin sesión solo funciona si la tabla `users` está vacía (bootstrap). Rechaza nombres de rol fuera del conjunto canónico. |
 
 ## 👥 Usuarios – `/api/users` (`userRoutes.ts`)
 

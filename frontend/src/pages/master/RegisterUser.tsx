@@ -21,7 +21,7 @@ const RegisterUser: React.FC = () => {
         birthdate: values.birthdate.format('YYYY-MM-DD') // Ensure date format
       };
 
-      await api.post('/auth/register', payload); // Adjust endpoint if you create a specific admin-create-user endpoint, but using public register for now or update it in backend
+      await api.post('/auth/register', payload);
       message.success('Usuario inscrito exitosamente');
       form.resetFields();
     } catch (error: any) {
@@ -36,7 +36,7 @@ const RegisterUser: React.FC = () => {
     <div className="h-full overflow-hidden">
       <div className="h-full overflow-y-auto">
         <div className="max-w-3xl mx-auto px-4 pb-8">
-          <Card title="Inscripción de Nuevo Usuario">
+          <Card title="Inscripción de Personal Administrativo">
             <Form
           form={form}
           layout="vertical"
@@ -44,7 +44,7 @@ const RegisterUser: React.FC = () => {
           initialValues={{
             documentType: 'Venezolano',
             gender: 'M',
-            roleName: 'Admin'
+            roleName: 'Administrador'
           }}
         >
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -168,7 +168,8 @@ const RegisterUser: React.FC = () => {
               style={{ gridColumn: 'span 2', marginTop: 16 }}
             >
               <Select placeholder="Selecciona un rol">
-                <Option value="Admin">Admin</Option>
+                <Option value="Administrador">Administrador</Option>
+                <Option value="Director">Director</Option>
                 <Option value="Master">Master</Option>
               </Select>
             </Form.Item>

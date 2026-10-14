@@ -42,7 +42,7 @@ const MasterLayout: React.FC = () => {
 
   const tools = [
     { path: '/master', icon: <DashboardOutlined />, label: 'Panel', tooltip: 'Panel de Control Maestro' },
-    { path: '/master/register', icon: <UserAddOutlined />, label: 'Gestión Perfiles', tooltip: 'Inscripción de Usuarios Administrativos' },
+    { path: '/master/register', icon: <UserAddOutlined />, label: 'Inscribir Personal', tooltip: 'Inscripción de Usuarios Administrativos' },
     { path: '/master/directorio', icon: <SearchOutlined />, label: 'Directorio', tooltip: 'Búsqueda y Gestión de Usuarios' },
     { path: '/master/settings', icon: <SettingOutlined />, label: 'Institución', tooltip: 'Configuración de Identidad Institucional' },
   ];

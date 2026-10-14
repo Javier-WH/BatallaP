@@ -13,7 +13,7 @@
 | POST | `/api/auth/login` | `{ username, password }` → crea sesión. |
 | POST | `/api/auth/logout` | Destruye sesión. |
 | GET | `/api/auth/me` | Devuelve usuario actual + roles. |
-| POST | `/api/auth/register` | Registro público (protegerse o retirarse en producción). |
+| POST | `/api/auth/register` | Registrar usuario con roles. Requiere sesión `Master`/`Administrador` (los roles privilegiados `Master`/`Administrador`/`Director` solo los asigna `Master`); abierto solo si no existe ningún usuario (bootstrap). |
 
 ## Flujo de login
 

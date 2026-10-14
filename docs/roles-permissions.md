@@ -37,7 +37,7 @@ Los seis roles del sistema, exactamente como aparecen en la tabla `roles` y en `
 | Submódulo | URL | Roles |
 |-----------|-----|-------|
 | Gestión académica (Master) | `/master` | `Master` |
-| Registrar usuario (Master) | `/master/register` | `Master` |
+| Inscribir personal administrativo | `/master/register` | `Master` (única vía para crear `Administrador`/`Director`/`Master`) |
 | Directorio de usuarios | `/master/directorio`, `/admin/directorio`, `/admin/search`, `/control-estudios/search` | según padre |
 | Editar usuario | `/master/edit/:id`, `/admin/edit/:id`, `/control-estudios/edit/:id` | según padre |
 | Settings del sistema | `/master/settings` | `Master` |

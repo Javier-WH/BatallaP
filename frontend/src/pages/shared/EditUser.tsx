@@ -297,7 +297,7 @@ const EditUser: React.FC = () => {
         {!isMaster && targetHasRestrictedRoles && (
           <Alert
             message="Permisos Limitados"
-            description="Este usuario tiene roles administrativos. Los roles Master, Director y Admin no pueden ser modificados."
+            description="Este usuario tiene roles administrativos. Los roles Master, Administrador y Director no pueden ser modificados."
             type="warning"
             showIcon
             style={{ marginBottom: 16 }}
