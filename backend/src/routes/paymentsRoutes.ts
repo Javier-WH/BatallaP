@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requirePaymentsAccess, requireSession } from '@/middlewares/paymentsAccessMiddleware';
 import {
   // Exchange rate types
   listExchangeRateTypes,
@@ -15,6 +16,9 @@ import {
   listFees,
   upsertFee,
   updateFee,
+  updateBillingCalendar,
+  previewChargeSync,
+  applyChargeSync,
   // Sellable items
   listSellableItems,
   createSellableItem,
@@ -31,13 +35,13 @@ import {
 
 const router = Router();
 
-// All payments endpoints require an authenticated session
-router.use((req, res, next) => {
-  if (!(req.session as any)?.user) {
-    return res.status(401).json({ message: 'No autenticado' });
-  }
-  next();
-});
+// Read-only exchange rates are consumed by every role (header calculator,
+// SchoolContext, offline snapshot): session only.
+router.get('/exchange-rates', requireSession, listExchangeRates);
+router.get('/exchange-rates/at-date', requireSession, getRatesAtDate);
+
+// Everything else requires Master/Administrador
+router.use(requirePaymentsAccess);
 
 // ── Exchange Rate Types ──
 router.get('/exchange-rate-types', listExchangeRateTypes);
@@ -45,9 +49,7 @@ router.post('/exchange-rate-types', createExchangeRateType);
 router.put('/exchange-rate-types/:id', updateExchangeRateType);
 router.delete('/exchange-rate-types/:id', deleteExchangeRateType);
 
-// ── Exchange Rates (historical) ──
-router.get('/exchange-rates', listExchangeRates);
-router.get('/exchange-rates/at-date', getRatesAtDate);
+// ── Exchange Rates (writes) ──
 router.post('/exchange-rates', upsertExchangeRate);
 router.post('/exchange-rates/bulk', bulkImportExchangeRates);
 router.post('/exchange-rates/fetch-bcv', fetchBcvRates);
@@ -56,6 +58,13 @@ router.post('/exchange-rates/fetch-bcv', fetchBcvRates);
 router.get('/fees', listFees);
 router.post('/fees', upsertFee);
 router.put('/fees/:id', updateFee);
+
+// ── Charge generation / sync (whole period) ──
+router.post('/charges/preview', previewChargeSync);
+router.post('/charges/apply', applyChargeSync);
+
+// ── Billing calendar ──
+router.put('/billing-calendar/:schoolPeriodId', updateBillingCalendar);
 
 // ── Sellable Items ──
 router.get('/sellable-items', listSellableItems);

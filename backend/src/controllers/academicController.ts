@@ -203,6 +203,11 @@ export const createPeriod = async (req: Request, res: Response) => {
 
     if (previousPeriod) {
       await SchoolPeriodService.clonePeriodStructure(previousPeriod.id, created.id, transaction);
+      // The billing window carries over to the new period (editable afterwards)
+      await created.update({
+        billingStartMonth: previousPeriod.billingStartMonth,
+        billingEndMonth: previousPeriod.billingEndMonth,
+      }, { transaction });
     }
 
     // A brand new active period must always have its preinscription counterpart

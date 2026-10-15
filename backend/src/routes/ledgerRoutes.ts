@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requirePaymentsAccess } from '@/middlewares/paymentsAccessMiddleware';
 import {
   getLedgerBySection,
   createPayment,
@@ -7,15 +8,21 @@ import {
   deletePayment,
   deleteCharge,
   getSectionsForPeriod,
+  updateEntryMonth,
 } from '@/controllers/ledgerController';
 
 const router = Router();
+
+router.use(requirePaymentsAccess);
 
 // GET sections available for a period (for dropdown)
 router.get('/sections/:schoolPeriodId', getSectionsForPeriod);
 
 // GET ledger data for a grade+section in a period
 router.get('/:schoolPeriodId/:gradeId/:sectionId', getLedgerBySection);
+
+// PUT change the entry month of an inscription (generates the debts it now owes)
+router.put('/inscriptions/:id/entry-month', updateEntryMonth);
 
 // POST create a payment
 router.post('/payments', createPayment);

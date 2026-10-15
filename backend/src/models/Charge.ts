@@ -3,6 +3,8 @@ import sequelize from '@/config/database';
 
 export type ChargeType = 'mensualidad' | 'matricula' | 'gastos_administrativos' | 'item' | 'otro';
 
+export type ChargeSource = 'schedule' | 'manual';
+
 export const CHARGE_TYPES: ChargeType[] = [
   'mensualidad', 'matricula', 'gastos_administrativos', 'item', 'otro',
 ];
@@ -21,10 +23,12 @@ interface ChargeAttributes {
   amountVES: number | null;     // amount in VES (for comparison)
   dueDate: Date | null;         // when the charge is due
   active: boolean;
+  source: ChargeSource;         // 'schedule' = generated from costs/plan, 'manual' = created by hand
+  scheduleKey: string | null;   // identity of a scheduled charge within an inscription (idempotency)
 }
 
 interface ChargeCreationAttributes
-  extends Optional<ChargeAttributes, 'id' | 'feeId' | 'sellableItemId' | 'month' | 'amountVES' | 'dueDate' | 'active'> {}
+  extends Optional<ChargeAttributes, 'id' | 'feeId' | 'sellableItemId' | 'month' | 'amountVES' | 'dueDate' | 'active' | 'source' | 'scheduleKey'> {}
 
 class Charge extends Model<ChargeAttributes, ChargeCreationAttributes>
   implements ChargeAttributes {
@@ -41,6 +45,8 @@ class Charge extends Model<ChargeAttributes, ChargeCreationAttributes>
   public amountVES!: number | null;
   public dueDate!: Date | null;
   public active!: boolean;
+  public source!: ChargeSource;
+  public scheduleKey!: string | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -108,6 +114,15 @@ Charge.init(
       allowNull: false,
       defaultValue: true,
     },
+    source: {
+      type: DataTypes.ENUM('schedule', 'manual'),
+      allowNull: false,
+      defaultValue: 'manual',
+    },
+    scheduleKey: {
+      type: DataTypes.STRING(60),
+      allowNull: true,
+    },
   },
   {
     sequelize,
@@ -117,6 +132,7 @@ Charge.init(
       { fields: ['schoolPeriodId'] },
       { fields: ['month'] },
       { fields: ['type'] },
+      { unique: true, fields: ['inscriptionId', 'scheduleKey'], name: 'uq_charges_inscription_schedule_key' },
     ],
   }
 );

@@ -17,9 +17,11 @@ interface SchoolPeriodAttributes {
   startYear: number;
   endYear: number;
   status: SchoolPeriodStatus;
+  billingStartMonth: number; // 1–12, first month billed (default 9 = September)
+  billingEndMonth: number;   // 1–12, last month billed (default 8 = August)
 }
 
-interface SchoolPeriodCreationAttributes extends Optional<SchoolPeriodAttributes, 'id' | 'startYear' | 'endYear' | 'status'> { }
+interface SchoolPeriodCreationAttributes extends Optional<SchoolPeriodAttributes, 'id' | 'startYear' | 'endYear' | 'status' | 'billingStartMonth' | 'billingEndMonth'> { }
 
 class SchoolPeriod extends Model<SchoolPeriodAttributes, SchoolPeriodCreationAttributes> implements SchoolPeriodAttributes {
   public id!: number;
@@ -28,6 +30,8 @@ class SchoolPeriod extends Model<SchoolPeriodAttributes, SchoolPeriodCreationAtt
   public startYear!: number;
   public endYear!: number;
   public status!: SchoolPeriodStatus;
+  public billingStartMonth!: number;
+  public billingEndMonth!: number;
 
   // Virtual, derived from status. Kept for backwards compatibility with existing
   // consumers. Cannot be used inside a Sequelize `where` clause: filter by `status`.
@@ -66,6 +70,16 @@ SchoolPeriod.init(
       type: DataTypes.ENUM(...SCHOOL_PERIOD_STATUSES),
       allowNull: false,
       defaultValue: 'historico', // Only one 'activo' and one 'preinscripcion' at a time
+    },
+    billingStartMonth: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 9,
+    },
+    billingEndMonth: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 8,
     },
     isActive: {
       type: DataTypes.VIRTUAL,

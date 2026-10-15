@@ -13,10 +13,11 @@ interface FeeAttributes {
   amount: number;
   exchangeRateTypeId: number;
   active: boolean;
+  effectiveMonth: string; // month code ('Sep'…) from which this version applies
 }
 
 interface FeeCreationAttributes
-  extends Optional<FeeAttributes, 'id' | 'active'> {}
+  extends Optional<FeeAttributes, 'id' | 'active' | 'effectiveMonth'> {}
 
 class Fee extends Model<FeeAttributes, FeeCreationAttributes>
   implements FeeAttributes {
@@ -27,6 +28,7 @@ class Fee extends Model<FeeAttributes, FeeCreationAttributes>
   public amount!: number;
   public exchangeRateTypeId!: number;
   public active!: boolean;
+  public effectiveMonth!: string;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -67,12 +69,17 @@ Fee.init(
       allowNull: false,
       defaultValue: true,
     },
+    effectiveMonth: {
+      type: DataTypes.STRING(3),
+      allowNull: false,
+      defaultValue: 'Sep',
+    },
   },
   {
     sequelize,
     tableName: 'fees',
     indexes: [
-      { unique: true, fields: ['schoolPeriodId', 'key'], name: 'uq_fees_period_key' },
+      { unique: true, fields: ['schoolPeriodId', 'key', 'effectiveMonth'], name: 'uq_fees_period_key_month' },
       { fields: ['active'] },
     ],
   }

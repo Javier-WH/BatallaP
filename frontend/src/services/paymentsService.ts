@@ -29,6 +29,7 @@ export interface Fee {
   amount: number;
   exchangeRateTypeId: number;
   active: boolean;
+  effectiveMonth: string;
   exchangeRateType?: ExchangeRateType;
   schoolPeriod?: { id: number; period: string; name: string };
 }
@@ -63,6 +64,7 @@ export interface EnrollmentPlan {
   targetExchangeRateTypeId: number;
   conversionMode: 'exchange_rate' | 'same_amount';
   active: boolean;
+  effectiveMonth: string;
   targetExchangeRateType?: ExchangeRateType;
   schoolPeriod?: { id: number; period: string; name?: string };
   items?: EnrollmentPlanItem[];
@@ -190,6 +192,36 @@ export async function updateFee(id: number, payload: Partial<Fee>): Promise<Fee>
   return data;
 }
 
+// ── Charge generation / sync (whole period) ──
+
+export interface ChargeSyncSummary {
+  schoolPeriodId: number;
+  generate: { inscriptions: number; charges: number; amountByCurrency: Record<string, number> };
+  sync: { charges: number; skippedPaid: number; deltaByCurrency: Record<string, number> };
+  excludedMateriaPendiente: number;
+  warnings: Array<{ message: string; count: number }>;
+}
+
+export async function previewChargeSync(schoolPeriodId?: number): Promise<ChargeSyncSummary> {
+  const { data } = await api.post<ChargeSyncSummary>('/payments/charges/preview', { schoolPeriodId });
+  return data;
+}
+
+export async function applyChargeSync(schoolPeriodId?: number): Promise<{ created: number; reactivated: number; updated: number; skippedPaid: number }> {
+  const { data } = await api.post('/payments/charges/apply', { schoolPeriodId });
+  return data;
+}
+
+// ── Billing calendar ──
+
+export async function updateBillingCalendar(
+  schoolPeriodId: number,
+  payload: { billingStartMonth: number; billingEndMonth: number },
+): Promise<{ schoolPeriodId: number; billingStartMonth: number; billingEndMonth: number; months: string[] }> {
+  const { data } = await api.put(`/payments/billing-calendar/${schoolPeriodId}`, payload);
+  return data;
+}
+
 // ── Sellable Items ──
 
 export async function listSellableItems(params?: { active?: boolean; category?: string }): Promise<SellableItem[]> {
@@ -251,6 +283,8 @@ export interface LedgerStudent {
   personId: number;
   name: string;
   document: string;
+  rosterNumber: number | null;
+  entryMonth: string | null;
   gradeName: string;
   sectionName: string;
   months: Record<string, {
@@ -267,6 +301,8 @@ export interface LedgerStudent {
 
 export interface LedgerResponse {
   students: LedgerStudent[];
+  months: string[];
+  monthlyFeeByMonth: Record<string, { id: number; amount: number; currency: string; currencyName: string } | null>;
   monthlyFee: {
     id: number;
     amount: number;
@@ -312,6 +348,11 @@ export interface PaymentPayload {
 
 export async function createPayment(payload: PaymentPayload): Promise<any> {
   const { data } = await api.post('/ledger/payments', payload);
+  return data;
+}
+
+export async function updateEntryMonth(inscriptionId: number, entryMonth: string): Promise<{ entryMonth: string; generated: number; warnings: string[] }> {
+  const { data } = await api.put(`/ledger/inscriptions/${inscriptionId}/entry-month`, { entryMonth });
   return data;
 }
 

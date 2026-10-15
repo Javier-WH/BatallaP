@@ -13,10 +13,11 @@ interface EnrollmentPlanAttributes {
   targetExchangeRateTypeId: number; // currency in which the total is expressed
   conversionMode: ConversionMode;   // how to compute the total
   active: boolean;
+  effectiveMonth: string; // month code from which this plan version applies
 }
 
 interface EnrollmentPlanCreationAttributes
-  extends Optional<EnrollmentPlanAttributes, 'id' | 'description' | 'active' | 'conversionMode'> {}
+  extends Optional<EnrollmentPlanAttributes, 'id' | 'description' | 'active' | 'conversionMode' | 'effectiveMonth'> {}
 
 class EnrollmentPlan extends Model<EnrollmentPlanAttributes, EnrollmentPlanCreationAttributes>
   implements EnrollmentPlanAttributes {
@@ -27,6 +28,7 @@ class EnrollmentPlan extends Model<EnrollmentPlanAttributes, EnrollmentPlanCreat
   public targetExchangeRateTypeId!: number;
   public conversionMode!: ConversionMode;
   public active!: boolean;
+  public effectiveMonth!: string;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -67,6 +69,11 @@ EnrollmentPlan.init(
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: true,
+    },
+    effectiveMonth: {
+      type: DataTypes.STRING(3),
+      allowNull: false,
+      defaultValue: 'Sep',
     },
   },
   {

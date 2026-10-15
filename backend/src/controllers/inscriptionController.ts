@@ -17,6 +17,7 @@ import { registerAndEnrollStudent, EnrollmentValidationError, GUARDIAN_FIELD_LAB
 import { generateEnrollmentReport } from '@/services/enrollmentReportService';
 import { sortInscriptions, canonicalInscriptionOrder, numericDocumentSQL, fieldExpr, quoteQualified, lower } from '@/services/studentSortService';
 import { renumberSectionRoster, renumberRosters, rosterScopeOf } from '@/services/rosterNumberService';
+import { safeGenerateCharges, resolveInscriptionEntryMonth, deactivateUnpaidScheduledCharges } from '@/services/chargeScheduleService';
 import { parsePagination, buildPaginatedResponse } from '@/services/paginationService';
 
 const ESCOLARIDAD_VALUES: EscolaridadStatus[] = ['regular', 'repitiente', 'materia_pendiente'];
@@ -530,6 +531,7 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
       representativeType,
       enrollmentAnswers,
       escolaridad,
+      entryMonth,
     } = req.body;
 
     const matriculation = (await Matriculation.findByPk(id, {
@@ -736,6 +738,9 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
       existingInscription.sectionId = targetSectionId;
       existingInscription.escolaridad = escolaridadValue;
       (existingInscription as any).withdrawnAt = null;
+      if (entryMonth) {
+        existingInscription.entryMonth = await resolveInscriptionEntryMonth(targetPeriodId, entryMonth, new Date(), t);
+      }
       await existingInscription.save({ transaction: t });
 
       matriculation.escolaridad = escolaridadValue;
@@ -754,6 +759,7 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
         prevScope,
         { schoolPeriodId: targetPeriodId, gradeId: targetGradeId, sectionId: targetSectionId },
       ], t);
+      await safeGenerateCharges(existingInscription.id, t);
 
       await t.commit();
       const result = await Matriculation.findByPk(matriculation.id, {
@@ -770,7 +776,8 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
       gradeId: targetGradeId,
       sectionId: targetSectionId,
       personId: person.id,
-      escolaridad: escolaridadValue
+      escolaridad: escolaridadValue,
+      entryMonth: await resolveInscriptionEntryMonth(targetPeriodId, entryMonth, (matriculation as any).createdAt ?? new Date(), t),
     }, { transaction: t });
 
     const periodGrade = await PeriodGrade.findOne({
@@ -829,6 +836,7 @@ export const enrollMatriculatedStudent = async (req: Request, res: Response) => 
     }
 
     await renumberSectionRoster(targetPeriodId, targetGradeId, targetSectionId, t);
+    await safeGenerateCharges(inscription.id, t);
 
     await t.commit();
     const result = await Matriculation.findByPk(id, {
@@ -2458,6 +2466,8 @@ const withdrawMatriculationCore = async (matriculation: Matriculation, t: Transa
       await inscription.save({ transaction: t });
       // The student leaves the section list — the rest renumber.
       await renumberSectionRoster(prevScope.schoolPeriodId, prevScope.gradeId, prevScope.sectionId, t);
+      // Unpaid scheduled debts of a student who left no longer count.
+      await deactivateUnpaidScheduledCharges(inscription.id, { transaction: t });
     }
   }
   matriculation.status = 'withdrawn';
@@ -2485,6 +2495,7 @@ const reactivateMatriculationCore = async (matriculation: Matriculation, t: Tran
       (inscription as any).sectionId = null;
       (inscription as any).withdrawnAt = null;
       await inscription.save({ transaction: t });
+      await safeGenerateCharges(inscription.id, t);
     }
   }
   matriculation.status = 'pending';

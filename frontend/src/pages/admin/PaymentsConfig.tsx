@@ -5,9 +5,12 @@ import {
 } from 'antd';
 import {
   DollarOutlined, PlusOutlined, EditOutlined, DeleteOutlined,
-  CalculatorOutlined, ShoppingOutlined, BankOutlined, ReloadOutlined,
+  CalculatorOutlined, ShoppingOutlined, BankOutlined, ReloadOutlined, CalendarOutlined, SyncOutlined,
 } from '@ant-design/icons';
 import { useSchool } from '@/context/SchoolContext';
+import BillingCalendarCard from './components/BillingCalendarCard';
+import ChargeSyncModal from './components/ChargeSyncModal';
+import { billingMonthOptions, MONTH_NAMES } from '@/utils/billingMonths';
 import type {
   ExchangeRateType, ExchangeRate, Fee, SellableItem, EnrollmentPlan, PlanCalculation,
 } from '@/services/paymentsService';
@@ -25,6 +28,7 @@ const { Title } = Typography;
 const PaymentsConfig: React.FC = () => {
   const { activePeriod, allPeriods, refreshExchangeRates } = useSchool();
   const [activeTab, setActiveTab] = useState('exchangeRates');
+  const [chargeSyncOpen, setChargeSyncOpen] = useState(false);
 
   // ── Exchange Rate Types ──
   const [rateTypes, setRateTypes] = useState<ExchangeRateType[]>([]);
@@ -190,6 +194,21 @@ const PaymentsConfig: React.FC = () => {
   };
 
   // ── Fee handlers ──
+  // New version of an existing cost: same concept/currency/amount, the user picks the month it applies from.
+  const openNewFeeVersion = (fee: Fee) => {
+    setEditingFee(null);
+    feeForm.resetFields();
+    feeForm.setFieldsValue({
+      schoolPeriodId: fee.schoolPeriodId,
+      key: fee.key,
+      name: fee.name,
+      amount: fee.amount,
+      exchangeRateTypeId: fee.exchangeRateTypeId,
+      active: true,
+    });
+    setFeeModalOpen(true);
+  };
+
   const openFeeModal = (fee?: Fee) => {
     setEditingFee(fee ?? null);
     if (fee) {
@@ -276,10 +295,14 @@ const PaymentsConfig: React.FC = () => {
   };
 
   // Fees filtered by the plan's selected period (for the item dropdown)
+  const feeSelectedPeriodId = Form.useWatch('schoolPeriodId', feeForm);
   const planSelectedPeriodId = Form.useWatch('schoolPeriodId', planForm);
-  const feesForPlanPeriod = planSelectedPeriodId
+  const periodById = (id?: number) => allPeriods.find((p: any) => p.id === id);
+  // One option per cost concept: versions of the same cost are resolved by month when the plan is applied.
+  const feesForPlanPeriod = (planSelectedPeriodId
     ? fees.filter(f => f.schoolPeriodId === planSelectedPeriodId)
-    : fees;
+    : fees
+  ).filter((f, i, arr) => arr.findIndex(x => x.schoolPeriodId === f.schoolPeriodId && x.key === f.key) === i);
 
   const handleAddPlanItem = () => {
     setPlanItems([...planItems, { itemType: 'fee', feeId: null, sellableItemId: null, quantity: 1 }]);
@@ -372,11 +395,19 @@ const PaymentsConfig: React.FC = () => {
     }},
     { title: 'Monto', dataIndex: 'amount', key: 'amount', render: (v: number) => v.toLocaleString('es-VE', { minimumFractionDigits: 2 }) },
     { title: 'Moneda', key: 'currency', render: (_: any, f: Fee) => f.exchangeRateType?.name ?? '—' },
+    { title: 'Vigente desde', dataIndex: 'effectiveMonth', key: 'effectiveMonth', render: (m: string) => MONTH_NAMES[m] ?? m },
     { title: 'Activo', dataIndex: 'active', key: 'active', render: (v: boolean) => <Tag color={v ? 'green' : 'red'}>{v ? 'Sí' : 'No'}</Tag> },
     {
       title: 'Acciones', key: 'actions',
       render: (_: any, record: Fee) => (
-        <Button size="small" icon={<EditOutlined />} onClick={() => openFeeModal(record)} />
+        <Space>
+          <Tooltip title="Corregir esta vigencia">
+            <Button size="small" icon={<EditOutlined />} onClick={() => openFeeModal(record)} />
+          </Tooltip>
+          <Tooltip title="Nueva vigencia (nuevo monto desde otro mes)">
+            <Button size="small" icon={<PlusOutlined />} onClick={() => openNewFeeVersion(record)} />
+          </Tooltip>
+        </Space>
       ),
     },
   ];
@@ -403,6 +434,7 @@ const PaymentsConfig: React.FC = () => {
   const planColumns = [
     { title: 'Nombre', dataIndex: 'name', key: 'name' },
     { title: 'Período', key: 'schoolPeriod', render: (_: any, p: EnrollmentPlan) => p.schoolPeriod?.period ?? '—' },
+    { title: 'Vigente desde', dataIndex: 'effectiveMonth', key: 'effectiveMonth', render: (m: string) => MONTH_NAMES[m] ?? m },
     { title: 'Descripción', dataIndex: 'description', key: 'description', ellipsis: true },
     { title: 'Moneda destino', key: 'target', render: (_: any, p: EnrollmentPlan) => p.targetExchangeRateType?.name ?? '—' },
     { title: 'Items', key: 'items', render: (_: any, p: EnrollmentPlan) => p.items?.length ?? 0 },
@@ -471,7 +503,17 @@ const PaymentsConfig: React.FC = () => {
 
   return (
     <div className="p-6">
-      <Title level={3}><DollarOutlined /> Configuración de Pagos</Title>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <Title level={3} style={{ margin: 0 }}><DollarOutlined /> Configuración de Pagos</Title>
+        <Button type="primary" icon={<SyncOutlined />} onClick={() => setChargeSyncOpen(true)}>
+          Generar / actualizar deudas
+        </Button>
+      </div>
+      <ChargeSyncModal
+        open={chargeSyncOpen}
+        onClose={() => setChargeSyncOpen(false)}
+        periodLabel={activePeriod?.period}
+      />
 
       <Tabs
         activeKey={activeTab}
@@ -529,6 +571,13 @@ const PaymentsConfig: React.FC = () => {
                 <Table columns={feeColumns} dataSource={fees} rowKey="id" loading={feesLoading} pagination={false} size="small" />
               </Card>
             ),
+          },
+
+          // ── Tab: Calendario de cobro ──
+          {
+            key: 'billingCalendar',
+            label: <span><CalendarOutlined /> Calendario de Cobro</span>,
+            children: <BillingCalendarCard />,
           },
 
           // ── Tab 3: Items Vendibles ──
@@ -703,10 +752,18 @@ const PaymentsConfig: React.FC = () => {
       >
         <Form form={feeForm} layout="vertical">
           <Form.Item name="schoolPeriodId" label="Período Escolar" rules={[{ required: true }]}>
-            <Select options={allPeriods.map((p: any) => ({ value: p.id, label: p.period }))} />
+            <Select disabled={!!editingFee} options={allPeriods.map((p: any) => ({ value: p.id, label: p.period }))} />
+          </Form.Item>
+          <Form.Item name="effectiveMonth" label="Vigente desde" tooltip="Mes del período desde el cual aplica este monto. Para un aumento a mitad de año, cree una nueva vigencia con el mes del aumento; las vigencias anteriores no se modifican.">
+            <Select
+              allowClear
+              disabled={!!editingFee}
+              placeholder="Desde el inicio del período"
+              options={billingMonthOptions(periodById(feeSelectedPeriodId))}
+            />
           </Form.Item>
           <Form.Item name="key" label="Concepto" rules={[{ required: true }]}>
-            <Select options={[
+            <Select disabled={!!editingFee} options={[
               { value: 'mensualidad', label: 'Mensualidad' },
               { value: 'matricula', label: 'Matrícula' },
               { value: 'gastos_administrativos', label: 'Gastos Administrativos' },
@@ -774,6 +831,13 @@ const PaymentsConfig: React.FC = () => {
             <Select
               options={allPeriods.map((p: any) => ({ value: p.id, label: p.period }))}
               placeholder="Seleccione el período al que aplica este plan"
+            />
+          </Form.Item>
+          <Form.Item name="effectiveMonth" label="Vigente desde" tooltip="Mes desde el cual este plan es el que se cobra al inscribir. Para un cambio a mitad de año, cree otro plan con el mes de vigencia.">
+            <Select
+              allowClear
+              placeholder="Desde el inicio del período"
+              options={billingMonthOptions(periodById(planSelectedPeriodId))}
             />
           </Form.Item>
           <Form.Item name="description" label="Descripción">

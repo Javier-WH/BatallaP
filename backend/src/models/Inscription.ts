@@ -17,12 +17,13 @@ interface InscriptionAttributes {
   isRepeater: boolean;
   withdrawnAt?: Date | null;
   rosterNumber?: number | null;
+  entryMonth?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 interface InscriptionCreationAttributes
-  extends Optional<InscriptionAttributes, 'id' | 'sectionId' | 'originPeriodId' | 'isRepeater' | 'withdrawnAt' | 'rosterNumber'> { }
+  extends Optional<InscriptionAttributes, 'id' | 'sectionId' | 'originPeriodId' | 'isRepeater' | 'withdrawnAt' | 'rosterNumber' | 'entryMonth'> { }
 
 class Inscription extends Model<InscriptionAttributes, InscriptionCreationAttributes> implements InscriptionAttributes {
   public id!: number;
@@ -35,6 +36,7 @@ class Inscription extends Model<InscriptionAttributes, InscriptionCreationAttrib
   public isRepeater!: boolean;
   public withdrawnAt!: Date | null;
   public rosterNumber!: number | null;
+  public entryMonth!: string | null;
 
   public readonly subjects?: import('./Subject').default[];
   public readonly student?: Person;
@@ -99,6 +101,15 @@ Inscription.init(
      */
     rosterNumber: {
       type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: null
+    },
+    /**
+     * Billing month ('Sep', 'Oct'…) in which the student joined the period.
+     * Drives how many monthly fees are charged. NULL = since the first month.
+     */
+    entryMonth: {
+      type: DataTypes.STRING(3),
       allowNull: true,
       defaultValue: null
     }

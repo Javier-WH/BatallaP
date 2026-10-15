@@ -11,6 +11,19 @@ import {
   SchoolPeriod,
 } from '@/models/index';
 import { scrapeBcvRates } from '@/services/bcvScraperService';
+import { getBillingMonths, compareBillingMonths } from '@/services/billingCalendarService';
+import { resolveFee } from '@/services/feeResolverService';
+import { planPeriodChargeSync, summarizeChargeSyncPlan, applyChargeSyncPlan } from '@/services/chargeSyncService';
+
+// Validates (or defaults) the effective month of a fee/plan against the period's billing window.
+const resolveEffectiveMonth = async (schoolPeriodId: number, requested?: string | null): Promise<{ month?: string; error?: string }> => {
+  const period = await SchoolPeriod.findByPk(schoolPeriodId);
+  if (!period) return { error: 'Período no encontrado' };
+  const months = getBillingMonths(period) as string[];
+  if (!requested) return { month: months[0] };
+  if (!months.includes(requested)) return { error: 'El mes de vigencia no pertenece al calendario de cobro del período' };
+  return { month: requested };
+};
 
 // ─────────────────────────────────────────────────────────────
 // Exchange Rate Types
@@ -263,6 +276,15 @@ export const listFees = async (req: Request, res: Response) => {
       ],
       order: [['schoolPeriodId', 'DESC'], ['key', 'ASC']],
     });
+    // Versions of the same cost follow the period's billing-calendar order.
+    const windows = new Map<number, any>();
+    for (const f of fees as any[]) windows.set(f.schoolPeriodId, f.schoolPeriod);
+    const periods = await SchoolPeriod.findAll({ where: { id: [...windows.keys()] } });
+    const periodById = new Map(periods.map(p => [p.id, p]));
+    (fees as any[]).sort((a, b) =>
+      b.schoolPeriodId - a.schoolPeriodId
+      || a.key.localeCompare(b.key)
+      || compareBillingMonths(periodById.get(a.schoolPeriodId) ?? {}, a.effectiveMonth, b.effectiveMonth));
     return res.json(fees);
   } catch (error) {
     console.error('[listFees] Error:', error);
@@ -272,15 +294,18 @@ export const listFees = async (req: Request, res: Response) => {
 
 export const upsertFee = async (req: Request, res: Response) => {
   try {
-    const { schoolPeriodId, key, name, amount, exchangeRateTypeId, active } = req.body;
+    const { schoolPeriodId, key, name, amount, exchangeRateTypeId, active, effectiveMonth } = req.body;
     if (!schoolPeriodId || !key || !name || amount === undefined || !exchangeRateTypeId) {
       return res.status(400).json({ message: 'Faltan campos requeridos' });
     }
+    const eff = await resolveEffectiveMonth(Number(schoolPeriodId), effectiveMonth);
+    if (eff.error) return res.status(400).json({ message: eff.error });
     const [fee, created] = await Fee.findOrCreate({
-      where: { schoolPeriodId: Number(schoolPeriodId), key },
+      where: { schoolPeriodId: Number(schoolPeriodId), key, effectiveMonth: eff.month },
       defaults: {
         schoolPeriodId: Number(schoolPeriodId),
         key,
+        effectiveMonth: eff.month!,
         name,
         amount: Number(amount),
         exchangeRateTypeId: Number(exchangeRateTypeId),
@@ -318,6 +343,81 @@ export const updateFee = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[updateFee] Error:', error);
     return res.status(500).json({ message: 'Error al actualizar costo' });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+// Billing calendar (months billed by a school period)
+// ─────────────────────────────────────────────────────────────
+
+export const updateBillingCalendar = async (req: Request, res: Response) => {
+  try {
+    const { schoolPeriodId } = req.params;
+    const start = Number(req.body.billingStartMonth);
+    const end = Number(req.body.billingEndMonth);
+    const valid = (n: number) => Number.isInteger(n) && n >= 1 && n <= 12;
+    if (!valid(start) || !valid(end)) {
+      return res.status(400).json({ message: 'Los meses de inicio y fin deben estar entre 1 y 12' });
+    }
+    const period = await SchoolPeriod.findByPk(Number(schoolPeriodId));
+    if (!period) return res.status(404).json({ message: 'Período no encontrado' });
+    await period.update({ billingStartMonth: start, billingEndMonth: end });
+    return res.json({
+      schoolPeriodId: period.id,
+      billingStartMonth: start,
+      billingEndMonth: end,
+      months: getBillingMonths({ billingStartMonth: start, billingEndMonth: end }),
+    });
+  } catch (error) {
+    console.error('[updateBillingCalendar] Error:', error);
+    return res.status(500).json({ message: 'Error al actualizar el calendario de cobro' });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+// Charge generation / sync for a whole period
+// ─────────────────────────────────────────────────────────────
+
+// Debts are generated for the present period (or the next one being prepared), never history.
+const resolveSyncPeriodId = async (requested?: unknown): Promise<{ id?: number; error?: string }> => {
+  const period = requested
+    ? await SchoolPeriod.findByPk(Number(requested))
+    : await SchoolPeriod.findOne({ where: { status: 'activo' } });
+  if (!period) return { error: 'No hay un período escolar activo' };
+  if (period.status !== 'activo' && period.status !== 'preinscripcion') {
+    return { error: 'Solo se pueden generar deudas del período activo o de preinscripción' };
+  }
+  return { id: period.id };
+};
+
+export const previewChargeSync = async (req: Request, res: Response) => {
+  try {
+    const target = await resolveSyncPeriodId(req.body?.schoolPeriodId);
+    if (target.error) return res.status(400).json({ message: target.error });
+    const plan = await planPeriodChargeSync(target.id!);
+    return res.json(summarizeChargeSyncPlan(plan));
+  } catch (error) {
+    console.error('[previewChargeSync] Error:', error);
+    return res.status(500).json({ message: 'Error al calcular la vista previa de deudas' });
+  }
+};
+
+export const applyChargeSync = async (req: Request, res: Response) => {
+  const t = await sequelize.transaction();
+  try {
+    const target = await resolveSyncPeriodId(req.body?.schoolPeriodId);
+    if (target.error) {
+      await t.rollback();
+      return res.status(400).json({ message: target.error });
+    }
+    const plan = await planPeriodChargeSync(target.id!, t);
+    const result = await applyChargeSyncPlan(plan, t);
+    await t.commit();
+    return res.json({ schoolPeriodId: target.id, ...result, warnings: plan.warnings });
+  } catch (error) {
+    await t.rollback();
+    console.error('[applyChargeSync] Error:', error);
+    return res.status(500).json({ message: 'Error al generar las deudas' });
   }
 };
 
@@ -451,10 +551,12 @@ export const getEnrollmentPlan = async (req: Request, res: Response) => {
 
 export const createEnrollmentPlan = async (req: Request, res: Response) => {
   try {
-    const { name, description, schoolPeriodId, targetExchangeRateTypeId, conversionMode, active, items } = req.body;
+    const { name, description, schoolPeriodId, targetExchangeRateTypeId, conversionMode, active, items, effectiveMonth } = req.body;
     if (!name || !targetExchangeRateTypeId || !schoolPeriodId) {
       return res.status(400).json({ message: 'name, schoolPeriodId y targetExchangeRateTypeId son requeridos' });
     }
+    const eff = await resolveEffectiveMonth(Number(schoolPeriodId), effectiveMonth);
+    if (eff.error) return res.status(400).json({ message: eff.error });
     const t = await sequelize.transaction();
     try {
       const plan = await EnrollmentPlan.create(
@@ -465,6 +567,7 @@ export const createEnrollmentPlan = async (req: Request, res: Response) => {
           targetExchangeRateTypeId: Number(targetExchangeRateTypeId),
           conversionMode: conversionMode ?? 'exchange_rate',
           active: active !== false,
+          effectiveMonth: eff.month!,
         },
         { transaction: t }
       );
@@ -494,9 +597,11 @@ export const createEnrollmentPlan = async (req: Request, res: Response) => {
 export const updateEnrollmentPlan = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, description, schoolPeriodId, targetExchangeRateTypeId, conversionMode, active, items } = req.body;
+    const { name, description, schoolPeriodId, targetExchangeRateTypeId, conversionMode, active, items, effectiveMonth } = req.body;
     const plan = await EnrollmentPlan.findByPk(Number(id));
     if (!plan) return res.status(404).json({ message: 'Plan no encontrado' });
+    const eff = await resolveEffectiveMonth(Number(schoolPeriodId ?? plan.schoolPeriodId), effectiveMonth ?? plan.effectiveMonth);
+    if (eff.error) return res.status(400).json({ message: eff.error });
 
     const t = await sequelize.transaction();
     try {
@@ -507,6 +612,7 @@ export const updateEnrollmentPlan = async (req: Request, res: Response) => {
         targetExchangeRateTypeId: targetExchangeRateTypeId ?? plan.targetExchangeRateTypeId,
         conversionMode: conversionMode ?? plan.conversionMode,
         active: active ?? plan.active,
+        effectiveMonth: eff.month!,
       }, { transaction: t });
 
       if (Array.isArray(items)) {
@@ -554,7 +660,7 @@ export const deleteEnrollmentPlan = async (req: Request, res: Response) => {
 export const calculateEnrollmentPlan = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { date } = req.query; // optional date for historical rate, defaults to today
+    const { date, month } = req.query; // optional date for historical rate (defaults to today); optional month to pick fee versions
     const targetDate = date ? String(date) : new Date().toISOString().slice(0, 10);
 
     const plan = await EnrollmentPlan.findByPk(Number(id), {
@@ -568,6 +674,15 @@ export const calculateEnrollmentPlan = async (req: Request, res: Response) => {
       ],
     });
     if (!plan) return res.status(404).json({ message: 'Plan no encontrado' });
+
+    // Fee items point to a specific fee row, but costs are versioned by month:
+    // charge the version in force for the requested month (default: the plan's own month).
+    const feeMonth = month ? String(month) : plan.effectiveMonth;
+    for (const item of (plan as any).items) {
+      if (item.itemType !== 'fee' || !item.fee) continue;
+      const resolved = await resolveFee(plan.schoolPeriodId, item.fee.key, feeMonth);
+      if (resolved) item.fee = resolved;
+    }
 
     // Collect all exchangeRateTypeIds needed
     const typeIds = new Set<number>();

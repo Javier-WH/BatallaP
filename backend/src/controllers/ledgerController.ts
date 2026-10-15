@@ -5,6 +5,9 @@ import {
   Inscription, Person, Grade, Section, SchoolPeriod,
   Payment, Charge, Fee, SellableItem, ExchangeRate, ExchangeRateType,
 } from '@/models/index';
+import { getBillingMonths, monthCodeFromDate } from '@/services/billingCalendarService';
+import { pickEffective } from '@/services/feeResolverService';
+import { generateChargesForInscription } from '@/services/chargeScheduleService';
 
 // ── Ledger: list students by section with their charges & payments ──
 
@@ -30,8 +33,13 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
       ],
     });
 
+    const period = await SchoolPeriod.findByPk(Number(schoolPeriodId), {
+      attributes: ['id', 'billingStartMonth', 'billingEndMonth'],
+    });
+    const months = getBillingMonths(period ?? {});
+
     if (inscriptions.length === 0) {
-      return res.json({ students: [], monthlyFee: null, feeCurrency: null });
+      return res.json({ students: [], monthlyFee: null, feeCurrency: null, months });
     }
 
     const inscriptionIds = inscriptions.map((i: any) => i.id);
@@ -54,10 +62,24 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
     });
 
     // Get the monthly fee for this period (to know the expected amount per month)
-    const monthlyFee = await Fee.findOne({
+    const monthlyFees = await Fee.findAll({
       where: { schoolPeriodId: Number(schoolPeriodId), key: 'mensualidad', active: true },
       include: [{ model: ExchangeRateType, as: 'exchangeRateType' }],
     });
+    const feeView = (f: any) => ({
+      id: f.id,
+      amount: Number(f.amount),
+      currency: f.exchangeRateType?.currency ?? 'USD',
+      currencyName: f.exchangeRateType?.name ?? '—',
+    });
+    const monthlyFeeByMonth: Record<string, ReturnType<typeof feeView> | null> = {};
+    for (const m of months) {
+      const f = pickEffective(monthlyFees as any[], m, period ?? {});
+      monthlyFeeByMonth[m] = f ? feeView(f) : null;
+    }
+    // Headline fee: the one in force for the current month (or the first billed month).
+    const currentCode = monthCodeFromDate(new Date());
+    const monthlyFee = monthlyFeeByMonth[months.includes(currentCode) ? currentCode : months[0]] ?? null;
 
     // Group charges & payments by inscriptionId
     const chargesByInscription: Record<number, any[]> = {};
@@ -106,6 +128,8 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
         personId: person?.id,
         name: `${person?.lastName}, ${person?.firstName}`,
         document: person?.document,
+        rosterNumber: insc.rosterNumber ?? null,
+        entryMonth: insc.entryMonth ?? null,
         gradeName: (insc.grade as any)?.name,
         sectionName: (insc.section as any)?.name,
         months: monthsData,
@@ -116,18 +140,53 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
       };
     });
 
+    // Canonical roster order: rosterNumber ASC (NULLs last), name as tiebreak.
+    students.sort((a, b) => {
+      const ra = a.rosterNumber;
+      const rb = b.rosterNumber;
+      if (ra != null && rb != null && ra !== rb) return ra - rb;
+      if (ra != null && rb == null) return -1;
+      if (ra == null && rb != null) return 1;
+      return a.name.localeCompare(b.name, 'es') || a.inscriptionId - b.inscriptionId;
+    });
+
     return res.json({
       students,
-      monthlyFee: monthlyFee ? {
-        id: monthlyFee.id,
-        amount: Number(monthlyFee.amount),
-        currency: (monthlyFee as any).exchangeRateType?.currency ?? 'USD',
-        currencyName: (monthlyFee as any).exchangeRateType?.name ?? '—',
-      } : null,
+      months,
+      monthlyFee,
+      monthlyFeeByMonth,
     });
   } catch (error) {
     console.error('[getLedgerBySection] Error:', error);
     return res.status(500).json({ message: 'Error al obtener ledger' });
+  }
+};
+
+// ── Change the entry month of an inscription and generate the debts it now owes ──
+
+export const updateEntryMonth = async (req: Request, res: Response) => {
+  const t = await sequelize.transaction();
+  try {
+    const inscription = await Inscription.findByPk(Number(req.params.id), { transaction: t });
+    if (!inscription) {
+      await t.rollback();
+      return res.status(404).json({ message: 'Inscripción no encontrada' });
+    }
+    const period = await SchoolPeriod.findByPk(inscription.schoolPeriodId, { transaction: t });
+    const { entryMonth } = req.body ?? {};
+    if (!period || !getBillingMonths(period).includes(entryMonth)) {
+      await t.rollback();
+      return res.status(400).json({ message: 'El mes de ingreso no pertenece al calendario de cobro del período' });
+    }
+    await inscription.update({ entryMonth }, { transaction: t });
+    // Only adds what is missing: existing debts (and their payments) are never removed.
+    const result = await generateChargesForInscription(inscription.id, { transaction: t });
+    await t.commit();
+    return res.json({ entryMonth, generated: result.created + result.reactivated, warnings: result.warnings });
+  } catch (error) {
+    await t.rollback();
+    console.error('[updateEntryMonth] Error:', error);
+    return res.status(500).json({ message: 'Error al actualizar el mes de ingreso' });
   }
 };
 
@@ -354,8 +413,8 @@ export const getSectionsForPeriod = async (req: Request, res: Response) => {
     const inscriptions = await Inscription.findAll({
       where: { schoolPeriodId: Number(schoolPeriodId) },
       include: [
-        { model: Section, as: 'section', attributes: ['id', 'name'] },
-        { model: Grade, as: 'grade', attributes: ['id', 'name'] },
+        { model: Section, as: 'section', attributes: ['id', 'name', 'isMateriaPendiente'] },
+        { model: Grade, as: 'grade', attributes: ['id', 'name', 'order'] },
       ],
       attributes: ['sectionId', 'gradeId'],
       group: ['sectionId', 'gradeId', 'section.id', 'grade.id'],
@@ -368,10 +427,15 @@ export const getSectionsForPeriod = async (req: Request, res: Response) => {
         isMateriaPendiente: (i.section as any)?.isMateriaPendiente === true,
         gradeId: i.gradeId,
         gradeName: (i.grade as any)?.name ?? '—',
+        gradeOrder: (i.grade as any)?.order ?? 9999,
       }))
       .filter((v: any, idx: number, arr: any[]) => arr.findIndex((a: any) => a.gradeId === v.gradeId && a.sectionId === v.sectionId) === idx)
       .filter((s: any) => !s.isMateriaPendiente)
-      .sort((a: any, b: any) => a.gradeName.localeCompare(b.gradeName) || a.sectionName.localeCompare(b.sectionName));
+      .sort((a: any, b: any) =>
+        a.gradeOrder - b.gradeOrder
+        || a.gradeName.localeCompare(b.gradeName, 'es')
+        || a.sectionName.localeCompare(b.sectionName, 'es'))
+      .map(({ isMateriaPendiente, gradeOrder, ...rest }) => rest);
 
     return res.json(sections);
   } catch (error) {
