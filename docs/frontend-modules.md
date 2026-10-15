@@ -109,6 +109,9 @@ Todos los servicios consumen la instancia `api` con `withCredentials: true`.
 | `admin/EnrollmentQuestions.tsx` | Gestión de preguntas del formulario de inscripción. |
 | `admin/GradeEditPermissions.tsx` | Panel para otorgar/revocar permisos de edición de notas. |
 | `admin/TeacherProjection.tsx` | Proyección de asignaciones de profesores por período. |
+| `admin/PaymentsConfig.tsx` (`/admin/pagos`) | Configuración de pagos: tipos de cambio, **costos fijos con vigencia por mes** (botón "Nueva vigencia"), descuentos y becas (catálogo de motivos), **calendario de cobro** por período, ítems vendibles y planes de inscripción (con vigencia). El botón **Generar / actualizar deudas** abre una vista previa y aplica la generación/sincronización de deudas del período presente. |
+| `admin/PaymentLedger.tsx` (`/admin/ledger`) | Ledger de pagos por sección: selector en orden canónico, número de lista, orden por nombre (A→Z, Z→A, canónico), meses según el calendario del período y columna **Inscripción** (deudas sin mes). **Clic derecho o botón ⋯** sobre un estudiante: agregar deuda (mensualidad, matrícula, gastos, ítem vendible o extraordinaria), registrar pago, descuentos y becas, cambiar mes de ingreso. |
+| `admin/components/{BillingCalendarCard,ChargeSyncModal,DiscountsModal,DiscountReasonsCard}.tsx` | Piezas de las dos páginas anteriores. |
 
 ### Control de Estudios (`/control-estudios/*`)
 | Archivo | Descripción |

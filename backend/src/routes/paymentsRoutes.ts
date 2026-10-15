@@ -17,6 +17,9 @@ import {
   upsertFee,
   updateFee,
   updateBillingCalendar,
+  listDiscountReasons,
+  createDiscountReason,
+  updateDiscountReason,
   previewChargeSync,
   applyChargeSync,
   // Sellable items
@@ -58,6 +61,11 @@ router.post('/exchange-rates/fetch-bcv', fetchBcvRates);
 router.get('/fees', listFees);
 router.post('/fees', upsertFee);
 router.put('/fees/:id', updateFee);
+
+// ── Discount reasons ──
+router.get('/discount-reasons', listDiscountReasons);
+router.post('/discount-reasons', createDiscountReason);
+router.put('/discount-reasons/:id', updateDiscountReason);
 
 // ── Charge generation / sync (whole period) ──
 router.post('/charges/preview', previewChargeSync);

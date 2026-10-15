@@ -152,6 +152,8 @@ import EnrollmentPlan from './EnrollmentPlan';
 import EnrollmentPlanItem from './EnrollmentPlanItem';
 import Payment from './Payment';
 import Charge from './Charge';
+import DiscountReason from './DiscountReason';
+import InscriptionDiscount from './InscriptionDiscount';
 import ConstanciaTemplate from './ConstanciaTemplate';
 import TeacherAvailability from './TeacherAvailability';
 import TeacherAdminHour from './TeacherAdminHour';
@@ -618,6 +620,16 @@ Charge.belongsTo(SellableItem, { foreignKey: 'sellableItemId', as: 'sellableItem
 SellableItem.hasMany(Payment, { foreignKey: 'sellableItemId', as: 'payments' });
 Payment.belongsTo(SellableItem, { foreignKey: 'sellableItemId', as: 'sellableItem' });
 
+// ── Ledger: discounts / scholarships ──
+
+// Inscription <-> InscriptionDiscount (rules applied when the ledger is read)
+Inscription.hasMany(InscriptionDiscount, { foreignKey: 'inscriptionId', as: 'discounts' });
+InscriptionDiscount.belongsTo(Inscription, { foreignKey: 'inscriptionId', as: 'inscription' });
+
+// DiscountReason <-> InscriptionDiscount
+DiscountReason.hasMany(InscriptionDiscount, { foreignKey: 'reasonId', as: 'discounts' });
+InscriptionDiscount.belongsTo(DiscountReason, { foreignKey: 'reasonId', as: 'reason' });
+
 // Grade change log (unified audit trail)
 GradeChangeLog.belongsTo(User, { foreignKey: 'editedBy', as: 'editor' });
 User.hasMany(GradeChangeLog, { foreignKey: 'editedBy', as: 'gradeChanges' });
@@ -744,6 +756,8 @@ export {
   EnrollmentPlanItem,
   Payment,
   Charge,
+  DiscountReason,
+  InscriptionDiscount,
   ConstanciaTemplate,
   TeacherAvailability,
   TeacherAdminHour,

@@ -9,6 +9,7 @@ import {
   EnrollmentPlan,
   EnrollmentPlanItem,
   SchoolPeriod,
+  DiscountReason,
 } from '@/models/index';
 import { scrapeBcvRates } from '@/services/bcvScraperService';
 import { getBillingMonths, compareBillingMonths } from '@/services/billingCalendarService';
@@ -371,6 +372,54 @@ export const updateBillingCalendar = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[updateBillingCalendar] Error:', error);
     return res.status(500).json({ message: 'Error al actualizar el calendario de cobro' });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+// Discount reasons (catalog for discounts / scholarships)
+// ─────────────────────────────────────────────────────────────
+
+export const listDiscountReasons = async (_req: Request, res: Response) => {
+  try {
+    return res.json(await DiscountReason.findAll({ order: [['name', 'ASC']] }));
+  } catch (error) {
+    console.error('[listDiscountReasons] Error:', error);
+    return res.status(500).json({ message: 'Error al listar motivos de descuento' });
+  }
+};
+
+export const createDiscountReason = async (req: Request, res: Response) => {
+  try {
+    const name = String(req.body?.name ?? '').trim();
+    if (!name) return res.status(400).json({ message: 'El nombre del motivo es requerido' });
+    if (await DiscountReason.findOne({ where: { name } })) {
+      return res.status(400).json({ message: 'Ya existe un motivo con ese nombre' });
+    }
+    const reason = await DiscountReason.create({ name, description: req.body?.description || null });
+    return res.status(201).json(reason);
+  } catch (error) {
+    console.error('[createDiscountReason] Error:', error);
+    return res.status(500).json({ message: 'Error al crear el motivo' });
+  }
+};
+
+export const updateDiscountReason = async (req: Request, res: Response) => {
+  try {
+    const reason = await DiscountReason.findByPk(Number(req.params.id));
+    if (!reason) return res.status(404).json({ message: 'Motivo no encontrado' });
+    const name = req.body?.name !== undefined ? String(req.body.name).trim() : reason.name;
+    if (!name) return res.status(400).json({ message: 'El nombre del motivo es requerido' });
+    const duplicate = await DiscountReason.findOne({ where: { name, id: { [Op.ne]: reason.id } } });
+    if (duplicate) return res.status(400).json({ message: 'Ya existe un motivo con ese nombre' });
+    await reason.update({
+      name,
+      description: req.body?.description !== undefined ? req.body.description || null : reason.description,
+      active: req.body?.active ?? reason.active,
+    });
+    return res.json(reason);
+  } catch (error) {
+    console.error('[updateDiscountReason] Error:', error);
+    return res.status(500).json({ message: 'Error al actualizar el motivo' });
   }
 };
 

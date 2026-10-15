@@ -287,16 +287,31 @@ export interface LedgerStudent {
   entryMonth: string | null;
   gradeName: string;
   sectionName: string;
-  months: Record<string, {
-    charges: any[];
-    payments: any[];
-    totalCharged: number;
-    totalPaid: number;
-  }>;
-  nonMonthly: {
-    charges: any[];
-    payments: any[];
-  };
+  months: Record<string, LedgerBucket>;
+  nonMonthly: LedgerBucket;
+  discounts: LedgerDiscount[];
+}
+
+/** Charges and payments of one month (or of the non-monthly debts). totalCharged is NET of discounts. */
+export interface LedgerBucket {
+  charges: any[];
+  payments: any[];
+  grossCharged: number;
+  totalDiscount: number;
+  totalCharged: number;
+  totalPaid: number;
+}
+
+export interface LedgerDiscount {
+  id: number;
+  reasonId: number;
+  reasonName: string;
+  kind: 'percent' | 'fixed';
+  value: number;
+  appliesTo: 'mensualidad' | 'matricula' | 'todo';
+  fromMonth: string | null;
+  toMonth: string | null;
+  note: string | null;
 }
 
 export interface LedgerResponse {
@@ -344,6 +359,8 @@ export interface PaymentPayload {
   bank?: string;
   paymentDate?: string;
   notes?: string;
+  /** Settles enrollment / one-time debts: the payment is not assigned to any month. */
+  nonMonthly?: boolean;
 }
 
 export async function createPayment(payload: PaymentPayload): Promise<any> {
@@ -354,6 +371,49 @@ export async function createPayment(payload: PaymentPayload): Promise<any> {
 export async function updateEntryMonth(inscriptionId: number, entryMonth: string): Promise<{ entryMonth: string; generated: number; warnings: string[] }> {
   const { data } = await api.put(`/ledger/inscriptions/${inscriptionId}/entry-month`, { entryMonth });
   return data;
+}
+
+// ── Discounts / scholarships ──
+
+export interface DiscountReason {
+  id: number;
+  name: string;
+  description: string | null;
+  active: boolean;
+}
+
+export async function listDiscountReasons(): Promise<DiscountReason[]> {
+  const { data } = await api.get<DiscountReason[]>('/payments/discount-reasons');
+  return data;
+}
+
+export async function createDiscountReason(payload: { name: string; description?: string }): Promise<DiscountReason> {
+  const { data } = await api.post<DiscountReason>('/payments/discount-reasons', payload);
+  return data;
+}
+
+export async function updateDiscountReason(id: number, payload: Partial<DiscountReason>): Promise<DiscountReason> {
+  const { data } = await api.put<DiscountReason>(`/payments/discount-reasons/${id}`, payload);
+  return data;
+}
+
+export interface DiscountPayload {
+  reasonId: number;
+  kind: 'percent' | 'fixed';
+  value: number;
+  appliesTo: 'mensualidad' | 'matricula' | 'todo';
+  fromMonth?: string | null;
+  toMonth?: string | null;
+  note?: string | null;
+}
+
+export async function createInscriptionDiscount(inscriptionId: number, payload: DiscountPayload): Promise<any> {
+  const { data } = await api.post(`/ledger/inscriptions/${inscriptionId}/discounts`, payload);
+  return data;
+}
+
+export async function deleteInscriptionDiscount(id: number): Promise<void> {
+  await api.delete(`/ledger/discounts/${id}`);
 }
 
 export interface ChargePayload {

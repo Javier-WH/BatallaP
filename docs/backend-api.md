@@ -570,6 +570,43 @@ Reglas de notas (idénticas al boletín, via `GradeCalculationService`):
 
 ---
 
+## 💵 Pagos – `/api/payments` (`paymentsRoutes.ts`) y Ledger – `/api/ledger` (`ledgerRoutes.ts`)
+
+**Acceso:** todo el módulo exige sesión y rol `Master` o `Administrador` (`requirePaymentsAccess`). Única excepción: las tasas de cambio de solo lectura (`GET /api/payments/exchange-rates` y `/at-date`), abiertas a cualquier usuario autenticado (calculadora, header, caché offline).
+
+### Pagos / configuración – `/api/payments`
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET/POST/PUT/DELETE | `/exchange-rate-types[/:id]` | Tipos de cambio. |
+| GET | `/exchange-rates`, `/exchange-rates/at-date` | Historial / tasas a una fecha (cualquier sesión). |
+| POST | `/exchange-rates`, `/exchange-rates/bulk`, `/exchange-rates/fetch-bcv` | Cargar tasas. |
+| GET | `/fees?schoolPeriodId=` | Costos fijos. **Versionados por `effectiveMonth`**: varias filas por (período, `key`), ordenadas por calendario de cobro. |
+| POST | `/fees` | Crea/actualiza la versión (`schoolPeriodId`, `key`, `effectiveMonth`). `effectiveMonth` opcional (default: primer mes del período); debe pertenecer al calendario de cobro (400). Mismo (período, key, mes) actualiza; otro mes crea **nueva vigencia** sin tocar las anteriores. |
+| PUT | `/fees/:id` | Corrige monto/nombre/moneda/activo de una vigencia existente. |
+| PUT | `/billing-calendar/:schoolPeriodId` | `{ billingStartMonth, billingEndMonth }` (1–12). Devuelve también `months` (códigos `Sep`…). |
+| GET/POST/PUT/DELETE | `/sellable-items[/:id]` | Items vendibles. |
+| GET/POST/PUT/DELETE | `/enrollment-plans[/:id]` | Planes de inscripción, también con `effectiveMonth`. |
+| GET | `/enrollment-plans/:id/calculate?date=&month=` | Calcula el total; los ítems de costo resuelven la versión vigente del mes (`month`, default el del plan). |
+| GET/POST/PUT | `/discount-reasons[/:id]` | Catálogo de motivos de descuento/beca (nombre único; desactivar no afecta descuentos ya aplicados). |
+| POST | `/charges/preview` | Vista previa de **Generar / actualizar deudas** del período activo (o preinscripción). Body opcional `{ schoolPeriodId }`. No escribe. Devuelve `generate` (estudiantes, deudas, montos), `sync` (deudas a actualizar, ya pagadas), `excludedMateriaPendiente` y `warnings`. |
+| POST | `/charges/apply` | Ejecuta el plan en una transacción: crea las deudas faltantes y ajusta las deudas `schedule` con saldo pendiente/parcial. Las **manuales** y las ya **pagadas completamente** no se tocan. Devuelve `{ created, reactivated, updated, skippedPaid }`. |
+
+### Ledger – `/api/ledger`
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/sections/:schoolPeriodId` | Secciones con inscripciones (sin Materia Pendiente), orden canónico: `Grade.order`, nombre de año, sección. |
+| GET | `/:schoolPeriodId/:gradeId/:sectionId` | Ledger de la sección: `students` en orden de lista (`rosterNumber`), `months` (meses del período), `monthlyFee` y `monthlyFeeByMonth` (tarifa vigente de cada mes). Por estudiante: `months[m]` y `nonMonthly` con `grossCharged`, `totalDiscount`, `totalCharged` (**neto**), `totalPaid`; `discounts` y `entryMonth`. |
+| PUT | `/inscriptions/:id/entry-month` | Cambia el mes de ingreso (debe estar en el calendario) y genera las deudas que falten; nunca borra deudas ni pagos. |
+| GET/POST | `/inscriptions/:id/discounts` | Lista / aplica un descuento o beca (`reasonId`, `kind` `percent`\|`fixed`, `value`, `appliesTo` `mensualidad`\|`matricula`\|`todo`, `fromMonth`, `toMonth`, `note`). Valida porcentaje ≤ 100, meses dentro del calendario y motivo activo. |
+| PUT/DELETE | `/discounts/:id` | Edita / elimina un descuento. |
+| POST | `/payments` | Registra un pago. Sin `month` se distribuye al primer mes con deuda; con `nonMonthly: true` salda inscripción u otras deudas sin mes. |
+| POST | `/charges`, `/charges/bulk` | Deuda manual (`source = 'manual'`): mensualidad, matrícula, gastos, ítem vendible o extraordinaria. |
+| DELETE | `/payments/:id`, `/charges/:id` | Elimina un pago / deuda. |
+
+**Generación automática de deudas** (`chargeScheduleService`): al matricular (`POST /api/matriculations/:id/enroll`, acepta `entryMonth` opcional; por defecto el mes de la fecha de inscripción) y al promocionar en el cierre de período se crean, en la misma transacción, un cargo por ítem del plan de inscripción vigente y una mensualidad por cada mes posterior al de ingreso hasta el final del calendario (el mes de ingreso queda cubierto por la inscripción). Se omiten las inscripciones de una sección de **Materia Pendiente** (`Section.isMateriaPendiente`) y las retiradas; `escolaridad` nunca filtra. Al retirar, las deudas `schedule` sin pagos se desactivan; al reactivar se regeneran.
+
+---
+
 ## Patrones generales
 
 - **Autenticación**: implícita por sesión. Revisar `req.session` en los controllers que requieren usuario logueado.

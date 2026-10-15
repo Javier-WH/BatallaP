@@ -5,11 +5,12 @@ import {
 } from 'antd';
 import {
   DollarOutlined, PlusOutlined, EditOutlined, DeleteOutlined,
-  CalculatorOutlined, ShoppingOutlined, BankOutlined, ReloadOutlined, CalendarOutlined, SyncOutlined,
+  CalculatorOutlined, ShoppingOutlined, BankOutlined, ReloadOutlined, CalendarOutlined, SyncOutlined, PercentageOutlined,
 } from '@ant-design/icons';
 import { useSchool } from '@/context/SchoolContext';
 import BillingCalendarCard from './components/BillingCalendarCard';
 import ChargeSyncModal from './components/ChargeSyncModal';
+import DiscountReasonsCard from './components/DiscountReasonsCard';
 import { billingMonthOptions, MONTH_NAMES } from '@/utils/billingMonths';
 import type {
   ExchangeRateType, ExchangeRate, Fee, SellableItem, EnrollmentPlan, PlanCalculation,
@@ -571,6 +572,13 @@ const PaymentsConfig: React.FC = () => {
                 <Table columns={feeColumns} dataSource={fees} rowKey="id" loading={feesLoading} pagination={false} size="small" />
               </Card>
             ),
+          },
+
+          // ── Tab: Motivos de descuento ──
+          {
+            key: 'discountReasons',
+            label: <span><PercentageOutlined /> Descuentos y Becas</span>,
+            children: <DiscountReasonsCard />,
           },
 
           // ── Tab: Calendario de cobro ──

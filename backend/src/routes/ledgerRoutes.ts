@@ -9,6 +9,10 @@ import {
   deleteCharge,
   getSectionsForPeriod,
   updateEntryMonth,
+  listInscriptionDiscounts,
+  createInscriptionDiscount,
+  updateInscriptionDiscount,
+  deleteInscriptionDiscount,
 } from '@/controllers/ledgerController';
 
 const router = Router();
@@ -18,11 +22,18 @@ router.use(requirePaymentsAccess);
 // GET sections available for a period (for dropdown)
 router.get('/sections/:schoolPeriodId', getSectionsForPeriod);
 
-// GET ledger data for a grade+section in a period
-router.get('/:schoolPeriodId/:gradeId/:sectionId', getLedgerBySection);
+// Discounts / scholarships of an inscription.
+// Declared BEFORE the generic /:schoolPeriodId/:gradeId/:sectionId route, which would swallow the GET.
+router.get('/inscriptions/:id/discounts', listInscriptionDiscounts);
+router.post('/inscriptions/:id/discounts', createInscriptionDiscount);
+router.put('/discounts/:id', updateInscriptionDiscount);
+router.delete('/discounts/:id', deleteInscriptionDiscount);
 
 // PUT change the entry month of an inscription (generates the debts it now owes)
 router.put('/inscriptions/:id/entry-month', updateEntryMonth);
+
+// GET ledger data for a grade+section in a period
+router.get('/:schoolPeriodId/:gradeId/:sectionId', getLedgerBySection);
 
 // POST create a payment
 router.post('/payments', createPayment);

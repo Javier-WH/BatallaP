@@ -110,6 +110,8 @@ Los seis roles del sistema, exactamente como aparecen en la tabla `roles` y en `
   - `canManageEnrollment` (`Master`/`Administrador`/`Control de Estudios`): `POST /api/matriculations/:id/enroll`, `POST /api/inscriptions/:id/unmatriculate`, `PUT`/`PATCH /api/inscriptions/:id`, `PATCH /api/matriculations/:id`, `POST`/`DELETE /api/inscriptions/:id/subjects`, `PUT`/`POST /api/inscriptions/:id/group-choices*`.
   - Visibilidad de matrícula (`PATCH /api/matriculations/:id/visibility`, `POST /api/matriculations/bulk-visibility`): `isPrivilegedUser` — `Master`/`Administrador` solamente.
 
+- **Módulo de pagos** (`/api/payments`, `/api/ledger`): `requirePaymentsAccess` — `Master`/`Administrador` solamente (401 sin sesión, 403 otros roles). Excepción: `GET /api/payments/exchange-rates` y `/exchange-rates/at-date` solo exigen sesión.
+
 ## Reglas de edición de usuarios
 
 En `EditUser.tsx` + `userController.updateUser`:

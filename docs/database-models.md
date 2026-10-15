@@ -114,6 +114,21 @@
 | `ScheduleLinkItem` | Item de un vínculo: `linkId` + `subjectId` + `periodGradeId`. UNIQUE(`linkId`, `subjectId`, `periodGradeId`). Un par (materia, grado) solo puede pertenecer a un vínculo por período. |
 | `TeacherAdminHour` | Hora administrativa pintada sobre el horario del profesor (no es materia ni `ScheduleEntry`). UNIQUE(`teacherId`, `schoolPeriodId`, `day`, `period_id`). Se limpian al regenerar horarios del período. Base para cuantificación de horas (futuro módulo de sueldos). |
 
+### 💵 Pagos y Ledger
+
+| Modelo | Descripción |
+|--------|-------------|
+| `ExchangeRateType` / `ExchangeRate` | Tipos de cambio y su historial por fecha. |
+| `Fee` | Costo fijo (`key`: `mensualidad`/`matricula`/`gastos_administrativos`). **Versionado por `effectiveMonth`** (código de mes). UNIQUE(`schoolPeriodId`, `key`, `effectiveMonth`). La versión vigente en un mes es la activa con mayor `effectiveMonth` ≤ ese mes (`feeResolverService`). |
+| `SellableItem` | Ítems vendibles (uniformes, distintivos…). |
+| `EnrollmentPlan` / `EnrollmentPlanItem` | Plan de inscripción (también con `effectiveMonth`) y sus ítems (costo o ítem vendible × cantidad). |
+| `Charge` | Deuda de una inscripción. `month` NULL = deuda única (inscripción, ítems, extraordinarias). `source`: `schedule` (generada desde costos/plan) o `manual`. `scheduleKey` (p. ej. `mensualidad:Oct`, `plan:fee:matricula`) identifica la deuda generada; UNIQUE(`inscriptionId`, `scheduleKey`) garantiza idempotencia. |
+| `Payment` | Pago de una inscripción; `month` NULL = pago de deudas sin mes. |
+| `DiscountReason` | Catálogo de motivos de descuento/beca (`name` único, `active`). |
+| `InscriptionDiscount` | Regla de descuento de una inscripción: `kind` (`percent`/`fixed`), `value`, `appliesTo` (`mensualidad`/`matricula`/`todo`), `fromMonth`/`toMonth`, `note`, `active`, `createdByPersonId`. Se evalúa **al leer** el ledger (el % sigue las tarifas); nunca se guarda como cargo negativo. |
+
+Campos relacionados: `SchoolPeriod.billingStartMonth`/`billingEndMonth` (1–12, default 9→8: meses que se cobran) e `Inscription.entryMonth` (mes de ingreso; NULL = desde el primer mes).
+
 ## Asociaciones clave
 
 ### Usuarios

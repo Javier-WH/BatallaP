@@ -1,9 +1,10 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Dropdown, type MenuProps } from 'antd';
+import DiscountsModal from './components/DiscountsModal';
 import {
   ChevronDown, Search, Banknote, Smartphone, Landmark, CreditCard, Hash,
   Plus, X, DollarSign, TrendingUp, AlertTriangle,
-  ArrowDownAZ, ArrowUpAZ, ArrowUpDown, MoreHorizontal, CalendarClock,
+  ArrowDownAZ, ArrowUpAZ, ArrowUpDown, MoreHorizontal, CalendarClock, BadgePercent,
 } from 'lucide-react';
 import { useSchool } from '@/context/SchoolContext';
 import {
@@ -19,6 +20,8 @@ const MONTH_FULL: Record<string, string> = {
   Jan: 'Enero', Feb: 'Febrero', Mar: 'Marzo', Apr: 'Abril',
   May: 'Mayo', Jun: 'Junio', Jul: 'Julio', Aug: 'Agosto',
 };
+// Pseudo-month key of the column that groups enrollment and other one-time debts.
+const OTHER = '__other';
 const NAME_COL = 468;
 const MONTH_COL = 143;
 const METHODS = [
@@ -137,7 +140,7 @@ function TransactionRow({ txn, index, onDelete }: { txn: any; index: number; onD
 
 function MonthDetail({ month, data, monthlyFee, onAddPayment, onDeletePayment }: {
   month: string;
-  data: { charges: any[]; payments: any[]; totalCharged: number; totalPaid: number } | undefined;
+  data: { charges: any[]; payments: any[]; totalCharged: number; totalPaid: number; grossCharged?: number; totalDiscount?: number } | undefined;
   monthlyFee: { amount: number; currency: string } | null;
   onAddPayment: () => void;
   onDeletePayment: (paymentId: number) => void;
@@ -152,15 +155,21 @@ function MonthDetail({ month, data, monthlyFee, onAddPayment, onDeletePayment }:
   return (
     <div className="border-b-2 border-[#B9BEC7] bg-[#FAFBFC]">
       <div className="flex items-center gap-4 px-3 py-2 border-b border-[#E4E6EB] flex-wrap">
-        <span className="text-xs font-semibold text-[#14181F] uppercase tracking-wide">{MONTH_FULL[month]}</span>
+        <span className="text-xs font-semibold text-[#14181F] uppercase tracking-wide">{month === OTHER ? 'Inscripción y otros' : MONTH_FULL[month]}</span>
         {charged > 0 && (
-          <span className="text-xs text-[#6B7280]">Cuota <b className="text-[#14181F] font-semibold">{charged.toFixed(2)} {feeCurrency}</b></span>
+          <span className="text-xs text-[#6B7280]">{month === OTHER ? 'Total' : 'Cuota'} <b className="text-[#14181F] font-semibold">{charged.toFixed(2)} {feeCurrency}</b></span>
+        )}
+        {(data?.totalDiscount ?? 0) > 0 && (
+          <span className="text-xs text-[#0F7A45]">Descuento <b className="font-semibold">-{(data!.totalDiscount ?? 0).toFixed(2)} {feeCurrency}</b></span>
         )}
         <span className="text-xs text-[#0F7A45]">Pagado <b className="font-semibold">{paid.toFixed(2)} {feeCurrency}</b></span>
         {remaining > 0 && <span className="text-xs text-[#8A5A00]">Falta <b className="font-semibold">{remaining.toFixed(2)} {feeCurrency}</b></span>}
         {overflow > 0 && <span className="text-xs text-[#2F5EA8]">Excedente <b className="font-semibold">{overflow.toFixed(2)} {feeCurrency}</b></span>}
-        {charged === 0 && (
+        {charged === 0 && month !== OTHER && (
           <span className="text-xs text-[#8A5A00]">Sin cobro registrado — cuota esperada: <b>{feeAmount.toFixed(2)} {feeCurrency}</b></span>
+        )}
+        {charged === 0 && month === OTHER && (
+          <span className="text-xs text-[#8A5A00]">Sin deudas de inscripción u otros conceptos.</span>
         )}
         <button
           onClick={onAddPayment}
@@ -169,6 +178,20 @@ function MonthDetail({ month, data, monthlyFee, onAddPayment, onDeletePayment }:
           <Plus size={13} /> Agregar pago
         </button>
       </div>
+      {data?.charges?.length ? (
+        <div className="border-b border-[#E4E6EB] bg-white">
+          {data.charges.map((c: any) => (
+            <div key={c.id} className="flex items-center gap-3 px-3 py-1.5 text-xs border-b border-[#F0F1F4] last:border-b-0">
+              <span className="flex-1 truncate">{c.description}</span>
+              <span className="tabular-nums text-[#6B7280]">{Number(c.amount).toFixed(2)} {c.currency}</span>
+              {c.discountAmount > 0 && (
+                <span className="tabular-nums text-[#0F7A45]">-{Number(c.discountAmount).toFixed(2)}</span>
+              )}
+              <span className="tabular-nums font-semibold w-24 text-right">{(Number(c.amount) - Number(c.discountAmount ?? 0)).toFixed(2)} {c.currency}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
       {data?.payments?.length ? (
         <div>
           <div className="flex items-stretch text-[10px] font-semibold text-[#8B909A] uppercase tracking-wide bg-[#EDEEF1] border-b border-[#DBDEE4]">
@@ -184,7 +207,7 @@ function MonthDetail({ month, data, monthlyFee, onAddPayment, onDeletePayment }:
           ))}
         </div>
       ) : (
-        <p className="text-xs text-[#9CA3AF] py-3 px-3">Sin pagos registrados este mes.</p>
+        <p className="text-xs text-[#9CA3AF] py-3 px-3">{month === OTHER ? 'Sin pagos registrados para estos conceptos.' : 'Sin pagos registrados este mes.'}</p>
       )}
     </div>
   );
@@ -192,9 +215,13 @@ function MonthDetail({ month, data, monthlyFee, onAddPayment, onDeletePayment }:
 
 function yearProgress(student: LedgerStudent, feeFor: (month: string) => number, months: string[]): number {
   const monthsWithData = months.filter(m => student.months[m]);
-  if (monthsWithData.length === 0) return 0;
-  const paidTotal = monthsWithData.reduce((s, m) => s + Math.min(student.months[m].totalPaid, student.months[m].totalCharged || feeFor(m)), 0);
-  const dueTotal = monthsWithData.reduce((s, m) => s + (student.months[m].totalCharged || feeFor(m)), 0);
+  const other = student.nonMonthly;
+  const hasOther = other && other.totalCharged > 0;
+  if (monthsWithData.length === 0 && !hasOther) return 0;
+  const paidTotal = monthsWithData.reduce((s, m) => s + Math.min(student.months[m].totalPaid, student.months[m].totalCharged || feeFor(m)), 0)
+    + (hasOther ? Math.min(other.totalPaid, other.totalCharged) : 0);
+  const dueTotal = monthsWithData.reduce((s, m) => s + (student.months[m].totalCharged || feeFor(m)), 0)
+    + (hasOther ? other.totalCharged : 0);
   return dueTotal > 0 ? paidTotal / dueTotal : 0;
 }
 
@@ -255,6 +282,7 @@ function AddPaymentModal({ students, months, prefill, monthlyFee, onClose, onSub
           <Field label="Mes">
             <select value={form.month} onChange={set('month')} className={inputCls}>
               <option value="">Automática (al primer mes con deuda)</option>
+              <option value={OTHER}>Inscripción y otros (sin mes)</option>
               {months.map(m => <option key={m} value={m}>{MONTH_FULL[m]}</option>)}
             </select>
           </Field>
@@ -502,6 +530,7 @@ export default function PaymentLedger() {
   const [paymentModal, setPaymentModal] = useState<{ studentId?: number; month?: string } | null>(null);
   const [chargeModal, setChargeModal] = useState<{ studentId?: number; month?: string } | null>(null);
   const [entryModal, setEntryModal] = useState<LedgerStudent | null>(null);
+  const [discountStudentId, setDiscountStudentId] = useState<number | null>(null);
   const [sellableItems, setSellableItems] = useState<SellableItem[]>([]);
   const [flash, setFlash] = useState<string | null>(null);
 
@@ -561,7 +590,8 @@ export default function PaymentLedger() {
       await createPayment({
         inscriptionId: Number(form.studentId),
         schoolPeriodId,
-        month: form.month || undefined,
+        month: form.month && form.month !== OTHER ? form.month : undefined,
+        nonMonthly: form.month === OTHER ? true : undefined,
         amount: parseFloat(form.amount),
         currency: form.currency,
         amountVES: form.currency === 'VES' ? parseFloat(form.amount) : null,
@@ -607,11 +637,13 @@ export default function PaymentLedger() {
     items: [
       { key: 'charge', icon: <AlertTriangle size={14} />, label: 'Agregar deuda…' },
       { key: 'payment', icon: <DollarSign size={14} />, label: 'Registrar pago…' },
+      { key: 'discount', icon: <BadgePercent size={14} />, label: 'Descuentos y becas…' },
       { key: 'entry', icon: <CalendarClock size={14} />, label: `Mes de ingreso (${MONTH_FULL[student.entryMonth ?? months[0]] ?? '—'})…` },
     ],
     onClick: ({ key }) => {
       if (key === 'charge') setChargeModal({ studentId: student.inscriptionId });
       else if (key === 'payment') setPaymentModal({ studentId: student.inscriptionId });
+      else if (key === 'discount') setDiscountStudentId(student.inscriptionId);
       else if (key === 'entry') setEntryModal(student);
     },
   });
@@ -651,13 +683,14 @@ export default function PaymentLedger() {
     }
   };
 
+  const feeAmountFor = (m: string) => (monthlyFeeByMonth[m] ?? monthlyFee)?.amount ?? 0;
   const totalCollected = students.reduce((sum, s) =>
-    sum + months.reduce((m, mo) => m + (s.months[mo]?.totalPaid ?? 0), 0), 0);
+    sum + months.reduce((m, mo) => m + (s.months[mo]?.totalPaid ?? 0), 0) + (s.nonMonthly?.totalPaid ?? 0), 0);
   const avgCompletion = students.length > 0
     ? Math.round(students.reduce((s, st) => s + yearProgress(st, feeAmountFor, months), 0) / students.length * 100)
     : 0;
-  const feeAmountFor = (m: string) => (monthlyFeeByMonth[m] ?? monthlyFee)?.amount ?? 0;
-  const tableWidth = NAME_COL + months.length * MONTH_COL;
+  // One extra column for enrollment and other one-time debts
+  const tableWidth = NAME_COL + (months.length + 1) * MONTH_COL;
 
   return (
     <div className="min-h-screen bg-[#EDEEF1] font-sans text-[#14181F] p-6">
@@ -760,6 +793,10 @@ export default function PaymentLedger() {
                     {nameSort === 'desc' && <ArrowUpAZ size={13} className="text-[#2F5EA8]" />}
                     {nameSort === 'canonical' && <ArrowUpDown size={12} className="opacity-50" />}
                   </button>
+                  <div style={{ width: MONTH_COL }}
+                    className="py-2.5 text-[11px] font-semibold text-center border-r border-[#DBDEE4] uppercase tracking-wide text-[#5B6472]">
+                    Inscripción
+                  </div>
                   {months.map(m => (
                     <div key={m} style={{ width: MONTH_COL }}
                       className={`py-2.5 text-[11px] font-semibold text-center border-r border-[#DBDEE4] uppercase tracking-wide
@@ -790,7 +827,17 @@ export default function PaymentLedger() {
                               {initials(student.name)}
                             </span>
                             <div className="min-w-0 flex-1">
-                              <div className="text-sm font-medium truncate leading-tight">{student.name}</div>
+                              <div className="text-sm font-medium truncate leading-tight">
+                                {student.name}
+                                {student.discounts?.length > 0 && (
+                                  <span
+                                    className="inline-flex items-center gap-0.5 ml-1.5 align-middle text-[#0F7A45]"
+                                    title={student.discounts.map(d => `${d.reasonName}: ${d.kind === 'percent' ? d.value + '%' : d.value}`).join(' · ')}
+                                  >
+                                    <BadgePercent size={13} />
+                                  </span>
+                                )}
+                              </div>
                               <div className="flex items-center gap-1.5 mt-0.5">
                                 <span className="flex-1 h-1.5 bg-[#EDEEF1] border border-[#DBDEE4] overflow-hidden max-w-[90px]">
                                   <span className="block h-full bg-[#2F5EA8]" style={{ width: `${progress * 100}%` }} />
@@ -820,6 +867,14 @@ export default function PaymentLedger() {
                           </button>
                         </div>
 
+                        <MonthCell
+                          paid={student.nonMonthly?.totalPaid ?? 0}
+                          charged={student.nonMonthly?.totalCharged ?? 0}
+                          month={OTHER}
+                          months={months}
+                          isOpen={openKey === `${student.inscriptionId}-${OTHER}`}
+                          onClick={() => toggle(student.inscriptionId, OTHER)}
+                        />
                         {months.map(m => {
                           const data = student.months[m];
                           const key = `${student.inscriptionId}-${m}`;
@@ -847,8 +902,8 @@ export default function PaymentLedger() {
                           <div style={{ width: tableWidth - NAME_COL }}>
                             <MonthDetail
                               month={openMonth}
-                              data={student.months[openMonth]}
-                              monthlyFee={monthlyFeeByMonth[openMonth] ?? monthlyFee}
+                              data={openMonth === OTHER ? student.nonMonthly : student.months[openMonth]}
+                              monthlyFee={openMonth === OTHER ? (monthlyFee ? { amount: 0, currency: monthlyFee.currency } : null) : (monthlyFeeByMonth[openMonth] ?? monthlyFee)}
                               onAddPayment={() => setPaymentModal({ studentId: student.inscriptionId, month: openMonth })}
                               onDeletePayment={handleDeletePayment}
                             />
@@ -880,6 +935,15 @@ export default function PaymentLedger() {
           monthlyFee={monthlyFee}
           onClose={() => setPaymentModal(null)}
           onSubmit={handleAddPayment}
+        />
+      )}
+
+      {discountStudentId !== null && (
+        <DiscountsModal
+          student={students.find(s => s.inscriptionId === discountStudentId) ?? null}
+          months={months}
+          onClose={() => setDiscountStudentId(null)}
+          onChanged={loadLedger}
         />
       )}
 

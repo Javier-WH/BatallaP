@@ -4,7 +4,10 @@ import { Op } from 'sequelize';
 import {
   Inscription, Person, Grade, Section, SchoolPeriod,
   Payment, Charge, Fee, SellableItem, ExchangeRate, ExchangeRateType,
+  InscriptionDiscount, DiscountReason,
 } from '@/models/index';
+import { DISCOUNT_KINDS, DISCOUNT_SCOPES } from '@/models/InscriptionDiscount';
+import { applyDiscountsToCharges, DiscountRule } from '@/services/discountService';
 import { getBillingMonths, monthCodeFromDate } from '@/services/billingCalendarService';
 import { pickEffective } from '@/services/feeResolverService';
 import { generateChargesForInscription } from '@/services/chargeScheduleService';
@@ -81,6 +84,18 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
     const currentCode = monthCodeFromDate(new Date());
     const monthlyFee = monthlyFeeByMonth[months.includes(currentCode) ? currentCode : months[0]] ?? null;
 
+    // Discount rules of these inscriptions (applied below, when reading)
+    const discountRows = await InscriptionDiscount.findAll({
+      where: { inscriptionId: { [Op.in]: inscriptionIds }, active: true },
+      include: [{ model: DiscountReason, as: 'reason', attributes: ['id', 'name'] }],
+      order: [['id', 'ASC']],
+    });
+    const discountsByInscription: Record<number, any[]> = {};
+    for (const d of discountRows) {
+      if (!discountsByInscription[d.inscriptionId]) discountsByInscription[d.inscriptionId] = [];
+      discountsByInscription[d.inscriptionId].push(d);
+    }
+
     // Group charges & payments by inscriptionId
     const chargesByInscription: Record<number, any[]> = {};
     const paymentsByInscription: Record<number, any[]> = {};
@@ -101,27 +116,56 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
       const studentCharges = chargesByInscription[insc.id] || [];
       const studentPayments = paymentsByInscription[insc.id] || [];
 
-      // Group payments by month
-      const monthsData: Record<string, { charges: any[]; payments: any[]; totalCharged: number; totalPaid: number }> = {};
-      for (const c of studentCharges) {
+      // Discounts are rules evaluated here: totalCharged is NET, gross and discount are exposed too
+      const rules: DiscountRule[] = (discountsByInscription[insc.id] || []).map((d: any) => ({
+        id: d.id, kind: d.kind, value: Number(d.value), appliesTo: d.appliesTo,
+        fromMonth: d.fromMonth, toMonth: d.toMonth, active: d.active,
+      }));
+      const { charges: discountedCharges } = applyDiscountsToCharges(
+        studentCharges.map((c: any) => ({ ...c.toJSON(), amount: Number(c.amount) })),
+        rules,
+        period ?? {}
+      );
+
+      type Bucket = { charges: any[]; payments: any[]; grossCharged: number; totalDiscount: number; totalCharged: number; totalPaid: number };
+      const emptyBucket = (): Bucket => ({ charges: [], payments: [], grossCharged: 0, totalDiscount: 0, totalCharged: 0, totalPaid: 0 });
+      const addCharge = (b: Bucket, c: any) => {
+        b.charges.push(c);
+        b.grossCharged += c.amount;
+        b.totalDiscount += c.discountAmount;
+        b.totalCharged += c.amount - c.discountAmount;
+      };
+      const roundBucket = (b: Bucket): Bucket => ({
+        ...b,
+        grossCharged: Math.round(b.grossCharged * 100) / 100,
+        totalDiscount: Math.round(b.totalDiscount * 100) / 100,
+        totalCharged: Math.round(b.totalCharged * 100) / 100,
+        totalPaid: Math.round(b.totalPaid * 100) / 100,
+      });
+
+      // Group by month
+      const monthsData: Record<string, Bucket> = {};
+      const nonMonthly = emptyBucket();
+      for (const c of discountedCharges) {
         if (c.month) {
-          if (!monthsData[c.month]) monthsData[c.month] = { charges: [], payments: [], totalCharged: 0, totalPaid: 0 };
-          monthsData[c.month].charges.push(c);
-          monthsData[c.month].totalCharged += Number(c.amount);
+          if (!monthsData[c.month]) monthsData[c.month] = emptyBucket();
+          addCharge(monthsData[c.month], c);
+        } else {
+          addCharge(nonMonthly, c);
         }
       }
       for (const p of studentPayments) {
         const month = p.month || (p.charge as any)?.month;
         if (month) {
-          if (!monthsData[month]) monthsData[month] = { charges: [], payments: [], totalCharged: 0, totalPaid: 0 };
+          if (!monthsData[month]) monthsData[month] = emptyBucket();
           monthsData[month].payments.push(p);
           monthsData[month].totalPaid += Number(p.amount);
+        } else {
+          nonMonthly.payments.push(p);
+          nonMonthly.totalPaid += Number(p.amount);
         }
       }
-
-      // Non-monthly charges (items, one-time)
-      const nonMonthlyCharges = studentCharges.filter(c => !c.month);
-      const nonMonthlyPayments = studentPayments.filter(p => !p.month && !(p.charge as any)?.month);
+      for (const m of Object.keys(monthsData)) monthsData[m] = roundBucket(monthsData[m]);
 
       return {
         inscriptionId: insc.id,
@@ -133,10 +177,18 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
         gradeName: (insc.grade as any)?.name,
         sectionName: (insc.section as any)?.name,
         months: monthsData,
-        nonMonthly: {
-          charges: nonMonthlyCharges,
-          payments: nonMonthlyPayments,
-        },
+        nonMonthly: roundBucket(nonMonthly),
+        discounts: (discountsByInscription[insc.id] || []).map((d: any) => ({
+          id: d.id,
+          reasonId: d.reasonId,
+          reasonName: d.reason?.name ?? '—',
+          kind: d.kind,
+          value: Number(d.value),
+          appliesTo: d.appliesTo,
+          fromMonth: d.fromMonth,
+          toMonth: d.toMonth,
+          note: d.note,
+        })),
       };
     });
 
@@ -190,6 +242,132 @@ export const updateEntryMonth = async (req: Request, res: Response) => {
   }
 };
 
+// ── Discounts / scholarships of an inscription ──
+
+const discountView = (d: any) => ({
+  id: d.id,
+  inscriptionId: d.inscriptionId,
+  reasonId: d.reasonId,
+  reason: d.reason ? { id: d.reason.id, name: d.reason.name } : undefined,
+  kind: d.kind,
+  value: Number(d.value),
+  appliesTo: d.appliesTo,
+  fromMonth: d.fromMonth,
+  toMonth: d.toMonth,
+  note: d.note,
+  active: d.active,
+  createdAt: d.createdAt,
+});
+
+/** Validates a discount payload against the period billing window; returns an error message or null. */
+const validateDiscount = async (
+  data: { reasonId: any; kind: any; value: any; appliesTo: any; fromMonth?: any; toMonth?: any },
+  period: SchoolPeriod | null
+): Promise<string | null> => {
+  const months = getBillingMonths(period ?? {}) as string[];
+  const value = Number(data.value);
+  if (!DISCOUNT_KINDS.includes(data.kind)) return 'Tipo de descuento inválido';
+  if (!Number.isFinite(value) || value <= 0) return 'El valor del descuento debe ser mayor a 0';
+  if (data.kind === 'percent' && value > 100) return 'El porcentaje no puede superar 100';
+  if (!DISCOUNT_SCOPES.includes(data.appliesTo)) return 'El descuento solo aplica a mensualidad, matrícula o todo';
+  if (data.fromMonth && !months.includes(data.fromMonth)) return 'El mes inicial no pertenece al calendario de cobro';
+  if (data.toMonth && !months.includes(data.toMonth)) return 'El mes final no pertenece al calendario de cobro';
+  if (data.fromMonth && data.toMonth && months.indexOf(data.fromMonth) > months.indexOf(data.toMonth)) {
+    return 'El mes inicial no puede ser posterior al mes final';
+  }
+  const reason = await DiscountReason.findByPk(Number(data.reasonId));
+  if (!reason || !reason.active) return 'Motivo de descuento inválido o inactivo';
+  return null;
+};
+
+export const listInscriptionDiscounts = async (req: Request, res: Response) => {
+  try {
+    const rows = await InscriptionDiscount.findAll({
+      where: { inscriptionId: Number(req.params.id) },
+      include: [{ model: DiscountReason, as: 'reason', attributes: ['id', 'name'] }],
+      order: [['id', 'ASC']],
+    });
+    return res.json(rows.map(discountView));
+  } catch (error) {
+    console.error('[listInscriptionDiscounts] Error:', error);
+    return res.status(500).json({ message: 'Error al listar descuentos' });
+  }
+};
+
+export const createInscriptionDiscount = async (req: Request, res: Response) => {
+  try {
+    const inscription = await Inscription.findByPk(Number(req.params.id));
+    if (!inscription) return res.status(404).json({ message: 'Inscripción no encontrada' });
+    const period = await SchoolPeriod.findByPk(inscription.schoolPeriodId);
+    const { reasonId, kind, value, appliesTo = 'todo', fromMonth, toMonth, note } = req.body ?? {};
+    const error = await validateDiscount({ reasonId, kind, value, appliesTo, fromMonth, toMonth }, period);
+    if (error) return res.status(400).json({ message: error });
+
+    const created = await InscriptionDiscount.create({
+      inscriptionId: inscription.id,
+      reasonId: Number(reasonId),
+      kind,
+      value: Number(value),
+      appliesTo,
+      fromMonth: fromMonth || null,
+      toMonth: toMonth || null,
+      note: note || null,
+      active: true,
+      createdByPersonId: (req.session as any)?.user?.personId ?? null,
+    });
+    return res.status(201).json(discountView(created));
+  } catch (error) {
+    console.error('[createInscriptionDiscount] Error:', error);
+    return res.status(500).json({ message: 'Error al crear el descuento' });
+  }
+};
+
+export const updateInscriptionDiscount = async (req: Request, res: Response) => {
+  try {
+    const discount = await InscriptionDiscount.findByPk(Number(req.params.id));
+    if (!discount) return res.status(404).json({ message: 'Descuento no encontrado' });
+    const inscription = await Inscription.findByPk(discount.inscriptionId);
+    const period = inscription ? await SchoolPeriod.findByPk(inscription.schoolPeriodId) : null;
+    const body = req.body ?? {};
+    const merged = {
+      reasonId: body.reasonId ?? discount.reasonId,
+      kind: body.kind ?? discount.kind,
+      value: body.value ?? discount.value,
+      appliesTo: body.appliesTo ?? discount.appliesTo,
+      fromMonth: body.fromMonth !== undefined ? body.fromMonth : discount.fromMonth,
+      toMonth: body.toMonth !== undefined ? body.toMonth : discount.toMonth,
+    };
+    const error = await validateDiscount(merged, period);
+    if (error) return res.status(400).json({ message: error });
+
+    await discount.update({
+      ...merged,
+      reasonId: Number(merged.reasonId),
+      value: Number(merged.value),
+      fromMonth: merged.fromMonth || null,
+      toMonth: merged.toMonth || null,
+      note: body.note !== undefined ? body.note || null : discount.note,
+      active: body.active ?? discount.active,
+    });
+    return res.json(discountView(discount));
+  } catch (error) {
+    console.error('[updateInscriptionDiscount] Error:', error);
+    return res.status(500).json({ message: 'Error al actualizar el descuento' });
+  }
+};
+
+export const deleteInscriptionDiscount = async (req: Request, res: Response) => {
+  try {
+    const discount = await InscriptionDiscount.findByPk(Number(req.params.id));
+    if (!discount) return res.status(404).json({ message: 'Descuento no encontrado' });
+    await discount.destroy();
+    return res.json({ message: 'Descuento eliminado' });
+  } catch (error) {
+    console.error('[deleteInscriptionDiscount] Error:', error);
+    return res.status(500).json({ message: 'Error al eliminar el descuento' });
+  }
+};
+
 // ── Create a payment ──
 
 export const createPayment = async (req: Request, res: Response) => {
@@ -197,7 +375,7 @@ export const createPayment = async (req: Request, res: Response) => {
     const {
       inscriptionId, schoolPeriodId, feeId, sellableItemId, chargeId,
       month, amount, currency, amountVES, exchangeRate,
-      method, reference, bank, paymentDate, notes,
+      method, reference, bank, paymentDate, notes, nonMonthly,
     } = req.body;
 
     if (!inscriptionId || !schoolPeriodId || amount === undefined || !currency) {
@@ -226,8 +404,9 @@ export const createPayment = async (req: Request, res: Response) => {
     }
 
     // If no month specified, auto-distribute to the first month with outstanding debt
+    // nonMonthly: the payment settles enrollment / one-time debts, so it must not be assigned to a month.
     let finalMonth = month ?? null;
-    if (!finalMonth) {
+    if (!finalMonth && !nonMonthly) {
       // Find charges for this inscription that have a month, ordered by month order
       const existingCharges = await Charge.findAll({
         where: { inscriptionId: Number(inscriptionId), month: { [Op.ne]: null } },
