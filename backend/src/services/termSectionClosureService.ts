@@ -57,6 +57,69 @@ export class TermSectionClosureService {
   }
 
   /**
+   * Returns the earliest timestamp at which the (termId, sectionId, gradeId)
+   * scope became officially finished — the section-term closure time or the
+   * completed council checklist time, whichever came first — or null when
+   * the term is still open for that section.
+   *
+   * Used as the cutoff for withdrawn-student visibility: a withdrawn student
+   * only stays listed in a term whose official finish precedes the
+   * withdrawal (they completed that lapso before leaving).
+   */
+  static async getTermFinishTimestamp(termId: number, sectionId: number, gradeId: number, transaction?: Transaction): Promise<Date | null> {
+    const [closure, doneChecklist] = await Promise.all([
+      TermSectionClosure.findOne({
+        where: { termId, sectionId, gradeId },
+        attributes: ['closedAt'],
+        transaction,
+      }),
+      CouncilChecklist.findOne({
+        where: { termId, sectionId, gradeId, status: 'done' },
+        attributes: ['completedAt'],
+        transaction,
+      }),
+    ]);
+    const times = [closure?.closedAt, doneChecklist?.completedAt]
+      .filter((d): d is Date => !!d)
+      .map(d => new Date(d).getTime());
+    return times.length ? new Date(Math.min(...times)) : null;
+  }
+
+  /**
+   * Returns the earliest timestamp at which ANY term of the school period
+   * officially finished for the (sectionId, gradeId) scope — or null when no
+   * term has finished yet. Used when a listing is not term-scoped (e.g. a
+   * full-year Excel export) to decide whether a withdrawn student completed
+   * at least one lapso before leaving.
+   */
+  static async getEarliestTermFinishTimestamp(schoolPeriodId: number, sectionId: number, gradeId: number, transaction?: Transaction): Promise<Date | null> {
+    const [doneChecklist, termIds] = await Promise.all([
+      CouncilChecklist.findOne({
+        where: { schoolPeriodId, sectionId, gradeId, status: 'done' },
+        attributes: ['completedAt'],
+        order: [['completedAt', 'ASC']],
+        transaction,
+      }),
+      Term.findAll({
+        where: { schoolPeriodId },
+        attributes: ['id'],
+        transaction,
+      }).then(terms => terms.map(t => t.id)),
+    ]);
+    const closures = termIds.length
+      ? await TermSectionClosure.findAll({
+          where: { termId: termIds, sectionId, gradeId },
+          attributes: ['closedAt'],
+          transaction,
+        })
+      : [];
+    const times = [doneChecklist?.completedAt, ...closures.map(c => c.closedAt)]
+      .filter((d): d is Date => !!d)
+      .map(d => new Date(d).getTime());
+    return times.length ? new Date(Math.min(...times)) : null;
+  }
+
+  /**
    * Returns the list of closed section-grade pairs for the given term.
    * Returns null if the term is globally blocked (meaning ALL sections are closed).
    */

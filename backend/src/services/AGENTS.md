@@ -31,6 +31,8 @@
 | `chargeSyncService` | Plan/aplicación de generación y sincronización por período (botón "Generar / actualizar deudas"): crea faltantes y ajusta deudas `schedule` con saldo; no toca manuales ni pagadas completas. | `paymentsController` |
 | `discountService` | `discountForCharge` / `applyDiscountsToCharges`: descuentos (% o fijo, alcance, rango de meses) evaluados al leer el ledger; tope = monto de la deuda. | `ledgerController` |
 | `rosterNumberService` | Mantiene `Inscription.rosterNumber` = posición en orden canónico (`compareStudents`) dentro de la sección. Se renumera ante cualquier cambio de nómina (inscripción, retiro, cambio de sección/grado, edición de datos del estudiante, cierre de período). Retirados → NULL. | `inscriptionController`, `pendingSubjectController`, `userController`, `periodClosureExecutor` |
+| `termSectionClosureService` | Cierre de lapso por sección+grado (`TermSectionClosure`) + lectura de consejo completado (`CouncilChecklist.status='done'`). `getTermFinishTimestamp` = corte oficial del lapso (min de `closedAt`/`completedAt`), usado para decidir si un retirado sigue visible en ese lapso. | `evaluationController`, `councilController`, `termSectionClosureController` |
+| `termGradeSyncService` | Fuente de verdad de notas por lapso (`SubjectTermGrade`): `syncForInscriptionSubject` recalcula desde qualifications + puntos de consejo (lapsos sin aporte → MIN). `resyncAfterEvaluationRemoval` re-sincroniza tras borrar/mover evaluaciones y **elimina** los snapshots (y `SubjectFinalGrade` regular) cuando la materia queda sin contribuciones, evitando notas fantasma en vistas históricas/certificadas. | `evaluationController`, `councilController`, `finalGradeCalculator` |
 
 ## Guías
 

@@ -136,6 +136,7 @@ interface StudentEnrollment {
   schoolPeriodId?: number | null;
   gradeId?: number | null;
   sectionId?: number | null;
+  withdrawnAt?: string | null;
   student: Student;
   inscriptionSubjects: InscriptionSubject[];
 }
@@ -2699,6 +2700,9 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                               </td>
                               <td className={`grading-col-student${rowIndex % 2 !== 0 ? ' grading-col-zebra' : ''}`} style={{ padding: '2px 6px', border: '1px solid var(--color-text-muted)', textAlign: 'left', fontSize: 12, position: 'sticky', left: 0, zIndex: 5, boxShadow: '2px 0 4px rgba(15,23,42,0.06)' }}>
                                 {enrollment.student?.lastName}, {enrollment.student?.firstName}
+                                {enrollment.withdrawnAt && (
+                                  <Tag color="orange" style={{ marginLeft: 4, marginRight: 0, fontSize: 10 }}>Retirado</Tag>
+                                )}
                               </td>
                               {evaluationPlan.map((item, colIndex) => {
                                 const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id);

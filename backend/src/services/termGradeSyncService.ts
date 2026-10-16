@@ -6,6 +6,7 @@ import {
   CouncilPoint,
   Term,
   SubjectTermGrade,
+  SubjectFinalGrade,
   EvaluationPlan,
 } from '@/models/index';
 import { roundFinalGrade } from './gradeEvaluationService';
@@ -90,6 +91,50 @@ export class TermGradeSyncService {
         },
         { transaction: options.transaction }
       );
+    }
+  }
+
+  /**
+   * Re-syncs term grades after evaluation plans were deleted (or moved to
+   * another term / had their percentage changed).
+   *
+   * When an InscriptionSubject is left with no contributions at all (no
+   * qualification rows and no council points), its SubjectTermGrade snapshots
+   * would otherwise keep the last computed score forever — showing ghost
+   * grades in historical/certified views. In that case the snapshots are
+   * removed entirely, restoring the "no grades" state. The same applies to
+   * computed 'regular' SubjectFinalGrade rows (official revision /
+   * materia_pendiente / transferencia rows are never touched).
+   *
+   * When contributions remain, a normal sync is run so the remaining
+   * evaluations are reflected.
+   */
+  static async resyncAfterEvaluationRemoval(
+    inscriptionSubjectIds: number[],
+    options: { transaction?: Transaction } = {}
+  ): Promise<void> {
+    for (const insSubId of [...new Set(inscriptionSubjectIds)]) {
+      const qualificationCount = await Qualification.count({
+        where: { inscriptionSubjectId: insSubId },
+        transaction: options.transaction,
+      });
+      const councilPointCount = await CouncilPoint.count({
+        where: { inscriptionSubjectId: insSubId },
+        transaction: options.transaction,
+      });
+
+      if (qualificationCount === 0 && councilPointCount === 0) {
+        await SubjectTermGrade.destroy({
+          where: { inscriptionSubjectId: insSubId },
+          transaction: options.transaction,
+        });
+        await SubjectFinalGrade.destroy({
+          where: { inscriptionSubjectId: insSubId, gradeType: 'regular' },
+          transaction: options.transaction,
+        });
+      } else {
+        await this.syncForInscriptionSubject(insSubId, options);
+      }
     }
   }
 

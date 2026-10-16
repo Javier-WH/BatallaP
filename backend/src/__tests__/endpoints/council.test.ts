@@ -219,3 +219,104 @@ describe('Council Endpoints — saveCouncilPoint & bulkSaveCouncilPoints', () =>
     expect(cp).toBeNull();
   });
 });
+
+// Withdrawn students only appear in council data when the term officially
+// finished (council done / section closed) BEFORE their withdrawal.
+describe('Council Endpoints — getCouncilData withdrawn students', () => {
+  let agent: any;
+  let setup: any;
+
+  beforeEach(async () => {
+    agent = request.agent(app);
+
+    const { person } = await createTestUser({ username: 'control' });
+    const controlRole = await createTestRole('Control de Estudios');
+    await PersonRole.create({ personId: person.id, roleId: controlRole.id });
+
+    await agent
+      .post('/api/auth/login')
+      .send({ username: 'control', password: 'password123' });
+
+    const structure = await createAcademicStructure({ period: { status: 'activo' } });
+    const term = await createTestTerm(structure.period.id, { name: 'Primer Lapso', order: 1 });
+
+    const { person: studentPerson } = await createTestUser({
+      username: 'student1',
+      firstName: 'Estudiante',
+      lastName: 'Prueba',
+    });
+    const alumnoRole = await createTestRole('Alumno');
+    await PersonRole.create({ personId: studentPerson.id, roleId: alumnoRole.id });
+
+    const inscription = await createTestInscription(
+      studentPerson.id,
+      structure.period.id,
+      structure.grade.id,
+      structure.section.id,
+    );
+    const insSub = await InscriptionSubject.create({
+      inscriptionId: inscription.id,
+      subjectId: structure.subject.id,
+      schoolPeriodId: structure.period.id,
+      gradeId: structure.grade.id,
+      sectionId: structure.section.id,
+    });
+
+    setup = { structure, term, inscription, insSub };
+  });
+
+  const getCouncilData = () =>
+    agent
+      .get('/api/council/data')
+      .query({
+        sectionId: setup.structure.section.id,
+        termId: setup.term.id,
+        gradeId: setup.structure.grade.id,
+      })
+      .expect(200);
+
+  it('un retirado a mitad de lapso NO aparece en el consejo', async () => {
+    await setup.inscription.update({ sectionId: null, withdrawnAt: new Date(), rosterNumber: null } as any);
+
+    const res = await getCouncilData();
+    expect((res.body as any[]).some((i: any) => i.id === setup.inscription.id)).toBe(false);
+  });
+
+  it('un retirado DESPUÉS del consejo completado sí aparece en ese lapso', async () => {
+    await CouncilChecklist.create({
+      schoolPeriodId: setup.structure.period.id,
+      gradeId: setup.structure.grade.id,
+      sectionId: setup.structure.section.id,
+      termId: setup.term.id,
+      status: 'done',
+      completedAt: new Date('2025-11-15'),
+    });
+    await setup.inscription.update({
+      sectionId: null,
+      withdrawnAt: new Date('2025-11-20'),
+      rosterNumber: null,
+    } as any);
+
+    const res = await getCouncilData();
+    expect((res.body as any[]).some((i: any) => i.id === setup.inscription.id)).toBe(true);
+  });
+
+  it('un retirado ANTES de que se completara el consejo NO aparece', async () => {
+    await setup.inscription.update({
+      sectionId: null,
+      withdrawnAt: new Date('2025-10-10'),
+      rosterNumber: null,
+    } as any);
+    await CouncilChecklist.create({
+      schoolPeriodId: setup.structure.period.id,
+      gradeId: setup.structure.grade.id,
+      sectionId: setup.structure.section.id,
+      termId: setup.term.id,
+      status: 'done',
+      completedAt: new Date('2025-11-15'),
+    });
+
+    const res = await getCouncilData();
+    expect((res.body as any[]).some((i: any) => i.id === setup.inscription.id)).toBe(false);
+  });
+});

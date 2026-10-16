@@ -31,7 +31,16 @@
   - `GET /api/evaluation/plan/:periodGradeSubjectId`
   - `POST /api/evaluation/plan`
   - `PUT /api/evaluation/plan/:id`
-  - `DELETE /api/evaluation/plan/:id`
+  - `DELETE /api/evaluation/plan/:id` — elimina la evaluación junto con sus
+    `Qualification`, `EvaluationCriteria`/`EvaluationIndicator` y solicitudes de
+    edición asociadas, y recalcula los snapshots `SubjectTermGrade` de los
+    estudiantes afectados. Si la materia del estudiante queda sin ninguna
+    contribución (ni calificaciones ni puntos de consejo), se eliminan también
+    sus filas `SubjectTermGrade` y el `SubjectFinalGrade` calculado
+    (`gradeType='regular'`) para que las vistas históricas no muestren notas
+    fantasma. Ver `TermGradeSyncService.resyncAfterEvaluationRemoval`.
+- `PUT /api/evaluation/plan/:id` recalcula los snapshots igualmente cuando
+  cambian `termId` o `percentage`.
 - Validación: suma de `%` por lapso suele validarse en UI/controller.
 
 ## Paso 3: Registro de notas (Profesor)
@@ -78,6 +87,29 @@ Reglas de visualización:
   done → mostrar "—".
 - **Vistas operativas** (expediente, edición de notas, panel del profesor,
   consejo de curso): muestran **nota acumulada** para ver progreso en tiempo real.
+
+## Estudiantes retirados (`Inscription.withdrawnAt`)
+
+Al retirar, `Inscription.sectionId` y `rosterNumber` quedan en `null`, pero
+`InscriptionSubject.sectionId` conserva la sección donde cursó cada materia.
+La visibilidad del retirado se decide **por lapso** usando el cierre oficial
+del lapso (`TermSectionClosureService.getTermFinishTimestamp` = el menor entre
+`TermSectionClosure.closedAt` y `CouncilChecklist.completedAt` con `status='done'`):
+
+- **Retiro antes del cierre del lapso** → el estudiante desaparece de las
+  vistas de notas de ese lapso (notas incompletas no son transferibles).
+- **Retiro después del cierre del lapso** (`withdrawnAt >= lapsoFinishedAt`) →
+  sigue visible en `GET /api/evaluation/students/:assignmentId` y
+  `GET /api/council/data` **solo para ese lapso**; en lapsos posteriores no
+  aparece. El frontend lo marca con tag "Retirado".
+- **Resúmenes** (`/api/evaluation/final-grades`, boletín/rendimiento anual,
+  nóminas y resúmenes de revisión, materia pendiente): los retirados **nunca**
+  aparecen (`withdrawnAt: null` o filtro por `sectionId`, que ya es null).
+- **Planillas Excel** (`/api/evaluation/export-grades*?term=X`): incluyen al
+  retirado solo cuando el lapso exportado terminó antes de su retiro; sin
+  `term`, lo incluyen si completó al menos un lapso del período.
+- **Notas certificadas / históricas por sección**: no aparecen al elegir la
+  sección; solo se obtienen buscando a la persona manualmente (`personId`).
 
 ## Notas externas (transferencia / equivalencia)
 

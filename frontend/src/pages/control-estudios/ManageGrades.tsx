@@ -147,6 +147,7 @@ interface StudentEnrollment {
   schoolPeriodId?: number | null;
   gradeId?: number | null;
   sectionId?: number | null;
+  withdrawnAt?: string | null;
   student: { firstName: string; lastName: string; document: string };
   inscriptionSubjects: Array<{
     id: number;
@@ -1464,6 +1465,9 @@ const ManageGrades: React.FC = () => {
                                   </td>
                                   <td className="ce-mobile-sticky-student" style={{ padding: '2px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'left', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontSize: 12 }}>
                                     {enrollment.student?.lastName}, {enrollment.student?.firstName}
+                                    {enrollment.withdrawnAt && (
+                                      <Tag color="orange" style={{ marginLeft: 4, marginRight: 0, fontSize: 10 }}>Retirado</Tag>
+                                    )}
                                   </td>
                                   {evaluationPlan.map((item, colIndex) => {
                                     const q = studentQuals.find((sq: Qualification) => sq.evaluationPlanId === item.id && matchesSelectedTerm(sq));

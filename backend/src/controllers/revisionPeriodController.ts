@@ -235,6 +235,9 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
         const ins = insSub.inscription;
         if (!ins) continue;
 
+        // Skip withdrawn students — they never appear in the revision roster.
+        if (ins.withdrawnAt) continue;
+
         // Skip pending subjects — their grades belong to the MP flow, never to revision.
         if (pendingSubjectSet.has(`${ins.id}-${insSub.subjectId}`)) continue;
 
@@ -313,8 +316,9 @@ export const getRevisionStudents = async (req: Request, res: Response) => {
     const termIds = terms.map(t => t.id);
     const termCount = terms.length || 1;
 
+    // Withdrawn students never appear in revision previews.
     const allInscriptions = await Inscription.findAll({
-      where: { schoolPeriodId },
+      where: { schoolPeriodId, withdrawnAt: null },
       include: [
         { association: 'student' },
         { association: 'grade' },
@@ -1368,9 +1372,10 @@ export const exportRevisionNominaExcel = async (req: Request, res: Response) => 
       }
     }
 
-    // Load all inscriptions with their subjects for this period
+    // Load all inscriptions with their subjects for this period.
+    // Withdrawn students never appear in the revision roster.
     const allInscriptions = await Inscription.findAll({
-      where: { schoolPeriodId },
+      where: { schoolPeriodId, withdrawnAt: null },
       include: [
         { association: 'student' },
         { association: 'grade' },

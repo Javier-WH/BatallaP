@@ -2646,7 +2646,8 @@ export const getBoletinData = async (req: Request, res: Response) => {
       }
     }
 
-    const inscWhere: any = { schoolPeriodId, gradeId };
+    // Withdrawn students never appear in the annual performance summary.
+    const inscWhere: any = { schoolPeriodId, gradeId, withdrawnAt: null };
     if (sectionId) inscWhere.sectionId = sectionId;
     // Note: we don't filter by inscriptionId here so we can compute rank within section
 

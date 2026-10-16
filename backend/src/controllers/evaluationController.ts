@@ -374,6 +374,13 @@ export const updateEvaluationItem = async (req: Request, res: Response) => {
     // Update + criteria replacement are atomic: a failing insert must not leave
     // the evaluation with its previous criteria already deleted.
     await sequelize.transaction(async (transaction) => {
+      // termId/percentage changes move or reweight existing scores, so the
+      // persisted term-grade snapshots of affected students must be recalculated
+      // (mirrors the cleanup done when an evaluation is deleted).
+      const affectsTermGrades =
+        (updateFields.termId !== undefined && Number(updateFields.termId) !== Number(item.termId)) ||
+        (updateFields.percentage !== undefined && Number(updateFields.percentage) !== Number(item.percentage));
+
       await item.update(updateFields, { transaction });
 
       if (Array.isArray(criteria)) {
@@ -385,6 +392,18 @@ export const updateEvaluationItem = async (req: Request, res: Response) => {
         if (criteria.length > 0) {
           await createCriteria(Number(id), criteria, transaction);
         }
+      }
+
+      if (affectsTermGrades) {
+        const quals = await Qualification.findAll({
+          where: { evaluationPlanId: Number(id) },
+          attributes: ['inscriptionSubjectId'],
+          transaction,
+        });
+        await TermGradeSyncService.resyncAfterEvaluationRemoval(
+          quals.map(q => q.inscriptionSubjectId),
+          { transaction },
+        );
       }
     });
 
@@ -432,7 +451,41 @@ export const deleteEvaluationItem = async (req: Request, res: Response) => {
       return res.status(403).json({ message: 'Lapso bloqueado para esta sección; no se puede modificar el plan de evaluación' });
     }
 
-    await EvaluationPlan.destroy({ where: { id } });
+    // Deleting the plan must also remove its qualifications, criteria and
+    // the persisted term-grade snapshots — otherwise historical views keep
+    // showing ghost grades after the evaluation is gone.
+    const t = await sequelize.transaction();
+    try {
+      const quals = await Qualification.findAll({
+        where: { evaluationPlanId: id },
+        attributes: ['id', 'inscriptionSubjectId'],
+        transaction: t,
+      });
+      const qualificationIds = quals.map(q => q.id);
+      const inscriptionSubjectIds = [...new Set(quals.map(q => q.inscriptionSubjectId))];
+
+      if (qualificationIds.length > 0) {
+        await QualificationEditRequest.destroy({ where: { qualificationId: { [Op.in]: qualificationIds } }, transaction: t });
+        await Qualification.destroy({ where: { evaluationPlanId: id }, transaction: t });
+      }
+
+      const criteria = await EvaluationCriteria.findAll({
+        where: { evaluationPlanId: id },
+        attributes: ['id'],
+        transaction: t,
+      });
+      if (criteria.length > 0) {
+        await EvaluationIndicator.destroy({ where: { evaluationCriteriaId: { [Op.in]: criteria.map(c => c.id) } }, transaction: t });
+        await EvaluationCriteria.destroy({ where: { evaluationPlanId: id }, transaction: t });
+      }
+
+      await EvaluationPlan.destroy({ where: { id }, transaction: t });
+      await TermGradeSyncService.resyncAfterEvaluationRemoval(inscriptionSubjectIds, { transaction: t });
+      await t.commit();
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
     res.json({ message: 'Item eliminado' });
   } catch (error) {
     res.status(500).json({ message: 'Error al eliminar item' });
@@ -476,18 +529,37 @@ export const getStudentsForAssignment = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'El lapso no pertenece al período de la asignación' });
     }
 
+    // Withdrawn students lose their sectionId on withdrawal, so they are
+    // matched through the InscriptionSubject's denormalized sectionId — the
+    // section where they actually took the subject. They only stay listed
+    // for a term that officially finished (council done / section closed)
+    // BEFORE their withdrawal; a mid-term withdrawal removes them from the
+    // roster entirely since incomplete grades cannot transfer.
+    const lapsoFinishedAt = await TermSectionClosureService.getTermFinishTimestamp(
+      requestedTermId,
+      sectionId,
+      pg.gradeId
+    );
+
     const inscriptions = await Inscription.findAll({
       where: {
         schoolPeriodId: pg.schoolPeriodId,
-        sectionId,
         gradeId: pg.gradeId,
+        ...(lapsoFinishedAt
+          ? {
+              [Op.or]: [
+                { sectionId },
+                { withdrawnAt: { [Op.gte]: lapsoFinishedAt } },
+              ],
+            }
+          : { sectionId }),
       },
       include: [
         { model: Person, as: 'student' },
         {
           model: InscriptionSubject,
           as: 'inscriptionSubjects',
-          where: { subjectId: periodGradeSubject.subjectId },
+          where: { subjectId: periodGradeSubject.subjectId, sectionId },
           required: true, // Changed to true to filter only those enrolled in the subject
           include: [
             {
@@ -1259,8 +1331,9 @@ export const getFinalGradesByPeriod = async (req: Request, res: Response) => {
       return res.status(403).json({ message: 'No tiene permiso para modificar notas de este período' });
     }
 
-    // Get all inscriptions for this period, excluding MP by default
-    const inscWhere: any = { schoolPeriodId: Number(schoolPeriodId) };
+    // Get all inscriptions for this period, excluding MP by default.
+    // Withdrawn students never appear in final-grade summaries.
+    const inscWhere: any = { schoolPeriodId: Number(schoolPeriodId), withdrawnAt: null };
     if (gradeId) inscWhere.gradeId = Number(gradeId);
     if (sectionId) inscWhere.sectionId = Number(sectionId);
     // Exclude materia_pendiente inscriptions unless explicitly requested
@@ -2029,11 +2102,26 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     const instName = institutionShortName?.getDataValue('value') || '';
     const studyModeCode = institutionCode?.getDataValue('value') || '';
 
+    // Withdrawn students only appear in the sheet of the term(s) that
+    // officially finished before their withdrawal — same cutoff as the
+    // grade views. Without a term filter, they are included when they
+    // completed at least one lapso of the period.
+    const exportLapsoFinishedAt = termId
+      ? await TermSectionClosureService.getTermFinishTimestamp(termId, assignment.sectionId, pg.gradeId)
+      : await TermSectionClosureService.getEarliestTermFinishTimestamp(pg.schoolPeriodId, assignment.sectionId, pg.gradeId);
+
     const inscriptions = await Inscription.findAll({
       where: {
         schoolPeriodId: pg.schoolPeriodId,
-        sectionId: assignment.sectionId,
         gradeId: pg.gradeId,
+        ...(exportLapsoFinishedAt
+          ? {
+              [Op.or]: [
+                { sectionId: assignment.sectionId },
+                { withdrawnAt: { [Op.gte]: exportLapsoFinishedAt } },
+              ],
+            }
+          : { sectionId: assignment.sectionId }),
       },
       include: [
         {
@@ -2044,7 +2132,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
         {
           model: InscriptionSubject,
           as: 'inscriptionSubjects',
-          where: { subjectId: (assignment as any).periodGradeSubject.subjectId },
+          where: { subjectId: (assignment as any).periodGradeSubject.subjectId, sectionId: assignment.sectionId },
           required: true,
           include: [
             {
@@ -2569,11 +2657,26 @@ export const exportGradesExcel = async (req: Request, res: Response) => {
     const instName = institutionName?.getDataValue('value') || '';
     const deaCode = institutionDeaCode?.getDataValue('value') || '';
 
+    // Withdrawn students only appear in the sheet of the term(s) that
+    // officially finished before their withdrawal — same cutoff as the
+    // grade views. Without a term filter, they are included when they
+    // completed at least one lapso of the period.
+    const exportLapsoFinishedAt = termId
+      ? await TermSectionClosureService.getTermFinishTimestamp(termId, assignment.sectionId, pg.gradeId)
+      : await TermSectionClosureService.getEarliestTermFinishTimestamp(pg.schoolPeriodId, assignment.sectionId, pg.gradeId);
+
     const inscriptions = await Inscription.findAll({
       where: {
         schoolPeriodId: pg.schoolPeriodId,
-        sectionId: assignment.sectionId,
         gradeId: pg.gradeId,
+        ...(exportLapsoFinishedAt
+          ? {
+              [Op.or]: [
+                { sectionId: assignment.sectionId },
+                { withdrawnAt: { [Op.gte]: exportLapsoFinishedAt } },
+              ],
+            }
+          : { sectionId: assignment.sectionId }),
       },
       include: [
         {
@@ -2584,7 +2687,7 @@ export const exportGradesExcel = async (req: Request, res: Response) => {
         {
           model: InscriptionSubject,
           as: 'inscriptionSubjects',
-          where: { subjectId: (assignment as any).periodGradeSubject.subjectId },
+          where: { subjectId: (assignment as any).periodGradeSubject.subjectId, sectionId: assignment.sectionId },
           required: true,
           include: [
             {

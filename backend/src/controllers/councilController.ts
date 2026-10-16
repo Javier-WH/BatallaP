@@ -26,6 +26,7 @@ import {
 import { filterActiveGroupSubjectsForTerm } from '@/services/subjectGroupService';
 import { TermSectionClosureService } from '@/services/termSectionClosureService';
 import { sortInscriptions } from '@/services/studentSortService';
+import { Op } from 'sequelize';
 
 export const getCouncilData = async (req: Request, res: Response) => {
   try {
@@ -40,13 +41,44 @@ export const getCouncilData = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Lapso no encontrado' });
     }
 
+    // Withdrawn students have sectionId=null on their inscription; the
+    // section where they took each subject stays in InscriptionSubject.
+    // They only stay listed when this term officially finished (council
+    // done / section closed) BEFORE their withdrawal — a mid-term
+    // withdrawal removes them since incomplete grades cannot transfer.
+    const lapsoFinishedAt = await TermSectionClosureService.getTermFinishTimestamp(
+      Number(termId),
+      Number(sectionId),
+      Number(gradeId)
+    );
+    const withdrawnIds = lapsoFinishedAt ? (await InscriptionSubject.findAll({
+      attributes: ['inscriptionId'],
+      where: {
+        schoolPeriodId: term.schoolPeriodId,
+        gradeId: Number(gradeId),
+        sectionId: Number(sectionId),
+      },
+      include: [{
+        model: Inscription,
+        as: 'inscription',
+        attributes: [],
+        where: { withdrawnAt: { [Op.gte]: lapsoFinishedAt } },
+        required: true,
+      }],
+      group: ['inscriptionId'],
+      raw: true,
+    }) as any[]).map(r => r.inscriptionId) : [];
+
     // First find the periodGrade associated with this section and term
     // We can get schoolPeriodId from the term
     const inscriptions = await Inscription.findAll({
       where: {
-        sectionId: Number(sectionId),
         gradeId: Number(gradeId),
-        schoolPeriodId: term.schoolPeriodId
+        schoolPeriodId: term.schoolPeriodId,
+        [Op.or]: [
+          { sectionId: Number(sectionId) },
+          { id: { [Op.in]: withdrawnIds } },
+        ],
       },
       include: [
         { model: Person, as: 'student' },
