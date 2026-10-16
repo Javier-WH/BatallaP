@@ -45,6 +45,10 @@
 | `/api/gate` | `gateRoutes.ts` (RFID foundation) |
 | `/api/teacher-admin-hours` | `teacherAdminHourRoutes.ts` |
 | `/api/teacher-workload` | `teacherWorkloadRoutes.ts` |
+| `/api/payments` | `paymentsRoutes.ts` (config: tasas, fees, planes, items, descuentos; guard `requirePaymentsAccess`) |
+| `/api/ledger` | `ledgerRoutes.ts` (deudas/pagos; `inscriptions/:id/debt` y `/release-papers` también para Control de Estudios vía `requireDebtView`) |
+| `/api/banks` | `bankRoutes.ts` |
+| `/api/banks` | `bankRoutes.ts` (catálogo bancos, multipart `icon`) |
 
 ## Orden en `app.ts`
 

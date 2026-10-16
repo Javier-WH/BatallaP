@@ -153,7 +153,7 @@ describe('Ledger reads netted amounts', () => {
     } as any);
 
     const res = await agent.get(`/api/ledger/${period.id}/${grade.id}/${section.id}`).expect(200);
-    const nm = res.body.students.find((s: any) => s.inscriptionId === insc.id).nonMonthly;
+    const nm = res.body.students.find((s: any) => s.inscriptionId === insc.id).enrollment;
     expect(nm.grossCharged).toBe(130);
     expect(nm.totalDiscount).toBe(20); // only the enrollment fee is discountable
     expect(nm.totalCharged).toBe(110);
@@ -174,8 +174,28 @@ describe('Payments without a month (enrollment and other one-time debts)', () =>
 
     const res = await agent.get(`/api/ledger/${period.id}/${grade.id}/${section.id}`).expect(200);
     const student = res.body.students.find((s: any) => s.inscriptionId === insc.id);
-    expect(student.nonMonthly.totalPaid).toBe(40);
-    expect(student.nonMonthly.payments).toHaveLength(1);
+    expect(student.enrollment.totalPaid).toBe(40);
+    expect(student.enrollment.payments).toHaveLength(1);
     expect(student.months.Oct.totalPaid).toBe(0);
+  });
+
+  it('extraordinary (otro) debts go to the other bucket; enrollment overflow payments land there too', async () => {
+    const { agent } = await login();
+    const { insc, period, grade, section } = await setup();
+    await Charge.create({ inscriptionId: insc.id, schoolPeriodId: period.id, type: 'matricula', month: null, description: 'Matrícula', amount: 100, currency: 'USD' } as any);
+    await Charge.create({ inscriptionId: insc.id, schoolPeriodId: period.id, type: 'otro', month: null, description: 'Daño en laboratorio', amount: 50, currency: 'USD' } as any);
+
+    // 150 covers the 100 enrollment debt and leaves 50 for the extraordinary one
+    await agent.post('/api/ledger/payments').send({
+      inscriptionId: insc.id, schoolPeriodId: period.id, amount: 150, currency: 'USD', method: 'efectivo', nonMonthly: true,
+    }).expect(201);
+
+    const res = await agent.get(`/api/ledger/${period.id}/${grade.id}/${section.id}`).expect(200);
+    const student = res.body.students.find((s: any) => s.inscriptionId === insc.id);
+    expect(student.enrollment.totalCharged).toBe(100);
+    expect(student.other.totalCharged).toBe(50);
+    // The 150 payment settles enrollment (100) and its overflow covers "other" (50)
+    expect(student.enrollment.totalPaid).toBe(100);
+    expect(student.other.totalPaid).toBe(50);
   });
 });

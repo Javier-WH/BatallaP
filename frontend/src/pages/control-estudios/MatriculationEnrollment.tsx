@@ -42,6 +42,7 @@ import {
   DownOutlined,
   LogoutOutlined,
   LoginOutlined,
+  UnlockOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { parseDateLocal } from '@/utils/dateHelpers';
@@ -59,6 +60,9 @@ import EnrollmentReportModal from '@/components/pdf/EnrollmentReportModal';
 import { generateReport } from '@/services/enrollmentReportService';
 import type { GuardianProfileResponse } from '@/services/guardians';
 import MatriculationAgGrid, { type MatriculationAgGridHandle } from './MatriculationAgGrid';
+import WithdrawStudentModal from './components/WithdrawStudentModal';
+import { releasePapers } from '@/services/paymentsService';
+import { billingMonthsOf } from '@/utils/billingMonths';
 import {
   BASE_COLUMN_OPTIONS as AG_BASE_COLUMN_OPTIONS,
   COLUMN_GROUPS,
@@ -168,6 +172,8 @@ interface SchoolPeriod {
   name: string;
   status: 'preinscripcion' | 'activo' | 'historico' | 'externo';
   isActive: boolean;
+  billingStartMonth?: number | null;
+  billingEndMonth?: number | null;
 }
 
 interface TempData {
@@ -301,6 +307,8 @@ const MatriculationEnrollment: React.FC = () => {
   const [guardianModalVisible, setGuardianModalVisible] = useState(false);
   const [editStudentModalVisible, setEditStudentModalVisible] = useState(false);
   const [editStudentRowId, setEditStudentRowId] = useState<number | null>(null);
+  const [withdrawTarget, setWithdrawTarget] = useState<{ url: string; studentName: string; inscriptionId: number; schoolPeriodId: number | null } | null>(null);
+  const [withdrawSubmitting, setWithdrawSubmitting] = useState(false);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const agGridRef = useRef<MatriculationAgGridHandle>(null);
   // Mirror of selectedRowKeys that survives async clears (e.g. AG-Grid
@@ -1179,6 +1187,18 @@ const MatriculationEnrollment: React.FC = () => {
       const studentName = row ? `${row.tempData.firstName} ${row.tempData.lastName}` : 'este estudiante';
       if (url) {
         const isWithdraw = key === 'withdraw';
+        // With an inscription there may be debt: the administrator decides
+        // what happens with it in the dedicated dialog.
+        if (isWithdraw && row?.inscriptionId) {
+          setWithdrawTarget({
+            url,
+            studentName,
+            inscriptionId: row.inscriptionId,
+            schoolPeriodId: (row as any).schoolPeriodId ?? null,
+          });
+          closeContextMenu();
+          return;
+        }
         Modal.confirm({
           title: isWithdraw ? 'Retirar estudiante' : 'Reactivar estudiante',
           content: isWithdraw
@@ -1200,7 +1220,55 @@ const MatriculationEnrollment: React.FC = () => {
       }
       closeContextMenu();
     }
+    if (key === 'release-papers') {
+      const row = contextMenuState.rowId !== null
+        ? matriculations.find(r => r.id === contextMenuState.rowId)
+        : null;
+      const inscriptionId = row?.inscriptionId ?? (row as any)?.inscription?.id;
+      closeContextMenu();
+      if (!inscriptionId) return;
+      Modal.confirm({
+        title: 'Liberar documentos',
+        content: 'Se levanta la retención de documentos aunque quede deuda pendiente. ¿Continuar?',
+        okText: 'Liberar',
+        cancelText: 'Cancelar',
+        onOk: async () => {
+          try {
+            await releasePapers(inscriptionId);
+            message.success('Documentos liberados');
+            await fetchData();
+          } catch {
+            message.error('Error al liberar los documentos');
+          }
+        },
+      });
+    }
   }, [handleContextEdit, closeContextMenu, contextMenuState.rowId, contextMenuState.colId, matriculations, fetchData, viewStatus]);
+
+  const handleWithdrawConfirm = useCallback(async (debtAction: string, debtUntilMonth: string | null) => {
+    if (!withdrawTarget) return;
+    setWithdrawSubmitting(true);
+    try {
+      const res = await api.post(withdrawTarget.url, { debtAction, debtUntilMonth });
+      message.success(`${withdrawTarget.studentName} retirado del sistema académico`);
+      if (res.data?.papersHold) {
+        message.warning('Documentos retenidos hasta saldar la deuda', 6);
+      }
+      setWithdrawTarget(null);
+      await fetchData();
+    } catch (err: any) {
+      message.error(err?.response?.data?.error || 'Error al retirar estudiante');
+    } finally {
+      setWithdrawSubmitting(false);
+    }
+  }, [withdrawTarget, fetchData]);
+
+  // Billing months of the target inscription's period (for "mantener hasta")
+  const withdrawPeriodMonths = useMemo(() => {
+    if (!withdrawTarget) return [];
+    const period = allPeriods.find((p: any) => p.id === withdrawTarget.schoolPeriodId);
+    return billingMonthsOf(period);
+  }, [withdrawTarget, allPeriods]);
 
   // Build context menu items dynamically — add withdraw/reactivate based on row state
   const dynamicContextMenuItems = useMemo<MenuProps['items']>(() => {
@@ -1255,6 +1323,13 @@ const MatriculationEnrollment: React.FC = () => {
           label: 'Reactivar estudiante',
           danger: false,
         });
+        if ((row as any)?.inscription?.papersHold) {
+          rowActions.push({
+            key: 'release-papers',
+            icon: <UnlockOutlined />,
+            label: 'Liberar documentos (retenidos por deuda)',
+          });
+        }
       } else {
         rowActions.push({
           type: 'divider',
@@ -2675,6 +2750,15 @@ const MatriculationEnrollment: React.FC = () => {
           setReportModalOpen(false);
           setReportUuid(null);
         }}
+      />
+      <WithdrawStudentModal
+        open={withdrawTarget !== null}
+        studentName={withdrawTarget?.studentName ?? ''}
+        inscriptionId={withdrawTarget?.inscriptionId ?? null}
+        periodMonths={withdrawPeriodMonths}
+        submitting={withdrawSubmitting}
+        onCancel={() => setWithdrawTarget(null)}
+        onConfirm={handleWithdrawConfirm}
       />
     </div>
   );

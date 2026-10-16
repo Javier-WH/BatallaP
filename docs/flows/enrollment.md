@@ -14,7 +14,7 @@ El flujo típico es **Matriculation → Inscription**. También existe una vía 
 - **Inscribir** (Admin) → `Matriculation.status='pending'` ("No Matriculados").
 - **Matricular** (Control de Estudios) → asignar a una **sección**: `POST /api/matriculations/:id/enroll` exige `sectionId` válido. No existe matriculado sin sección.
 - **Sacar de Matrícula** (CE) → `POST /api/inscriptions/:id/unmatriculate`: vuelve a `pending`, sin sección.
-- **Retirar** (Admin) → `POST /api/matriculations/:id/withdraw`: también para quienes nunca fueron matriculados.
+- **Retirar** (Admin) → `POST /api/matriculations/:id/withdraw`: también para quienes nunca fueron matriculados. Si el estudiante tiene deuda, el diálogo pregunta qué hacer con ella (`debtAction`): `cancel_all` (default: desactiva mensualidades `schedule` sin pagar), `keep_until` + `debtUntilMonth` (conserva hasta ese mes del calendario inclusive) o `keep_all`. Si queda deuda tras el retiro → `Inscription.papersHold = true`: los documentos quedan retenidos hasta saldar (se libera solo vía `refreshPapersHold`) o hasta `POST /api/ledger/inscriptions/:id/release-papers`. En la vista previa de constancias el flag bloquea la emisión salvo override de Master/Administrador.
 - **Reactivar** (Admin) → `POST /api/matriculations/:id/reactivate`: vuelve a "No Matriculados" sin sección; CE decide dónde matricularlo.
 - **Inscrito / No Inscrito** (Admin) → marca de visibilidad para Control de Estudios (`hiddenFromControlEstudios`), no cambia el estado académico.
 

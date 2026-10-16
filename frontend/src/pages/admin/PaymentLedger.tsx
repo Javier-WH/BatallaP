@@ -10,8 +10,10 @@ import { useSchool } from '@/context/SchoolContext';
 import {
   getLedgerSections, getLedgerBySection,
   createPayment, createCharge, deletePayment, updateEntryMonth, listSellableItems,
-  type LedgerStudent, type LedgerSection, type SellableItem,
+  type LedgerStudent, type LedgerSection, type SellableItem, type LedgerPriorPeriod, type LedgerBucket,
 } from '@/services/paymentsService';
+import { listBanks, type Bank } from '@/services/bankService';
+import { billingMonthsOf } from '@/utils/billingMonths';
 
 // ── Constants ──
 const DEFAULT_MONTHS = ['Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug'];
@@ -75,11 +77,12 @@ function initials(name: string): string {
 
 // ── Sub-components ──
 
-function MonthCell({ paid, charged, month, months, onClick, isOpen }: {
+function MonthCell({ paid, charged, month, months, onClick, isOpen, forceStatus }: {
   paid: number; charged: number; month: string; months: string[]; onClick: () => void; isOpen: boolean;
+  forceStatus?: keyof typeof STATUS;
 }) {
   const pct = charged > 0 ? Math.min(Math.round((paid / charged) * 100), 100) : 0;
-  const status = statusFor(paid, charged, month, months);
+  const status = forceStatus ?? statusFor(paid, charged, month, months);
   const s = STATUS[status];
   const fillWidth = status === 'paid' ? 100 : pct;
   const hasData = charged > 0 || paid > 0;
@@ -138,12 +141,13 @@ function TransactionRow({ txn, index, onDelete }: { txn: any; index: number; onD
   );
 }
 
-function MonthDetail({ month, data, monthlyFee, onAddPayment, onDeletePayment }: {
+function MonthDetail({ month, data, monthlyFee, onAddPayment, onDeletePayment, label }: {
   month: string;
   data: { charges: any[]; payments: any[]; totalCharged: number; totalPaid: number; grossCharged?: number; totalDiscount?: number } | undefined;
   monthlyFee: { amount: number; currency: string } | null;
   onAddPayment: () => void;
   onDeletePayment: (paymentId: number) => void;
+  label?: string;
 }) {
   const paid = data?.totalPaid ?? 0;
   const charged = data?.totalCharged ?? 0;
@@ -151,11 +155,12 @@ function MonthDetail({ month, data, monthlyFee, onAddPayment, onDeletePayment }:
   const overflow = Math.max(paid - charged, 0);
   const feeAmount = monthlyFee?.amount ?? 0;
   const feeCurrency = monthlyFee?.currency ?? 'USD';
+  const title = label ?? (month === OTHER ? 'Inscripción y otros' : MONTH_FULL[month]);
 
   return (
     <div className="border-b-2 border-[#B9BEC7] bg-[#FAFBFC]">
       <div className="flex items-center gap-4 px-3 py-2 border-b border-[#E4E6EB] flex-wrap">
-        <span className="text-xs font-semibold text-[#14181F] uppercase tracking-wide">{month === OTHER ? 'Inscripción y otros' : MONTH_FULL[month]}</span>
+        <span className="text-xs font-semibold text-[#14181F] uppercase tracking-wide">{title}</span>
         {charged > 0 && (
           <span className="text-xs text-[#6B7280]">{month === OTHER ? 'Total' : 'Cuota'} <b className="text-[#14181F] font-semibold">{charged.toFixed(2)} {feeCurrency}</b></span>
         )}
@@ -213,15 +218,107 @@ function MonthDetail({ month, data, monthlyFee, onAddPayment, onDeletePayment }:
   );
 }
 
+// ── Prior-period debts ──
+
+/** Aggregates several buckets into one (charged, paid) pair, in VES. */
+function mergedTotals(...buckets: (LedgerBucket | undefined | null)[]): { charged: number; paid: number } {
+  const list = buckets.filter(Boolean) as LedgerBucket[];
+  return {
+    charged: list.reduce((s, b) => s + (b.totalChargedVES ?? 0), 0),
+    paid: list.reduce((s, b) => s + (b.totalPaidVES ?? 0), 0),
+  };
+}
+
+/** Aggregates every bucket of a prior period into one (charged, paid) pair, in VES. */
+function priorTotals(group: LedgerPriorPeriod): { charged: number; paid: number } {
+  return mergedTotals(...Object.values(group.months), group.enrollment, group.other);
+}
+
+/** Display merge of month-less buckets (prior periods show them as one "Otras deudas" row). */
+function mergeBuckets(...buckets: (LedgerBucket | undefined | null)[]) {
+  const list = buckets.filter(Boolean) as LedgerBucket[];
+  const currencies = new Set(list.map(b => b.currency).filter(Boolean));
+  return {
+    charges: list.flatMap(b => b.charges ?? []),
+    payments: list.flatMap(b => b.payments ?? []),
+    totalCharged: list.reduce((s, b) => s + (b.totalCharged ?? 0), 0),
+    totalPaid: list.reduce((s, b) => s + (b.totalPaid ?? 0), 0),
+    currency: currencies.size === 1 ? [...currencies][0] : null,
+  };
+}
+
+function priorStatus(paid: number, charged: number): keyof typeof STATUS {
+  if (charged <= 0) return 'none';
+  if (paid >= charged - 0.005) return 'paid';
+  if (paid > 0.005) return 'partial';
+  return 'overdue'; // prior-period debts are always past due
+}
+
+function PriorPeriodDetail({ group, onAddPayment, onDeletePayment }: {
+  group: LedgerPriorPeriod;
+  onAddPayment: (monthKey: string) => void;
+  onDeletePayment: (paymentId: number) => void;
+}) {
+  const flat = mergeBuckets(group.enrollment, group.other);
+  const ordered = [
+    ...group.billingMonths.filter(m => group.months[m]).map(m => ({ key: m, data: group.months[m] })),
+    ...(flat.charges.length || flat.payments.length ? [{ key: OTHER, data: flat }] : []),
+  ];
+  return (
+    <div className="border-b-2 border-[#B9BEC7] bg-[#FAFBFC]">
+      <div className="px-3 py-1.5 border-b border-[#E4E6EB] text-[10px] font-bold uppercase tracking-wide text-[#8A5A00] bg-[#FDF6E5]">
+        Deuda del período {group.periodName}
+      </div>
+      {ordered.map(({ key, data }) => (
+        <div key={key} className="border-b border-[#E4E6EB] last:border-b-0">
+          <div className="flex items-center gap-4 px-3 py-1.5 flex-wrap">
+            <span className="text-xs font-semibold text-[#14181F] uppercase tracking-wide">
+              {key === OTHER ? 'Otras deudas' : MONTH_FULL[key]}
+            </span>
+            <span className="text-xs text-[#6B7280]">Cargado <b className="text-[#14181F] font-semibold">{(data.totalCharged ?? 0).toFixed(2)} {data.currency ?? ''}</b></span>
+            <span className="text-xs text-[#0F7A45]">Pagado <b className="font-semibold">{(data.totalPaid ?? 0).toFixed(2)} {data.currency ?? ''}</b></span>
+            {Math.max((data.totalCharged ?? 0) - (data.totalPaid ?? 0), 0) > 0 && (
+              <span className="text-xs text-[#8A5A00]">Falta <b className="font-semibold">{((data.totalCharged ?? 0) - (data.totalPaid ?? 0)).toFixed(2)} {data.currency ?? ''}</b></span>
+            )}
+            <button
+              onClick={() => onAddPayment(`p:${group.periodId}:${key}`)}
+              className="ml-auto flex items-center gap-1 text-xs font-semibold text-[#2F5EA8] hover:bg-[#DCE5F7] px-2 py-1 border border-[#B7C7E6]"
+            >
+              <Plus size={13} /> Agregar pago
+            </button>
+          </div>
+          {data.charges?.length ? (
+            <div className="bg-white border-t border-[#F0F1F4]">
+              {data.charges.map((c: any) => (
+                <div key={c.id} className="flex items-center gap-3 px-3 py-1 text-xs border-b border-[#F0F1F4] last:border-b-0">
+                  <span className="flex-1 truncate">{c.description}</span>
+                  <span className="tabular-nums text-[#6B7280]">{Number(c.amount).toFixed(2)} {c.currency}</span>
+                  <span className="tabular-nums font-semibold w-24 text-right">{(Number(c.amount) - Number(c.discountAmount ?? 0)).toFixed(2)} {c.currency}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {data.payments?.length ? (
+            <div>
+              {data.payments.map((t: any, i: number) => (
+                <TransactionRow key={t.id} txn={t} index={i} onDelete={() => onDeletePayment(t.id)} />
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function yearProgress(student: LedgerStudent, feeFor: (month: string) => number, months: string[]): number {
   const monthsWithData = months.filter(m => student.months[m]);
-  const other = student.nonMonthly;
-  const hasOther = other && other.totalCharged > 0;
-  if (monthsWithData.length === 0 && !hasOther) return 0;
+  const extras = [student.enrollment, student.other].filter(b => (b?.totalCharged ?? 0) > 0);
+  if (monthsWithData.length === 0 && extras.length === 0) return 0;
   const paidTotal = monthsWithData.reduce((s, m) => s + Math.min(student.months[m].totalPaid, student.months[m].totalCharged || feeFor(m)), 0)
-    + (hasOther ? Math.min(other.totalPaid, other.totalCharged) : 0);
+    + extras.reduce((s, b) => s + Math.min(b!.totalPaid, b!.totalCharged), 0);
   const dueTotal = monthsWithData.reduce((s, m) => s + (student.months[m].totalCharged || feeFor(m)), 0)
-    + (hasOther ? other.totalCharged : 0);
+    + extras.reduce((s, b) => s + b!.totalCharged, 0);
   return dueTotal > 0 ? paidTotal / dueTotal : 0;
 }
 
@@ -256,8 +353,14 @@ function AddPaymentModal({ students, months, prefill, monthlyFee, onClose, onSub
     reference: '',
     bank: '',
   });
+  const [banks, setBanks] = useState<Bank[]>([]);
+  useEffect(() => {
+    listBanks({ active: true }).then(setBanks).catch(() => setBanks([]));
+  }, []);
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }));
+  // Prior-period debt buckets of the student currently selected in the modal
+  const priorGroups = students.find(s => s.inscriptionId === Number(form.studentId))?.priorPeriods ?? [];
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -281,9 +384,17 @@ function AddPaymentModal({ students, months, prefill, monthlyFee, onClose, onSub
           </Field>
           <Field label="Mes">
             <select value={form.month} onChange={set('month')} className={inputCls}>
-              <option value="">Automática (al primer mes con deuda)</option>
-              <option value={OTHER}>Inscripción y otros (sin mes)</option>
+              <option value="">Automática (a la deuda más antigua)</option>
+              <option value={OTHER}>Inscripción y otros (período actual)</option>
               {months.map(m => <option key={m} value={m}>{MONTH_FULL[m]}</option>)}
+              {priorGroups.map(g => (
+                <optgroup key={g.periodId} label={g.periodName}>
+                  {g.billingMonths.map(m => (
+                    <option key={m} value={`p:${g.periodId}:${m}`}>{MONTH_FULL[m]} — {g.periodCode ?? g.periodName}</option>
+                  ))}
+                  <option value={`p:${g.periodId}:${OTHER}`}>Otras deudas (sin mes) — {g.periodCode ?? g.periodName}</option>
+                </optgroup>
+              ))}
             </select>
           </Field>
           <Field label="Método">
@@ -305,7 +416,10 @@ function AddPaymentModal({ students, months, prefill, monthlyFee, onClose, onSub
           {form.currency === 'VES' && (
             <>
               <Field label="Banco">
-                <input type="text" value={form.bank} onChange={set('bank')} placeholder="BCV, Banesco…" className={inputCls} />
+                <select value={form.bank} onChange={set('bank')} className={inputCls}>
+                  <option value="">Seleccionar…</option>
+                  {banks.map(b => <option key={b.id} value={b.shortName}>{b.code} — {b.shortName}</option>)}
+                </select>
               </Field>
             </>
           )}
@@ -328,8 +442,10 @@ function AddPaymentModal({ students, months, prefill, monthlyFee, onClose, onSub
 
 // ── Modal: Add Charge (debt) ──
 
-function AddChargeModal({ students, months, feeByMonth, sellableItems, prefill, monthlyFee, onClose, onSubmit }: {
+function AddChargeModal({ students, months, periods, currentPeriodId, feeByMonth, sellableItems, prefill, monthlyFee, onClose, onSubmit }: {
   months: string[];
+  periods: any[];
+  currentPeriodId: number;
   sellableItems: SellableItem[];
   feeByMonth: Record<string, { amount: number; currency: string } | null>;
   students: LedgerStudent[];
@@ -340,6 +456,7 @@ function AddChargeModal({ students, months, feeByMonth, sellableItems, prefill, 
 }) {
   const [form, setForm] = useState({
     studentId: (prefill as any).studentId || '',
+    periodId: currentPeriodId,
     month: (prefill as any).month || (months.includes(CURRENT_MONTH) ? CURRENT_MONTH : months[0]),
     type: 'mensualidad',
     sellableItemId: '',
@@ -347,11 +464,19 @@ function AddChargeModal({ students, months, feeByMonth, sellableItems, prefill, 
     amount: String((feeByMonth[(prefill as any).month || CURRENT_MONTH] ?? monthlyFee)?.amount ?? ''),
     currency: (feeByMonth[(prefill as any).month || CURRENT_MONTH] ?? monthlyFee)?.currency || 'USD',
   });
+  const selectedPeriod = periods.find(p => p.id === Number(form.periodId));
+  const isCurrentPeriod = Number(form.periodId) === currentPeriodId;
+  // Months follow the billing calendar of the chosen debt period
+  const periodMonths = isCurrentPeriod ? months : billingMonthsOf(selectedPeriod);
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const value = e.target.value;
-    if (k === 'month') {
-      // Monthly fee in force for the chosen month
-      const fee = feeByMonth[value];
+    if (k === 'periodId') {
+      const period = periods.find(p => p.id === Number(value));
+      const newMonths = Number(value) === currentPeriodId ? months : billingMonthsOf(period);
+      setForm(f => ({ ...f, periodId: value as any, month: f.month && newMonths.includes(f.month) ? f.month : (f.type === 'mensualidad' ? newMonths[0] : '') }));
+    } else if (k === 'month') {
+      // Monthly fee in force for the chosen month (only known for the current period)
+      const fee = isCurrentPeriod ? feeByMonth[value] : null;
       setForm(f => (f.type === 'mensualidad' && fee
         ? { ...f, month: value, amount: String(fee.amount), currency: fee.currency }
         : { ...f, month: value }));
@@ -366,7 +491,7 @@ function AddChargeModal({ students, months, feeByMonth, sellableItems, prefill, 
         sellableItemId: '',
         description: descMap[value] ?? '',
         // Only monthly fees belong to a month; everything else is a one-time debt
-        month: value === 'mensualidad' ? (f.month || (months.includes(CURRENT_MONTH) ? CURRENT_MONTH : months[0])) : '',
+        month: value === 'mensualidad' ? (f.month || (periodMonths.includes(CURRENT_MONTH) ? CURRENT_MONTH : periodMonths[0])) : '',
       }));
     } else {
       setForm(f => ({ ...f, [k]: value }));
@@ -411,10 +536,17 @@ function AddChargeModal({ students, months, feeByMonth, sellableItems, prefill, 
               <option value="otro">Extraordinaria (daños, etc.)</option>
             </select>
           </Field>
+          <Field label="Período de la deuda">
+            <select value={form.periodId} onChange={set('periodId')} className={inputCls}>
+              {periods.map((p: any) => (
+                <option key={p.id} value={p.id}>{p.name ?? p.period}{p.id === currentPeriodId ? ' (actual)' : ''}</option>
+              ))}
+            </select>
+          </Field>
           <Field label="Mes (opcional)">
             <select value={form.month} onChange={set('month')} className={inputCls}>
               <option value="">— Sin mes —</option>
-              {months.map(m => <option key={m} value={m}>{MONTH_FULL[m]}</option>)}
+              {periodMonths.map(m => <option key={m} value={m}>{MONTH_FULL[m]}</option>)}
             </select>
           </Field>
           {form.type === 'item' && (
@@ -515,7 +647,7 @@ function LegendSwatch({ color, label }: { color: string; label: string }) {
 // ── Main Component ──
 
 export default function PaymentLedger() {
-  const { viewPeriod } = useSchool();
+  const { viewPeriod, allPeriods } = useSchool();
   const schoolPeriodId = viewPeriod?.id;
 
   const [sections, setSections] = useState<LedgerSection[]>([]);
@@ -579,6 +711,17 @@ export default function PaymentLedger() {
   const cycleNameSort = () =>
     setNameSort(m => m === 'canonical' ? 'asc' : m === 'asc' ? 'desc' : 'canonical');
 
+  // Prior debt periods referenced by any student — one column each, oldest first
+  const priorPeriodList = useMemo(() => {
+    const map = new Map<number, { periodId: number; periodName: string; periodCode: string | null }>();
+    for (const s of students) {
+      for (const g of s.priorPeriods ?? []) {
+        if (!map.has(g.periodId)) map.set(g.periodId, { periodId: g.periodId, periodName: g.periodName, periodCode: g.periodCode });
+      }
+    }
+    return [...map.values()];
+  }, [students]);
+
   const toggle = (inscriptionId: number, month: string) => {
     const key = `${inscriptionId}-${month}`;
     setOpenKey(prev => prev === key ? null : key);
@@ -586,12 +729,23 @@ export default function PaymentLedger() {
 
   const handleAddPayment = async (form: any) => {
     if (!schoolPeriodId) return;
+    // Prior-period values look like `p:<periodId>:<month|__other>`
+    let month = form.month as string;
+    let debtPeriodId: number | undefined;
+    let nonMonthly = form.month === OTHER;
+    if (month?.startsWith('p:')) {
+      const [, pid, m] = month.split(':');
+      debtPeriodId = Number(pid);
+      month = m === OTHER ? '' : m;
+      nonMonthly = m === OTHER;
+    }
     try {
       await createPayment({
         inscriptionId: Number(form.studentId),
         schoolPeriodId,
-        month: form.month && form.month !== OTHER ? form.month : undefined,
-        nonMonthly: form.month === OTHER ? true : undefined,
+        month: month || undefined,
+        debtPeriodId,
+        nonMonthly: nonMonthly || undefined,
         amount: parseFloat(form.amount),
         currency: form.currency,
         amountVES: form.currency === 'VES' ? parseFloat(form.amount) : null,
@@ -601,8 +755,9 @@ export default function PaymentLedger() {
       });
       setPaymentModal(null);
       if (form.month) {
-        setOpenKey(`${form.studentId}-${form.month}`);
-        setFlash(`Pago de ${form.amount} ${form.currency} registrado · ${MONTH_FULL[form.month]}`);
+        const openKey = debtPeriodId ? `${form.studentId}-p${debtPeriodId}` : `${form.studentId}-${form.month}`;
+        setOpenKey(openKey);
+        setFlash(`Pago de ${form.amount} ${form.currency} registrado`);
       } else {
         setFlash(`Pago de ${form.amount} ${form.currency} registrado · distribución automática`);
       }
@@ -653,7 +808,7 @@ export default function PaymentLedger() {
     try {
       await createCharge({
         inscriptionId: Number(form.studentId),
-        schoolPeriodId,
+        schoolPeriodId: Number(form.periodId) || schoolPeriodId,
         sellableItemId: form.sellableItemId ? Number(form.sellableItemId) : null,
         type: form.type,
         month: form.month || null,
@@ -685,12 +840,23 @@ export default function PaymentLedger() {
 
   const feeAmountFor = (m: string) => (monthlyFeeByMonth[m] ?? monthlyFee)?.amount ?? 0;
   const totalCollected = students.reduce((sum, s) =>
-    sum + months.reduce((m, mo) => m + (s.months[mo]?.totalPaid ?? 0), 0) + (s.nonMonthly?.totalPaid ?? 0), 0);
+    sum + months.reduce((m, mo) => m + (s.months[mo]?.totalPaid ?? 0), 0)
+      + (s.enrollment?.totalPaid ?? 0) + (s.other?.totalPaid ?? 0), 0);
   const avgCompletion = students.length > 0
     ? Math.round(students.reduce((s, st) => s + yearProgress(st, feeAmountFor, months), 0) / students.length * 100)
     : 0;
-  // One extra column for enrollment and other one-time debts
-  const tableWidth = NAME_COL + (months.length + 1) * MONTH_COL;
+  // The "Otros" column only exists when some student has extraordinary debts
+  const hasOther = useMemo(
+    () => students.some(s => (s.other?.totalCharged ?? 0) > 0 || (s.other?.totalPaid ?? 0) > 0),
+    [students],
+  );
+
+  // Entry month of a student (its enrollment-plan debts display inside this cell)
+  const entryMonthOf = (s: LedgerStudent) =>
+    s.entryMonth && months.includes(s.entryMonth) ? s.entryMonth : months[0];
+
+  // Extra columns: prior debt periods + extraordinary debts ("Otros")
+  const tableWidth = NAME_COL + (months.length + priorPeriodList.length + (hasOther ? 1 : 0)) * MONTH_COL;
 
   return (
     <div className="min-h-screen bg-[#EDEEF1] font-sans text-[#14181F] p-6">
@@ -793,10 +959,19 @@ export default function PaymentLedger() {
                     {nameSort === 'desc' && <ArrowUpAZ size={13} className="text-[#2F5EA8]" />}
                     {nameSort === 'canonical' && <ArrowUpDown size={12} className="opacity-50" />}
                   </button>
-                  <div style={{ width: MONTH_COL }}
-                    className="py-2.5 text-[11px] font-semibold text-center border-r border-[#DBDEE4] uppercase tracking-wide text-[#5B6472]">
-                    Inscripción
-                  </div>
+                  {priorPeriodList.map(pp => (
+                    <div key={pp.periodId} style={{ width: MONTH_COL }}
+                      title={pp.periodName}
+                      className="py-2.5 text-[11px] font-semibold text-center border-r border-[#DBDEE4] uppercase tracking-wide bg-[#FDF6E5] text-[#8A5A00]">
+                      {pp.periodCode ?? 'Anterior'}
+                    </div>
+                  ))}
+                  {hasOther && (
+                    <div style={{ width: MONTH_COL }}
+                      className="py-2.5 text-[11px] font-semibold text-center border-r border-[#DBDEE4] uppercase tracking-wide text-[#5B6472]">
+                      Otros
+                    </div>
+                  )}
                   {months.map(m => (
                     <div key={m} style={{ width: MONTH_COL }}
                       className={`py-2.5 text-[11px] font-semibold text-center border-r border-[#DBDEE4] uppercase tracking-wide
@@ -867,22 +1042,48 @@ export default function PaymentLedger() {
                           </button>
                         </div>
 
-                        <MonthCell
-                          paid={student.nonMonthly?.totalPaid ?? 0}
-                          charged={student.nonMonthly?.totalCharged ?? 0}
-                          month={OTHER}
-                          months={months}
-                          isOpen={openKey === `${student.inscriptionId}-${OTHER}`}
-                          onClick={() => toggle(student.inscriptionId, OTHER)}
-                        />
+                        {priorPeriodList.map(pp => {
+                          const group = student.priorPeriods?.find(g => g.periodId === pp.periodId);
+                          const { charged, paid } = group ? priorTotals(group) : { charged: 0, paid: 0 };
+                          const key = `p${pp.periodId}`;
+                          return (
+                            <MonthCell
+                              key={pp.periodId}
+                              paid={paid}
+                              charged={charged}
+                              month={key}
+                              months={months}
+                              forceStatus={priorStatus(paid, charged)}
+                              isOpen={openKey === `${student.inscriptionId}-${key}`}
+                              onClick={() => toggle(student.inscriptionId, key)}
+                            />
+                          );
+                        })}
+                        {hasOther && (() => {
+                          const { charged, paid } = mergedTotals(student.other);
+                          return (
+                            <MonthCell
+                              paid={paid}
+                              charged={charged}
+                              month={OTHER}
+                              months={months}
+                              isOpen={openKey === `${student.inscriptionId}-${OTHER}`}
+                              onClick={() => toggle(student.inscriptionId, OTHER)}
+                            />
+                          );
+                        })()}
                         {months.map(m => {
                           const data = student.months[m];
                           const key = `${student.inscriptionId}-${m}`;
+                          // The entry month's cell also carries the enrollment-plan debts
+                          const { charged, paid } = m === entryMonthOf(student)
+                            ? mergedTotals(data, student.enrollment)
+                            : { charged: data?.totalCharged ?? 0, paid: data?.totalPaid ?? 0 };
                           return (
                             <MonthCell
                               key={m}
-                              paid={data?.totalPaid ?? 0}
-                              charged={data?.totalCharged ?? 0}
+                              paid={paid}
+                              charged={charged}
                               month={m}
                               months={months}
                               isOpen={openKey === key}
@@ -900,13 +1101,52 @@ export default function PaymentLedger() {
                             <ChevronDown size={13} className="text-[#2F5EA8]" />
                           </div>
                           <div style={{ width: tableWidth - NAME_COL }}>
-                            <MonthDetail
-                              month={openMonth}
-                              data={openMonth === OTHER ? student.nonMonthly : student.months[openMonth]}
-                              monthlyFee={openMonth === OTHER ? (monthlyFee ? { amount: 0, currency: monthlyFee.currency } : null) : (monthlyFeeByMonth[openMonth] ?? monthlyFee)}
-                              onAddPayment={() => setPaymentModal({ studentId: student.inscriptionId, month: openMonth })}
-                              onDeletePayment={handleDeletePayment}
-                            />
+                            {openMonth.startsWith('p') ? (
+                              <PriorPeriodDetail
+                                group={student.priorPeriods.find(g => g.periodId === Number(openMonth.slice(1)))!}
+                                onAddPayment={(monthKey) => setPaymentModal({ studentId: student.inscriptionId, month: monthKey })}
+                                onDeletePayment={handleDeletePayment}
+                              />
+                            ) : openMonth === OTHER ? (
+                              <MonthDetail
+                                label="Otras deudas"
+                                month={OTHER}
+                                data={student.other}
+                                monthlyFee={monthlyFee ? { amount: 0, currency: monthlyFee.currency } : null}
+                                onAddPayment={() => setPaymentModal({ studentId: student.inscriptionId, month: OTHER })}
+                                onDeletePayment={handleDeletePayment}
+                              />
+                            ) : openMonth === entryMonthOf(student) ? (
+                              <>
+                                {(student.enrollment?.charges?.length || student.enrollment?.payments?.length) ? (
+                                  <MonthDetail
+                                    label="Inscripción"
+                                    month={OTHER}
+                                    data={student.enrollment}
+                                    monthlyFee={monthlyFee ? { amount: 0, currency: monthlyFee.currency } : null}
+                                    onAddPayment={() => setPaymentModal({ studentId: student.inscriptionId, month: OTHER })}
+                                    onDeletePayment={handleDeletePayment}
+                                  />
+                                ) : null}
+                                {student.months[openMonth] ? (
+                                  <MonthDetail
+                                    month={openMonth}
+                                    data={student.months[openMonth]}
+                                    monthlyFee={monthlyFeeByMonth[openMonth] ?? monthlyFee}
+                                    onAddPayment={() => setPaymentModal({ studentId: student.inscriptionId, month: openMonth })}
+                                    onDeletePayment={handleDeletePayment}
+                                  />
+                                ) : null}
+                              </>
+                            ) : (
+                              <MonthDetail
+                                month={openMonth}
+                                data={student.months[openMonth]}
+                                monthlyFee={monthlyFeeByMonth[openMonth] ?? monthlyFee}
+                                onAddPayment={() => setPaymentModal({ studentId: student.inscriptionId, month: openMonth })}
+                                onDeletePayment={handleDeletePayment}
+                              />
+                            )}
                           </div>
                         </div>
                       )}
@@ -960,6 +1200,8 @@ export default function PaymentLedger() {
         <AddChargeModal
           students={students}
           months={months}
+          periods={allPeriods}
+          currentPeriodId={schoolPeriodId!}
           prefill={chargeModal}
           feeByMonth={monthlyFeeByMonth}
           sellableItems={sellableItems}

@@ -19,6 +19,9 @@ interface PaymentAttributes {
   currency: string;            // 'USD', 'EUR', 'VES'
   amountVES: number | null;    // amount converted to VES at time of payment
   exchangeRate: number | null; // rate used for VES conversion
+  debtPeriodId: number | null; // period whose debt this settles (null = schoolPeriodId)
+  equivalent: number | null;   // amount in the debt bucket's currency at the payment-date rate
+  equivalentCurrency: string | null;
   method: PaymentMethod;
   reference: string | null;    // transaction reference
   bank: string | null;
@@ -27,7 +30,7 @@ interface PaymentAttributes {
 }
 
 interface PaymentCreationAttributes
-  extends Optional<PaymentAttributes, 'id' | 'feeId' | 'sellableItemId' | 'chargeId' | 'month' | 'amountVES' | 'exchangeRate' | 'reference' | 'bank' | 'notes'> {}
+  extends Optional<PaymentAttributes, 'id' | 'feeId' | 'sellableItemId' | 'chargeId' | 'month' | 'amountVES' | 'exchangeRate' | 'debtPeriodId' | 'equivalent' | 'equivalentCurrency' | 'reference' | 'bank' | 'notes'> {}
 
 class Payment extends Model<PaymentAttributes, PaymentCreationAttributes>
   implements PaymentAttributes {
@@ -42,6 +45,9 @@ class Payment extends Model<PaymentAttributes, PaymentCreationAttributes>
   public currency!: string;
   public amountVES!: number | null;
   public exchangeRate!: number | null;
+  public debtPeriodId!: number | null;
+  public equivalent!: number | null;
+  public equivalentCurrency!: string | null;
   public method!: PaymentMethod;
   public reference!: string | null;
   public bank!: string | null;
@@ -104,6 +110,19 @@ Payment.init(
     },
     exchangeRate: {
       type: DataTypes.DECIMAL(18, 6),
+      allowNull: true,
+    },
+    debtPeriodId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: { model: 'school_periods', key: 'id' },
+    },
+    equivalent: {
+      type: DataTypes.DECIMAL(18, 2),
+      allowNull: true,
+    },
+    equivalentCurrency: {
+      type: DataTypes.STRING(10),
       allowNull: true,
     },
     method: {

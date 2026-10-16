@@ -1,29 +1,28 @@
-export const MONTH_CODES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+export const MONTH_CODES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
 
-export const MONTH_NAMES: Record<string, string> = {
+export const MONTH_FULL: Record<string, string> = {
+  Sep: 'Septiembre', Oct: 'Octubre', Nov: 'Noviembre', Dec: 'Diciembre',
   Jan: 'Enero', Feb: 'Febrero', Mar: 'Marzo', Apr: 'Abril',
   May: 'Mayo', Jun: 'Junio', Jul: 'Julio', Aug: 'Agosto',
-  Sep: 'Septiembre', Oct: 'Octubre', Nov: 'Noviembre', Dec: 'Diciembre',
 };
 
-interface BillingWindow {
-  billingStartMonth?: number | null;
-  billingEndMonth?: number | null;
-}
-
-/** Ordered month codes billed by a period (mirrors backend billingCalendarService). */
-export function billingMonthsOf(period?: BillingWindow | null): string[] {
+/** Billing months of a period (billingStartMonth→billingEndMonth, wrapping the year; default Sep→Aug). */
+export function billingMonthsOf(period: { billingStartMonth?: number | null; billingEndMonth?: number | null } | null | undefined): string[] {
   const start = period?.billingStartMonth ?? 9;
   const end = period?.billingEndMonth ?? 8;
-  const months: string[] = [];
+  const out: string[] = [];
   let m = start;
   for (let i = 0; i < 12; i++) {
-    months.push(MONTH_CODES[m - 1]);
+    out.push(MONTH_CODES[m - 1]);
     if (m === end) break;
     m = (m % 12) + 1;
   }
-  return months;
+  return out;
 }
 
-export const billingMonthOptions = (period?: BillingWindow | null) =>
-  billingMonthsOf(period).map(code => ({ value: code, label: MONTH_NAMES[code] }));
+export const MONTH_NAMES = MONTH_FULL;
+
+/** Select options for a period's billing months. */
+export function billingMonthOptions(period: { billingStartMonth?: number | null; billingEndMonth?: number | null } | null | undefined): { value: string; label: string }[] {
+  return billingMonthsOf(period).map(m => ({ value: m, label: MONTH_FULL[m] ?? m }));
+}

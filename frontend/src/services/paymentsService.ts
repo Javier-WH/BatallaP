@@ -288,7 +288,12 @@ export interface LedgerStudent {
   gradeName: string;
   sectionName: string;
   months: Record<string, LedgerBucket>;
-  nonMonthly: LedgerBucket;
+  /** Month-less debts generated from the enrollment plan — displayed inside the entry month's cell. */
+  enrollment: LedgerBucket;
+  /** Month-less manual/extraordinary debts — displayed in the "Otros" column. */
+  other: LedgerBucket;
+  /** Debts that belong to school periods other than the viewed one. */
+  priorPeriods: LedgerPriorPeriod[];
   discounts: LedgerDiscount[];
 }
 
@@ -296,10 +301,25 @@ export interface LedgerStudent {
 export interface LedgerBucket {
   charges: any[];
   payments: any[];
+  /** Currency the bucket's debts are denominated in (payments are converted to it). */
+  currency: string | null;
   grossCharged: number;
   totalDiscount: number;
   totalCharged: number;
   totalPaid: number;
+  /** Same totals expressed in VES — lets mixed-currency buckets aggregate. */
+  totalChargedVES: number;
+  totalPaidVES: number;
+}
+
+export interface LedgerPriorPeriod {
+  periodId: number;
+  periodName: string;
+  periodCode: string | null;
+  billingMonths: string[];
+  months: Record<string, LedgerBucket>;
+  enrollment: LedgerBucket;
+  other: LedgerBucket;
 }
 
 export interface LedgerDiscount {
@@ -350,6 +370,8 @@ export interface PaymentPayload {
   sellableItemId?: number | null;
   chargeId?: number | null;
   month?: string | null;
+  /** School period whose debt this payment settles (null = the payment's period). */
+  debtPeriodId?: number | null;
   amount: number;
   currency: string;
   amountVES?: number | null;
@@ -446,4 +468,37 @@ export async function deletePayment(id: number): Promise<void> {
 
 export async function deleteCharge(id: number): Promise<void> {
   await api.delete(`/ledger/charges/${id}`);
+}
+
+// ── Debt summary & document hold ──
+
+export interface DebtBucketView {
+  periodId: number;
+  periodName: string;
+  month: string | null;
+  currency: string;
+  charged: number;
+  paid: number;
+  remaining: number;
+  charges: { id: number; type: string; description: string; amount: number; currency: string }[];
+  paymentCount: number;
+}
+
+export interface InscriptionDebt {
+  inscriptionId: number;
+  withdrawn: boolean;
+  papersHold: boolean;
+  hasDebt: boolean;
+  totals: Record<string, { charged: number; paid: number; remaining: number }>;
+  buckets: DebtBucketView[];
+}
+
+export async function getInscriptionDebt(inscriptionId: number): Promise<InscriptionDebt> {
+  const { data } = await api.get<InscriptionDebt>(`/ledger/inscriptions/${inscriptionId}/debt`);
+  return data;
+}
+
+export async function releasePapers(inscriptionId: number): Promise<{ papersHold: boolean }> {
+  const { data } = await api.post(`/ledger/inscriptions/${inscriptionId}/release-papers`);
+  return data;
 }

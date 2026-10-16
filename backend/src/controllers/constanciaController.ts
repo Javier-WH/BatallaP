@@ -638,7 +638,15 @@ export const generatePreview = async (req: Request, res: Response) => {
 
     let html = renderTemplate(template.content, vars);
     if (imageToggles && typeof imageToggles === 'object') html = stripHiddenImages(html, imageToggles);
-    return res.json({ html, variables: vars, margin: template.margin || DEFAULT_MARGIN });
+
+    // The school may not hand documents to a withdrawn student with unpaid
+    // debt: warn whoever generates the constancia.
+    let papersHold = false;
+    if (personId) {
+      const held = await Inscription.findOne({ where: { personId: Number(personId), papersHold: true } as any });
+      papersHold = !!held;
+    }
+    return res.json({ html, variables: vars, margin: template.margin || DEFAULT_MARGIN, papersHold });
   } catch (error: any) {
     console.error('[generatePreview] Error:', error);
     return res.status(500).json({ message: error.message || 'Error al generar vista previa' });

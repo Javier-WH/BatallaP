@@ -9,6 +9,9 @@ export interface SchoolPeriod {
   status: SchoolPeriodStatus;
   /** Derived from `status`. Kept for backwards compatibility. */
   isActive: boolean;
+  /** Billing calendar bounds (1-12). Defaults to Sep→Aug when absent. */
+  billingStartMonth?: number | null;
+  billingEndMonth?: number | null;
 }
 
 export interface ChecklistStatus {

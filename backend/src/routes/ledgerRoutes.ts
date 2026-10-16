@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requirePaymentsAccess } from '@/middlewares/paymentsAccessMiddleware';
+import { requirePaymentsAccess, requireDebtView } from '@/middlewares/paymentsAccessMiddleware';
 import {
   getLedgerBySection,
   createPayment,
@@ -9,6 +9,8 @@ import {
   deleteCharge,
   getSectionsForPeriod,
   updateEntryMonth,
+  getInscriptionDebt,
+  releasePapers,
   listInscriptionDiscounts,
   createInscriptionDiscount,
   updateInscriptionDiscount,
@@ -16,6 +18,12 @@ import {
 } from '@/controllers/ledgerController';
 
 const router = Router();
+
+// Debt summary of one inscription (all periods) + manual release of the
+// document hold of a withdrawn student. Registered BEFORE the payments guard:
+// Control de Estudios uses them in the withdrawal flow.
+router.get('/inscriptions/:id/debt', requireDebtView, getInscriptionDebt);
+router.post('/inscriptions/:id/release-papers', requireDebtView, releasePapers);
 
 router.use(requirePaymentsAccess);
 

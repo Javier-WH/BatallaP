@@ -74,6 +74,7 @@ const Constancias: React.FC = () => {
   const [imageToggles, setImageToggles] = useState<Record<string, boolean>>({});
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [previewVars, setPreviewVars] = useState<Record<string, string> | null>(null);
+  const [papersHold, setPapersHold] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [showGuides, setShowGuides] = useState(false);
@@ -115,6 +116,9 @@ const Constancias: React.FC = () => {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // The hold flag belongs to the current preview; clear it whenever the preview resets.
+  useEffect(() => { if (!previewHtml) setPapersHold(false); }, [previewHtml]);
 
   // When template is selected, analyze what inputs it needs
   const handleTemplateSelect = useCallback(async (templateId: number) => {
@@ -226,6 +230,7 @@ const Constancias: React.FC = () => {
       });
       setPreviewHtml(res.data.html);
       setPreviewVars(res.data.variables ?? null);
+      setPapersHold(res.data.papersHold === true);
       setMargin(res.data.margin || CONSTANCIA_DEFAULT_MARGIN);
     } catch (error: any) {
       message.error(error.response?.data?.message || 'Error al generar vista previa');
@@ -233,6 +238,24 @@ const Constancias: React.FC = () => {
       setGenerating(false);
     }
   }, [selectedTemplateId, selectedStudent, selectedWorker, activePeriod, selectedPeriodId, customValues, imageToggles, templateAnalysis, useCustomDate, customDate]);
+
+  // Documents held by debt: staff see the warning; only Master/Administrador may
+  // override and issue the document anyway (they can also release the hold).
+  const canOverrideHold = user?.roles.some(r => ['Master', 'Administrador'].includes(r));
+  const guardHold = useCallback((fn: () => void) => () => {
+    if (!papersHold) { fn(); return; }
+    if (!canOverrideHold) {
+      message.error('Los documentos de este estudiante están retenidos por deuda pendiente.');
+      return;
+    }
+    Modal.confirm({
+      title: 'Documentos retenidos por deuda',
+      content: 'Este estudiante tiene documentos retenidos por deuda pendiente. ¿Emitir la constancia de todas formas?',
+      okText: 'Emitir',
+      cancelText: 'Cancelar',
+      onOk: () => fn(),
+    });
+  }, [papersHold, canOverrideHold]);
 
   // Print PDF (uses browser print)
   const handlePrintPdf = useCallback(() => {
@@ -618,12 +641,23 @@ const Constancias: React.FC = () => {
                 type={showGuides ? 'primary' : 'default'}
                 title="Mostrar/ocultar guías de márgenes"
               >Guías</Button>
-              <Button icon={<FilePdfOutlined />} onClick={handlePrintPdf}>PDF</Button>
-              <Button icon={<FileWordOutlined />} onClick={handleExportWord}>Word</Button>
+              <Button icon={<FilePdfOutlined />} onClick={guardHold(handlePrintPdf)} disabled={papersHold && !canOverrideHold}>PDF</Button>
+              <Button icon={<FileWordOutlined />} onClick={guardHold(handleExportWord)} disabled={papersHold && !canOverrideHold}>Word</Button>
             </div>
           }
           className="shadow-sm"
         >
+          {papersHold && (
+            <Alert
+              type="error"
+              showIcon
+              className="mb-4"
+              message="Documentos retenidos por deuda pendiente"
+              description={canOverrideHold
+                ? 'El estudiante fue retirado con deuda sin saldar. Puede emitir la constancia de todas formas, o liberar la retención desde Matrícula una vez saldada la deuda.'
+                : 'Este estudiante fue retirado con deuda sin saldar. Un administrador debe saldar la deuda o liberar los documentos antes de emitir la constancia.'}
+            />
+          )}
           {noAcademicData && (
             <Alert
               type="warning"

@@ -17,6 +17,8 @@
 | `finalGradeEditService.ts` | `/evaluation/final-grade` | editar nota final con permiso. |
 | `gradeEditPermissionService.ts` | `/grade-edit-permissions` | CRUD permisos + audit. |
 | `dashboardContentService.ts` | `/dashboard-content` | Contenido editable. |
+| `bankService.ts` | `/banks` | Catálogo de bancos; create/update via FormData (multipart `icon`). |
+| `paymentsService.ts` | `/payments`, `/ledger` | Ledger (secciones, estudiantes con `priorPeriods`), pagos (`debtPeriodId` para apuntar a un período de deuda), cargos manuales (`schoolPeriodId` = período de la deuda), descuentos, `getInscriptionDebt`, `releasePapers`. |
 
 ## Convenciones
 

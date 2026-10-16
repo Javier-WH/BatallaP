@@ -18,12 +18,13 @@ interface InscriptionAttributes {
   withdrawnAt?: Date | null;
   rosterNumber?: number | null;
   entryMonth?: string | null;
+  papersHold?: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 interface InscriptionCreationAttributes
-  extends Optional<InscriptionAttributes, 'id' | 'sectionId' | 'originPeriodId' | 'isRepeater' | 'withdrawnAt' | 'rosterNumber' | 'entryMonth'> { }
+  extends Optional<InscriptionAttributes, 'id' | 'sectionId' | 'originPeriodId' | 'isRepeater' | 'withdrawnAt' | 'rosterNumber' | 'entryMonth' | 'papersHold'> { }
 
 class Inscription extends Model<InscriptionAttributes, InscriptionCreationAttributes> implements InscriptionAttributes {
   public id!: number;
@@ -37,6 +38,7 @@ class Inscription extends Model<InscriptionAttributes, InscriptionCreationAttrib
   public withdrawnAt!: Date | null;
   public rosterNumber!: number | null;
   public entryMonth!: string | null;
+  public papersHold!: boolean;
 
   public readonly subjects?: import('./Subject').default[];
   public readonly student?: Person;
@@ -112,6 +114,16 @@ Inscription.init(
       type: DataTypes.STRING(3),
       allowNull: true,
       defaultValue: null
+    },
+    /**
+     * TRUE while the school withholds the withdrawn student's documents
+     * because of outstanding debt. Set at withdrawal when debt remains,
+     * lifted automatically once the debt is settled (or manually released).
+     */
+    papersHold: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false
     }
   },
   {

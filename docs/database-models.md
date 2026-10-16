@@ -122,12 +122,13 @@
 | `Fee` | Costo fijo (`key`: `mensualidad`/`matricula`/`gastos_administrativos`). **Versionado por `effectiveMonth`** (código de mes). UNIQUE(`schoolPeriodId`, `key`, `effectiveMonth`). La versión vigente en un mes es la activa con mayor `effectiveMonth` ≤ ese mes (`feeResolverService`). |
 | `SellableItem` | Ítems vendibles (uniformes, distintivos…). |
 | `EnrollmentPlan` / `EnrollmentPlanItem` | Plan de inscripción (también con `effectiveMonth`) y sus ítems (costo o ítem vendible × cantidad). |
-| `Charge` | Deuda de una inscripción. `month` NULL = deuda única (inscripción, ítems, extraordinarias). `source`: `schedule` (generada desde costos/plan) o `manual`. `scheduleKey` (p. ej. `mensualidad:Oct`, `plan:fee:matricula`) identifica la deuda generada; UNIQUE(`inscriptionId`, `scheduleKey`) garantiza idempotencia. |
-| `Payment` | Pago de una inscripción; `month` NULL = pago de deudas sin mes. |
+| `Charge` | Deuda de una inscripción. `schoolPeriodId` es el **período de la deuda** (puede diferir del de la inscripción — deuda arrastrada de años anteriores); `month` se interpreta en el calendario de cobro de ese período. `month` NULL = deuda única (inscripción, ítems, extraordinarias). `source`: `schedule` (generada desde costos/plan) o `manual`. `scheduleKey` (p. ej. `mensualidad:Oct`, `plan:fee:matricula`) identifica la deuda generada; UNIQUE(`inscriptionId`, `scheduleKey`) garantiza idempotencia. |
+| `Payment` | Pago de una inscripción; `month` NULL = pago de deudas sin mes. `debtPeriodId` = período de la deuda que cubre (NULL = el de la inscripción). `equivalent`/`equivalentCurrency` = monto expresado en la moneda de la deuda según la tasa de `paymentDate`. |
 | `DiscountReason` | Catálogo de motivos de descuento/beca (`name` único, `active`). |
+| `Bank` | Catálogo de bancos: `code` (Sudeban, único), `name`, `shortName`, `rif`, `icon` (`/uploads/banks/…`), `active`. Se usa en el selector de banco al registrar pagos en VES. |
 | `InscriptionDiscount` | Regla de descuento de una inscripción: `kind` (`percent`/`fixed`), `value`, `appliesTo` (`mensualidad`/`matricula`/`todo`), `fromMonth`/`toMonth`, `note`, `active`, `createdByPersonId`. Se evalúa **al leer** el ledger (el % sigue las tarifas); nunca se guarda como cargo negativo. |
 
-Campos relacionados: `SchoolPeriod.billingStartMonth`/`billingEndMonth` (1–12, default 9→8: meses que se cobran) e `Inscription.entryMonth` (mes de ingreso; NULL = desde el primer mes).
+Campos relacionados: `SchoolPeriod.billingStartMonth`/`billingEndMonth` (1–12, default 9→8: meses que se cobran) e `Inscription.entryMonth` (mes de ingreso; NULL = desde el primer mes). `Inscription.papersHold` (bool): documentos retenidos por deuda tras el retiro; se libera al saldar (`refreshPapersHold`) o manualmente (`POST /api/ledger/inscriptions/:id/release-papers`).
 
 ## Asociaciones clave
 

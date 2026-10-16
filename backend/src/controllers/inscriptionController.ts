@@ -18,6 +18,7 @@ import { generateEnrollmentReport } from '@/services/enrollmentReportService';
 import { sortInscriptions, canonicalInscriptionOrder, numericDocumentSQL, fieldExpr, quoteQualified, lower } from '@/services/studentSortService';
 import { renumberSectionRoster, renumberRosters, rosterScopeOf } from '@/services/rosterNumberService';
 import { safeGenerateCharges, resolveInscriptionEntryMonth, deactivateUnpaidScheduledCharges } from '@/services/chargeScheduleService';
+import { inscriptionDebtSummary } from '@/services/debtBalanceService';
 import { parsePagination, buildPaginatedResponse } from '@/services/paginationService';
 
 const ESCOLARIDAD_VALUES: EscolaridadStatus[] = ['regular', 'repitiente', 'materia_pendiente'];
@@ -2452,10 +2453,19 @@ class EnrollmentStateError extends Error {
  * deleting anything. Works for both inscribed-only ("No Matriculados") and
  * matriculated students. Clears the section; academic data is preserved.
  */
-const withdrawMatriculationCore = async (matriculation: Matriculation, t: Transaction) => {
+export type WithdrawDebtAction = 'cancel_all' | 'keep_until' | 'keep_all';
+
+const withdrawMatriculationCore = async (
+  matriculation: Matriculation,
+  t: Transaction,
+  debtOptions: { debtAction?: WithdrawDebtAction; debtUntilMonth?: string | null } = {}
+) => {
   if (matriculation.status === 'withdrawn') {
     throw new EnrollmentStateError(400, 'El estudiante ya está retirado');
   }
+  const { debtAction = 'cancel_all', debtUntilMonth = null } = debtOptions;
+  let papersHold = false;
+  let pendingDebt: Record<string, number> | null = null;
   if (matriculation.inscriptionId) {
     const inscription = await Inscription.findByPk(matriculation.inscriptionId, { transaction: t });
     if (inscription) {
@@ -2466,13 +2476,28 @@ const withdrawMatriculationCore = async (matriculation: Matriculation, t: Transa
       await inscription.save({ transaction: t });
       // The student leaves the section list — the rest renumber.
       await renumberSectionRoster(prevScope.schoolPeriodId, prevScope.gradeId, prevScope.sectionId, t);
-      // Unpaid scheduled debts of a student who left no longer count.
-      await deactivateUnpaidScheduledCharges(inscription.id, { transaction: t });
+      // What happens with the debt is the administrator's choice:
+      //  - cancel_all: unpaid scheduled debts no longer count (default, legacy behavior).
+      //  - keep_until: keeps debts through debtUntilMonth plus all non-monthly
+      //    and manual debts; only later months are cancelled.
+      //  - keep_all: every debt stays.
+      if (debtAction === 'cancel_all') {
+        await deactivateUnpaidScheduledCharges(inscription.id, { transaction: t });
+      } else if (debtAction === 'keep_until') {
+        await deactivateUnpaidScheduledCharges(inscription.id, { transaction: t, untilMonth: debtUntilMonth });
+      }
+      // The school may not release the student's documents while debt remains.
+      const summary = await inscriptionDebtSummary(inscription.id, { transaction: t });
+      papersHold = summary.hasDebt;
+      pendingDebt = Object.fromEntries(Object.entries(summary.totals).map(([cur, v]) => [cur, v.remaining]));
+      (inscription as any).papersHold = papersHold;
+      await inscription.save({ transaction: t });
     }
   }
   matriculation.status = 'withdrawn';
   (matriculation as any).sectionId = null;
   await matriculation.save({ transaction: t });
+  return { papersHold, pendingDebt };
 };
 
 /**
@@ -2494,6 +2519,7 @@ const reactivateMatriculationCore = async (matriculation: Matriculation, t: Tran
     if (inscription) {
       (inscription as any).sectionId = null;
       (inscription as any).withdrawnAt = null;
+      (inscription as any).papersHold = false;
       await inscription.save({ transaction: t });
       await safeGenerateCharges(inscription.id, t);
     }
@@ -2509,15 +2535,15 @@ const runEnrollmentTransition = async (
   fallbackError: string,
   successMessage: string,
   findMatriculation: (t: Transaction) => Promise<Matriculation | null>,
-  action: (m: Matriculation, t: Transaction) => Promise<void>
+  action: (m: Matriculation, t: Transaction) => Promise<object | void>
 ) => {
   const t = await sequelize.transaction();
   try {
     const matriculation = await findMatriculation(t);
     if (!matriculation) throw new EnrollmentStateError(404, 'Matrícula no encontrada');
-    await action(matriculation, t);
+    const extra = await action(matriculation, t);
     await t.commit();
-    return res.json({ message: successMessage });
+    return res.json({ message: successMessage, ...(extra ?? {}) });
   } catch (error: any) {
     await t.rollback();
     if (error instanceof EnrollmentStateError) {
@@ -2533,9 +2559,10 @@ export const withdrawInscription = async (req: Request, res: Response) => {
   if (!canEnrollStudent(req)) {
     return res.status(403).json({ error: 'No tiene permisos para retirar estudiantes' });
   }
+  const { debtAction, debtUntilMonth } = req.body ?? {};
   return runEnrollmentTransition(res, 'withdrawInscription', 'Error al retirar estudiante', 'Estudiante retirado correctamente',
     (t) => Matriculation.findOne({ where: { inscriptionId: req.params.id }, transaction: t, lock: t.LOCK.UPDATE }),
-    withdrawMatriculationCore);
+    (m, t) => withdrawMatriculationCore(m, t, { debtAction, debtUntilMonth }));
 };
 
 /** POST /inscriptions/:id/reactivate — legacy entry point keyed by inscription id. */
@@ -2553,9 +2580,10 @@ export const withdrawMatriculation = async (req: Request, res: Response) => {
   if (!canEnrollStudent(req)) {
     return res.status(403).json({ error: 'No tiene permisos para retirar estudiantes' });
   }
+  const { debtAction, debtUntilMonth } = req.body ?? {};
   return runEnrollmentTransition(res, 'withdrawMatriculation', 'Error al retirar estudiante', 'Estudiante retirado correctamente',
     (t) => Matriculation.findByPk(req.params.id as string, { transaction: t, lock: t.LOCK.UPDATE }),
-    withdrawMatriculationCore);
+    (m, t) => withdrawMatriculationCore(m, t, { debtAction, debtUntilMonth }));
 };
 
 /** POST /matriculations/:id/reactivate — sends the student back to "No Matriculados". */

@@ -43,6 +43,9 @@
 | `teacherAdminHourController` | Horas administrativas | Pintadas sobre el horario del profesor post-generación (no son materias). GET map + POST bulk-replace (solo CE/Admin/Master) + summary para cuantificación. Se limpian al regenerar. |
 | `teacherWorkloadController` | Carga horaria docente | GET `?schoolPeriodId=` → horas semanales derivadas por profesor (cátedra + admin). Staff ve todos; `Profesor` solo su fila. Delega en `teacherWorkloadService`. |
 | `healthController` | Liveness | Probe simple. |
+| `bankController` | Catálogo de bancos | GET abierto a sesión; POST/PUT (multipart `icon`) exigen Master/Admin. Código Sudeban de 4 dígitos único. |
+| `paymentsController` | Config de pagos | Tasas, fees versionados, planes de inscripción, items vendibles, motivos de descuento, preview/apply de generación de deudas. Guard `requirePaymentsAccess` (Master/Admin). |
+| `ledgerController` | Deudas y pagos | `getLedgerBySection` agrupa por **período de la deuda** (`priorPeriods` para deudas de otros años); `createPayment` distribuye cronológicamente con equivalencia de moneda (`debtBalanceService`); `createCharge`/`bulk` aceptan `schoolPeriodId` distinto al de la inscripción; `getInscriptionDebt`/`releasePapers` (resumen de deuda + liberación de `papersHold`, accesibles a Control de Estudios). |
 
 ## Al añadir un controller nuevo
 

@@ -260,25 +260,40 @@ export async function safeGenerateCharges(
   }
 }
 
-/** Deactivates the unpaid scheduled charges of an inscription (e.g. on withdrawal). */
+/**
+ * Deactivates the unpaid scheduled charges of an inscription (e.g. on
+ * withdrawal). With `untilMonth`, only monthly charges *after* that billing
+ * month are deactivated — months up to `untilMonth` and every non-monthly
+ * charge (enrollment plan items) stay active, since the student owes the time
+ * they were enrolled. Manual debts are never touched.
+ */
 export async function deactivateUnpaidScheduledCharges(
   inscriptionId: number,
-  options: { transaction?: Transaction } = {}
+  options: { transaction?: Transaction; untilMonth?: string | null } = {}
 ): Promise<number> {
-  const { transaction } = options;
+  const { transaction, untilMonth } = options;
   const { Payment } = await import('@/models/index');
+  const inscription = await Inscription.findByPk(inscriptionId, { transaction });
+  const period = inscription ? await SchoolPeriod.findByPk(inscription.schoolPeriodId, { transaction }) : null;
+  const months = getBillingMonths(period ?? {}) as string[];
+  const untilIdx = untilMonth ? months.indexOf(untilMonth) : -1;
+
   const charges = await Charge.findAll({
     where: { inscriptionId, source: 'schedule', active: true },
     transaction,
   });
   let deactivated = 0;
   for (const charge of charges) {
+    if (untilMonth) {
+      // Keep non-monthly debts and months up to untilMonth; cancel only later months.
+      if (!charge.month || months.indexOf(charge.month) <= untilIdx) continue;
+    }
     const paid = await Payment.count({
       where: {
         inscriptionId,
         [Op.or]: [
           { chargeId: charge.id },
-          ...(charge.month ? [{ month: charge.month }] : []),
+          ...(charge.month ? [{ month: charge.month, debtPeriodId: charge.schoolPeriodId } as any, { month: charge.month, debtPeriodId: null } as any] : []),
         ],
       },
       transaction,
