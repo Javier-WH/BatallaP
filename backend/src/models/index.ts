@@ -151,6 +151,8 @@ import SellableItem from './SellableItem';
 import EnrollmentPlan from './EnrollmentPlan';
 import EnrollmentPlanItem from './EnrollmentPlanItem';
 import Payment from './Payment';
+import PaymentAuditLog from './PaymentAuditLog';
+import PaymentAllocation from './PaymentAllocation';
 import Charge from './Charge';
 import DiscountReason from './DiscountReason';
 import InscriptionDiscount from './InscriptionDiscount';
@@ -601,6 +603,18 @@ Charge.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'schoolPeriod
 SchoolPeriod.hasMany(Payment, { foreignKey: 'schoolPeriodId', as: 'payments' });
 Payment.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'schoolPeriod' });
 
+// Person (administrator) <-> Payment: who recorded the payment
+Payment.belongsTo(Person, { foreignKey: 'registeredByPersonId', as: 'registeredBy' });
+
+// Payment <-> Charge through allocations (a payment may settle several charges)
+Payment.hasMany(PaymentAllocation, { foreignKey: 'paymentId', as: 'allocations', onDelete: 'CASCADE' });
+PaymentAllocation.belongsTo(Payment, { foreignKey: 'paymentId', as: 'payment' });
+Charge.hasMany(PaymentAllocation, { foreignKey: 'chargeId', as: 'allocations', onDelete: 'CASCADE' });
+PaymentAllocation.belongsTo(Charge, { foreignKey: 'chargeId', as: 'charge' });
+
+// Payment corrections (delete / move): who did it
+PaymentAuditLog.belongsTo(Person, { foreignKey: 'performedByPersonId', as: 'performer' });
+
 // Charge <-> Payment (a charge can be settled by multiple payments)
 Charge.hasMany(Payment, { foreignKey: 'chargeId', as: 'payments' });
 Payment.belongsTo(Charge, { foreignKey: 'chargeId', as: 'charge' });
@@ -756,6 +770,8 @@ export {
   EnrollmentPlan,
   EnrollmentPlanItem,
   Payment,
+  PaymentAuditLog,
+  PaymentAllocation,
   Charge,
   DiscountReason,
   InscriptionDiscount,

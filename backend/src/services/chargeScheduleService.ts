@@ -272,7 +272,7 @@ export async function deactivateUnpaidScheduledCharges(
   options: { transaction?: Transaction; untilMonth?: string | null } = {}
 ): Promise<number> {
   const { transaction, untilMonth } = options;
-  const { Payment } = await import('@/models/index');
+  const { Payment, PaymentAllocation } = await import('@/models/index');
   const inscription = await Inscription.findByPk(inscriptionId, { transaction });
   const period = inscription ? await SchoolPeriod.findByPk(inscription.schoolPeriodId, { transaction }) : null;
   const months = getBillingMonths(period ?? {}) as string[];
@@ -282,22 +282,35 @@ export async function deactivateUnpaidScheduledCharges(
     where: { inscriptionId, source: 'schedule', active: true },
     transaction,
   });
+  // A charge is "paid" when it has allocations, or when a legacy payment (one
+  // registered before allocations existed) targets it or its month.
+  const allocRows = await PaymentAllocation.findAll({
+    where: { chargeId: { [Op.in]: charges.map(c => c.id) } },
+    attributes: ['chargeId', 'paymentId'],
+    transaction,
+  });
+  const allocatedCharges = new Set(allocRows.map(a => a.chargeId));
+  const allocatedPayments = new Set(allocRows.map(a => a.paymentId));
   let deactivated = 0;
   for (const charge of charges) {
     if (untilMonth) {
       // Keep non-monthly debts and months up to untilMonth; cancel only later months.
       if (!charge.month || months.indexOf(charge.month) <= untilIdx) continue;
     }
-    const paid = await Payment.count({
-      where: {
-        inscriptionId,
-        [Op.or]: [
-          { chargeId: charge.id },
-          ...(charge.month ? [{ month: charge.month, debtPeriodId: charge.schoolPeriodId } as any, { month: charge.month, debtPeriodId: null } as any] : []),
-        ],
-      },
-      transaction,
-    });
+    let paid = allocatedCharges.has(charge.id) ? 1 : 0;
+    if (paid === 0) {
+      paid = await Payment.count({
+        where: {
+          inscriptionId,
+          ...(allocatedPayments.size ? { id: { [Op.notIn]: [...allocatedPayments] } } : {}),
+          [Op.or]: [
+            { chargeId: charge.id },
+            ...(charge.month ? [{ month: charge.month, debtPeriodId: charge.schoolPeriodId } as any, { month: charge.month, debtPeriodId: null } as any] : []),
+          ],
+        },
+        transaction,
+      });
+    }
     if (paid === 0) {
       await charge.update({ active: false }, { transaction });
       deactivated++;

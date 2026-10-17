@@ -1,22 +1,28 @@
 import { Request, Response } from 'express';
 import sequelize from '@/config/database';
-import { Op } from 'sequelize';
+import { Op, Transaction, UniqueConstraintError } from 'sequelize';
 import {
   Inscription, Person, Grade, Section, SchoolPeriod,
-  Payment, Charge, Fee, SellableItem, ExchangeRate, ExchangeRateType,
+  Payment, PaymentAllocation, PaymentAuditLog, Charge, Fee, SellableItem, ExchangeRate, ExchangeRateType,
   InscriptionDiscount, DiscountReason,
 } from '@/models/index';
 import { DISCOUNT_KINDS, DISCOUNT_SCOPES } from '@/models/InscriptionDiscount';
+import { appliesAtPar, buildDedupeKey, normalizePaymentFields } from '@/services/paymentRulesService';
+import { distributePayment, checkTargetOrder, AllocationPart, AllocationTarget } from '@/services/paymentAllocationService';
 import { applyDiscountsToCharges, DiscountRule } from '@/services/discountService';
 import { getBillingMonths, monthCodeFromDate } from '@/services/billingCalendarService';
 import { pickEffective } from '@/services/feeResolverService';
 import { generateChargesForInscription } from '@/services/chargeScheduleService';
 import {
   clearPapersHoldIfSettled, inscriptionDebtSummary, loadDebtBuckets, makeRateResolver,
-  orderBuckets, paymentBucketMonth, paymentDebtPeriodId, paymentInCurrency,
+  orderBuckets, paymentBucketMonth, paymentDebtPeriodId, paymentInCurrency, paymentToVES,
 } from '@/services/debtBalanceService';
 
 // ── Ledger: list students by section with their charges & payments ──
+
+/** Whether a month-less bucket still has unpaid charges (per currency). */
+const enrollmentHasDebt = (b: { byCurrency: Record<string, { charged: number; paid: number }> }): boolean =>
+  Object.values(b.byCurrency).some(v => v.charged - v.paid > 0.005);
 
 export const getLedgerBySection = async (req: Request, res: Response) => {
   try {
@@ -65,6 +71,11 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
       where: { inscriptionId: { [Op.in]: inscriptionIds } },
       include: [
         { model: Charge, as: 'charge', attributes: ['id', 'month', 'type'] },
+        { model: Person, as: 'registeredBy', attributes: ['id', 'firstName', 'lastName'] },
+        {
+          model: PaymentAllocation, as: 'allocations',
+          include: [{ model: Charge, as: 'charge', attributes: ['id', 'month', 'type', 'currency', 'schoolPeriodId', 'description'] }],
+        },
       ],
     });
 
@@ -119,6 +130,7 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
     const debtPeriodIds = [...new Set<number>([
       ...charges.map(c => c.schoolPeriodId),
       ...payments.map(p => paymentDebtPeriodId(p)),
+      ...payments.flatMap((p: any) => (p.allocations ?? []).map((a: any) => a.charge?.schoolPeriodId).filter(Boolean)),
     ])];
     const debtPeriods = await SchoolPeriod.findAll({ where: { id: { [Op.in]: debtPeriodIds } } });
     const debtPeriodById = new Map(debtPeriods.map(p => [p.id, p]));
@@ -143,11 +155,13 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
 
       type Bucket = {
         charges: any[]; payments: any[]; currency: string | null;
+        /** Charged / paid per debt currency: a cell can mix them (EUR enrollment + USD uniform). */
+        byCurrency: Record<string, { charged: number; paid: number }>;
         grossCharged: number; totalDiscount: number; totalCharged: number; totalPaid: number;
         totalChargedVES: number; totalPaidVES: number;
       };
       const emptyBucket = (): Bucket => ({
-        charges: [], payments: [], currency: null,
+        charges: [], payments: [], currency: null, byCurrency: {},
         grossCharged: 0, totalDiscount: 0, totalCharged: 0, totalPaid: 0,
         totalChargedVES: 0, totalPaidVES: 0,
       });
@@ -157,20 +171,42 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
         const net = c.amount - c.discountAmount;
         b.grossCharged += c.amount;
         b.totalDiscount += c.discountAmount;
-        b.totalCharged += net;
+        const t = (b.byCurrency[c.currency] ??= { charged: 0, paid: 0 });
+        t.charged += net;
         const rate = c.currency === 'VES' ? 1 : await resolver.vesPerUnit(c.currency, new Date());
         b.totalChargedVES += rate != null ? net * rate : net;
       };
       const addPayment = async (b: Bucket, p: any) => {
-        b.payments.push(p);
+        if (!b.payments.includes(p)) b.payments.push(p);
         if (!b.currency) b.currency = p.currency;
-        // Payments count in the debt's currency: stored equivalent, or the
-        // payment-date rate conversion (Bs. → USD/EUR of the debt).
         const v = await paymentInCurrency(p, b.currency!, resolver);
-        if (v != null) b.totalPaid += v;
-        b.totalPaidVES += p.amountVES != null
-          ? Number(p.amountVES)
-          : (await resolver.vesPerUnit(p.currency, p.paymentDate) ?? 1) * Number(p.amount);
+        if (v != null) (b.byCurrency[b.currency!] ??= { charged: 0, paid: 0 }).paid += v;
+        b.totalPaidVES += await paymentToVES(p, resolver);
+      };
+      // An allocation credits the charge's bucket in the charge's own currency.
+      const addAllocation = (b: Bucket, p: any, a: any) => {
+        if (!b.payments.includes(p)) b.payments.push(p);
+        if (!b.currency) b.currency = a.charge.currency;
+        (b.byCurrency[a.charge.currency] ??= { charged: 0, paid: 0 }).paid += Number(a.amount);
+        b.totalPaidVES += Number(a.amountVES);
+      };
+      // Total in the bucket's display currency: exact when the cell holds one
+      // currency, converted through bolívares when it mixes several.
+      const settleTotals = async (b: Bucket) => {
+        const currencies = Object.keys(b.byCurrency);
+        if (currencies.length <= 1) {
+          const t = b.byCurrency[b.currency!] ?? { charged: 0, paid: 0 };
+          b.totalCharged = t.charged;
+          b.totalPaid = t.paid;
+        } else {
+          const rate = (await resolver.vesPerUnit(b.currency!, new Date())) || 1;
+          b.totalCharged = b.totalChargedVES / rate;
+          b.totalPaid = b.totalPaidVES / rate;
+        }
+        for (const v of Object.values(b.byCurrency)) {
+          v.charged = Math.round(v.charged * 100) / 100;
+          v.paid = Math.round(v.paid * 100) / 100;
+        }
       };
       const roundBucket = (b: Bucket): Bucket => ({
         ...b,
@@ -180,6 +216,9 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
         totalPaid: Math.round(b.totalPaid * 100) / 100,
         totalChargedVES: Math.round(b.totalChargedVES * 100) / 100,
         totalPaidVES: Math.round(b.totalPaidVES * 100) / 100,
+        byCurrency: Object.fromEntries(Object.entries(b.byCurrency).map(([k, v]) => [
+          k, { charged: Math.round(v.charged * 100) / 100, paid: Math.round(v.paid * 100) / 100 },
+        ])),
       });
 
       // Group by debt period + month. Charges/payments whose period differs
@@ -208,30 +247,32 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
       // else (plan items, matrícula, gastos, items) → enrollment.
       const flatBucketFor = (g: PeriodGroup, type?: string | null): Bucket =>
         type === 'otro' ? g.other : g.enrollment;
+      const bucketForCharge = (g: PeriodGroup, c: { month?: string | null; type?: string | null }): Bucket =>
+        c.month ? monthBucketFor(g, c.month) : flatBucketFor(g, c.type);
 
       for (const c of discountedCharges) {
-        const g = groupFor(c.schoolPeriodId);
-        await addCharge(c.month ? monthBucketFor(g, c.month) : flatBucketFor(g, c.type), c);
+        await addCharge(bucketForCharge(groupFor(c.schoolPeriodId), c), c);
       }
-      // Month-less payments: a payment linked to a charge follows that charge's
-      // bucket; otherwise it covers enrollment debt first (the older one), then
-      // extraordinary debts.
-      for (const p of studentPayments) {
-        const g = groupFor(paymentDebtPeriodId(p));
-        const m = paymentBucketMonth(p);
-        let bucket: Bucket;
-        if (m) {
-          bucket = monthBucketFor(g, m);
+      // Payments with allocations count through each part (in each debt's
+      // currency). Payments without allocations (registered before allocations
+      // existed) count as a whole in their month — or in enrollment/other.
+      for (const p of studentPayments as any[]) {
+        if (p.allocations?.length) {
+          for (const a of p.allocations) {
+            if (!a.charge) continue;
+            addAllocation(bucketForCharge(groupFor(a.charge.schoolPeriodId), a.charge), p, a);
+          }
         } else {
-          const linkType = (p as any).charge?.type;
-          bucket = linkType ? flatBucketFor(g, linkType)
-            : flatBucketFor(g, g.enrollment.totalCharged - g.enrollment.totalPaid > 0.005 ? null : 'otro');
+          const g = groupFor(paymentDebtPeriodId(p));
+          const m = paymentBucketMonth(p);
+          const bucket: Bucket = m ? monthBucketFor(g, m)
+            : flatBucketFor(g, (p as any).charge?.type
+              ?? (enrollmentHasDebt(g.enrollment) ? null : 'otro'));
+          await addPayment(bucket, p);
         }
-        await addPayment(bucket, p);
       }
-      // A single month-less payment may exceed the remaining enrollment debt —
-      // its overflow actually covers extraordinary debts, so shift the display
-      // totals accordingly (the payment row stays under enrollment).
+      // A legacy month-less payment may exceed the remaining enrollment debt —
+      // its overflow covers extraordinary debts, so shift the display totals.
       const rebalanceOverflow = (g: PeriodGroup) => {
         const move = Math.min(
           Math.max(g.enrollment.totalPaid - g.enrollment.totalCharged, 0),
@@ -243,9 +284,23 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
         );
         g.enrollment.totalPaid -= move; g.other.totalPaid += move;
         g.enrollment.totalPaidVES -= moveVES; g.other.totalPaidVES += moveVES;
+        if (move > 0 && g.enrollment.currency && g.other.currency === g.enrollment.currency) {
+          const e = g.enrollment.byCurrency[g.enrollment.currency];
+          const o = (g.other.byCurrency[g.other.currency] ??= { charged: 0, paid: 0 });
+          if (e) e.paid -= move;
+          o.paid += move;
+        }
       };
       rebalanceOverflow(viewedGroup);
       priorMap.forEach(rebalanceOverflow);
+      await settleTotals(viewedGroup.enrollment);
+      await settleTotals(viewedGroup.other);
+      for (const m of Object.values(viewedGroup.months)) await settleTotals(m);
+      for (const g of priorMap.values()) {
+        await settleTotals(g.enrollment);
+        await settleTotals(g.other);
+        for (const m of Object.values(g.months)) await settleTotals(m);
+      }
       for (const m of Object.keys(viewedGroup.months)) viewedGroup.months[m] = roundBucket(viewedGroup.months[m]);
       const priorPeriods = [...priorMap.values()]
         .sort((a, b) => (a.startYear ?? 9999) - (b.startYear ?? 9999))
@@ -299,11 +354,43 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
       return a.name.localeCompare(b.name, 'es') || a.inscriptionId - b.inscriptionId;
     });
 
+    // Section totals per debt currency: what has been paid and what is still owed.
+    // Pending never goes negative per bucket (an overpaid month does not offset another).
+    const byCurrency: Record<string, { charged: number; paid: number; pending: number }> = {};
+    const addBucket = (b: { currency: string | null; totalCharged: number; totalPaid: number; byCurrency?: Record<string, { charged: number; paid: number }> } | null | undefined) => {
+      if (!b) return;
+      // Per debt currency when the bucket knows it (mixed cells keep each currency separate).
+      const parts = b.byCurrency && Object.keys(b.byCurrency).length
+        ? Object.entries(b.byCurrency)
+        : b.currency ? [[b.currency, { charged: b.totalCharged, paid: b.totalPaid }]] : [];
+      for (const [cur, v] of parts as [string, { charged: number; paid: number }][]) {
+        const t = byCurrency[cur] ?? (byCurrency[cur] = { charged: 0, paid: 0, pending: 0 });
+        t.charged += v.charged;
+        t.paid += v.paid;
+        t.pending += Math.max(v.charged - v.paid, 0);
+      }
+    };
+    for (const s of students) {
+      Object.values(s.months).forEach(addBucket);
+      addBucket(s.enrollment);
+      addBucket(s.other);
+      for (const g of s.priorPeriods) {
+        Object.values(g.months).forEach(addBucket);
+        addBucket(g.enrollment);
+        addBucket(g.other);
+      }
+    }
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    const totals = Object.fromEntries(Object.entries(byCurrency).map(([cur, t]) => [
+      cur, { charged: round2(t.charged), paid: round2(t.paid), pending: round2(t.pending) },
+    ]));
+
     return res.json({
       students,
       months,
       monthlyFee,
       monthlyFeeByMonth,
+      totals,
     });
   } catch (error) {
     console.error('[getLedgerBySection] Error:', error);
@@ -472,14 +559,40 @@ export const createPayment = async (req: Request, res: Response) => {
     const {
       inscriptionId, schoolPeriodId, feeId, sellableItemId, chargeId,
       month, debtPeriodId, amount, currency, amountVES, exchangeRate,
-      method, reference, bank, paymentDate, notes, nonMonthly,
+      method, reference, bank, account, paymentDate, notes, nonMonthly,
+      clientRequestId, allowDuplicate, scope,
     } = req.body;
 
     if (!inscriptionId || !schoolPeriodId || amount === undefined || !currency) {
       return res.status(400).json({ message: 'inscriptionId, schoolPeriodId, amount y currency son requeridos' });
     }
 
-    const payDate = paymentDate ? new Date(paymentDate) : new Date();
+    // Idempotency: the same form submission (double click, retry) returns the payment already created.
+    if (clientRequestId) {
+      const existing = await Payment.findOne({ where: { clientRequestId: String(clientRequestId) } });
+      if (existing) return res.status(200).json(existing);
+    }
+
+    // Method-specific fields (bank / account / last-4 reference / notes)
+    const fields = normalizePaymentFields({ method, currency, amount: Number(amount), bank, account, reference, notes });
+
+    // A plain date means that calendar day (stored at noon UTC so every timezone shows the same day).
+    const isPlainDate = typeof paymentDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(paymentDate);
+    const payDate = isPlainDate ? new Date(`${paymentDate}T12:00:00Z`) : paymentDate ? new Date(paymentDate) : new Date();
+    if (isNaN(payDate.getTime())) return res.status(400).json({ message: 'Fecha de pago inválida' });
+    const dayStr = payDate.toISOString().slice(0, 10);
+    const tomorrow = new Date(Date.now() + 36 * 3600 * 1000).toISOString().slice(0, 10);
+    if (dayStr > tomorrow) return res.status(400).json({ message: 'La fecha del pago no puede ser futura' });
+
+    // Duplicate protection: same operation (bank/account + reference + amount + currency + day) or,
+    // for payments without reference, the same student/method/amount registered in the last 10 minutes.
+    const dedupeKey = allowDuplicate ? null : buildDedupeKey(fields, currency, Number(amount), dayStr);
+    if (!allowDuplicate) {
+      const duplicate = await findDuplicatePayment({
+        dedupeKey, inscriptionId: Number(inscriptionId), method: fields.method, currency, amount: Number(amount), payDate,
+      });
+      if (duplicate) return res.status(409).json(duplicateResponse(duplicate));
+    }
     const resolver = makeRateResolver();
 
     // If VES payment, try to get the exchange rate automatically if not provided
@@ -496,76 +609,46 @@ export const createPayment = async (req: Request, res: Response) => {
       }
     }
 
-    // Validate the debt period if one was given
-    const finalDebtPeriodId = debtPeriodId ? Number(debtPeriodId) : null;
-    if (finalDebtPeriodId && !(await SchoolPeriod.findByPk(finalDebtPeriodId))) {
-      return res.status(400).json({ message: 'El período de la deuda no existe' });
-    }
-
-    // A payment linked to a specific charge inherits that charge's debt
-    // period/month/currency — the caller may not know them.
-    let linkedCharge: Charge | null = null;
-    if (chargeId) {
-      linkedCharge = await Charge.findByPk(Number(chargeId));
-      if (!linkedCharge || linkedCharge.inscriptionId !== Number(inscriptionId)) {
-        return res.status(400).json({ message: 'La deuda indicada no pertenece a esta inscripción' });
-      }
-    }
-
-    // If no month specified, auto-distribute to the oldest month bucket with
-    // outstanding debt. Debts are grouped by (charge's schoolPeriodId, month):
-    // earlier periods settle first, and within a period months follow its own
-    // billing calendar. Balances are netted in VES so a payment in bolívares
-    // counts correctly against a USD/EUR debt. Inactive charges are ignored.
-    // nonMonthly: the payment settles enrollment / one-time debts, so it must
-    // not be assigned to a month.
-    let finalMonth = month ?? null;
-    let finalDebtPeriod = finalDebtPeriodId;
-    if (linkedCharge) {
-      finalDebtPeriod = linkedCharge.schoolPeriodId;
-      if (!finalMonth) finalMonth = linkedCharge.month;
-    } else if (!finalMonth && !nonMonthly) {
-      const buckets = await loadDebtBuckets(Number(inscriptionId));
-      const periodIds = [...new Set(buckets.map(b => b.periodId))];
-      const periods = await SchoolPeriod.findAll({ where: { id: { [Op.in]: periodIds } } });
-      const ordered = orderBuckets(buckets, new Map(periods.map(p => [p.id, p])));
-      const target = ordered.find(b => b.month !== null && b.chargedVES - b.paidVES > 0.005);
-      if (target) {
-        finalMonth = target.month;
-        finalDebtPeriod = target.periodId;
-      } else {
-        // No monthly debt anywhere — assign to the current month of the viewed period
-        finalMonth = monthCodeFromDate(new Date());
-        finalDebtPeriod = finalDebtPeriodId ?? null;
-      }
-    }
-
-    // Express the payment in the currency of the debt bucket it settles, using
-    // the rate in force on the payment date (e.g. Bs. 30k → ~USD 100).
-    let equivalent: number | null = null;
-    let equivalentCurrency: string | null = null;
-    const targetCharges = linkedCharge ? [linkedCharge] : await Charge.findAll({
-      where: {
-        inscriptionId: Number(inscriptionId),
-        active: true,
-        schoolPeriodId: finalDebtPeriod ?? Number(schoolPeriodId),
-        ...(finalMonth ? { month: finalMonth } : nonMonthly ? { month: null } : {}),
-      },
-      order: [['id', 'ASC']],
+    const { finalMonth, finalDebtPeriod, equivalent, equivalentCurrency, atPar } = await allocatePayment({
+      inscriptionId: Number(inscriptionId), schoolPeriodId: Number(schoolPeriodId), chargeId: chargeId ? Number(chargeId) : null,
+      // "__other" is the UI pseudo-month of month-less debts (enrollment and others): it means "no month".
+      month: month === '__other' ? null : (month ?? null),
+      debtPeriodId: debtPeriodId ? Number(debtPeriodId) : null,
+      nonMonthly: !!nonMonthly || month === '__other',
+      currency, amount: Number(amount), amountVES: finalAmountVES, payDate, resolver,
     });
-    const bucketCurrency = targetCharges[0]?.currency;
-    if (bucketCurrency) {
-      equivalentCurrency = bucketCurrency;
-      const probe = { currency, amount: Number(amount), amountVES: finalAmountVES, paymentDate: payDate } as Payment;
-      if (currency === bucketCurrency) {
-        equivalent = Number(amount);
-      } else {
-        const v = await paymentInCurrency(probe, bucketCurrency, resolver);
-        equivalent = v != null ? Math.round(v * 100) / 100 : null;
+
+    // Debts are settled strictly in order: a targeted payment may only go to the
+    // first outstanding debt (a future month/charge is rejected while earlier
+    // debts remain unpaid). Auto payments always start at the oldest debt.
+    // `scope: 'item'` is the direct-purchase exception: it goes straight to the
+    // sellable-item debts, optionally starting at a chosen item charge.
+    const target = paymentTargetFor({
+      chargeId: chargeId ? Number(chargeId) : null,
+      month, nonMonthly: !!nonMonthly,
+      periodId: finalDebtPeriod ?? Number(schoolPeriodId),
+      scope,
+    });
+    if (scope === 'item') {
+      const itemCharge = chargeId ? await Charge.findByPk(Number(chargeId)) : null;
+      if (!itemCharge || itemCharge.inscriptionId !== Number(inscriptionId) || itemCharge.type !== 'item') {
+        return res.status(400).json({ message: 'Seleccione un item vendible pendiente del estudiante' });
       }
     }
+    const order = await checkTargetOrder(Number(inscriptionId), target);
+    if (!order.ok) {
+      return res.status(400).json({
+        code: 'OUT_OF_ORDER_PAYMENT',
+        message: `Los pagos deben seguir el orden de las deudas. Primero debe saldar: ${order.blocking.map(b => `${b.description} (${b.amount.toFixed(2)} ${b.currency})`).join(', ')}.`,
+        blocking: order.blocking,
+      });
+    }
 
-    const payment = await Payment.create({
+    const t = await sequelize.transaction();
+    let payment: Payment;
+    let parts: AllocationPart[] = [];
+    try {
+    payment = await Payment.create({
       inscriptionId: Number(inscriptionId),
       schoolPeriodId: Number(schoolPeriodId),
       feeId: feeId ?? null,
@@ -579,22 +662,243 @@ export const createPayment = async (req: Request, res: Response) => {
       exchangeRate: finalExchangeRate,
       equivalent,
       equivalentCurrency,
-      method: method ?? 'efectivo',
-      reference: reference ?? null,
-      bank: bank ?? null,
+      atPar,
+      method: fields.method,
+      reference: fields.reference,
+      bank: fields.bank,
+      account: fields.account,
+      registeredByPersonId: (req.session as any)?.user?.personId ?? null,
+      clientRequestId: clientRequestId ? String(clientRequestId) : null,
+      dedupeKey,
       paymentDate: payDate,
-      notes: notes ?? null,
-    });
+      notes: fields.notes,
+    }, { transaction: t });
+
+    // Split the payment across the outstanding debts, each in its own currency.
+    parts = await distributePayment(payment, target, { transaction: t });
+    if (parts.length) await applyDistribution(payment, parts, t);
+    await t.commit();
+    } catch (e) {
+      await t.rollback();
+      throw e;
+    }
 
     // A settled debt lifts the document hold of a withdrawn student.
     await clearPapersHoldIfSettled(Number(inscriptionId));
 
-    return res.status(201).json(payment);
-  } catch (error) {
+    // The breakdown tells the UI exactly which debts the payment settled.
+    const allocCharges = parts.length
+      ? await Charge.findAll({ where: { id: { [Op.in]: parts.map(x => x.chargeId) } }, attributes: ['id', 'description', 'type', 'month'] })
+      : [];
+    const chargeById = new Map(allocCharges.map(c => [c.id, c]));
+    return res.status(201).json({
+      ...payment.toJSON(),
+      allocations: parts.map(x => ({
+        chargeId: x.chargeId, amount: x.amount, currency: x.currency,
+        month: x.month, periodId: x.periodId, atPar: x.atPar,
+        description: chargeById.get(x.chargeId)?.description ?? null,
+        type: chargeById.get(x.chargeId)?.type ?? null,
+      })),
+    });
+  } catch (error: any) {
+    if (error instanceof UniqueConstraintError) {
+      // Lost a race against an identical submission: report it like a detected duplicate.
+      const conditions: any[] = [];
+      if (req.body?.clientRequestId) conditions.push({ clientRequestId: String(req.body.clientRequestId) });
+      if ((error as any).fields?.dedupeKey) conditions.push({ dedupeKey: (error as any).fields.dedupeKey });
+      const dup = conditions.length ? await Payment.findOne({ where: { [Op.or]: conditions } }) : null;
+      if (dup && dup.clientRequestId && dup.clientRequestId === req.body?.clientRequestId) return res.status(200).json(dup);
+      return res.status(409).json(dup
+        ? duplicateResponse(await describeDuplicate(dup))
+        : { code: 'DUPLICATE_PAYMENT', message: 'Este pago ya fue registrado' });
+    }
+    if (error?.status === 400) return res.status(400).json({ message: error.message });
     console.error('[createPayment] Error:', error);
     return res.status(500).json({ message: 'Error al registrar pago' });
   }
 };
+
+// ── Payment allocation ──
+
+export interface PaymentAssignment {
+  finalMonth: string | null;
+  finalDebtPeriod: number | null;
+  equivalent: number | null;
+  equivalentCurrency: string | null;
+  /** Credited 1:1 (USD/USDT against a EUR debt, period setting `usdAtPar`). */
+  atPar: boolean;
+}
+
+/**
+ * Decides which debt bucket a payment settles and expresses it in that
+ * bucket's currency at the payment-date rate (e.g. Bs. 30k → ~USD 100).
+ *
+ * Without a month the payment goes to the oldest month bucket with outstanding
+ * debt: earlier periods first, then each period's own billing calendar,
+ * balances netted in VES, inactive charges ignored. `nonMonthly` payments
+ * settle enrollment / one-time debts and are never assigned to a month.
+ * A payment linked to a charge inherits that charge's period/month/currency.
+ * Throws an Error with `status = 400` for inconsistent input.
+ */
+async function allocatePayment(args: {
+  inscriptionId: number; schoolPeriodId: number; chargeId?: number | null; month?: string | null;
+  debtPeriodId?: number | null; nonMonthly?: boolean; currency: string; amount: number;
+  amountVES: number | null; payDate: Date; resolver: ReturnType<typeof makeRateResolver>;
+}): Promise<PaymentAssignment> {
+  const fail = (message: string) => Object.assign(new Error(message), { status: 400 });
+  const { inscriptionId, schoolPeriodId, currency, amount, payDate, resolver } = args;
+
+  const finalDebtPeriodId = args.debtPeriodId ? Number(args.debtPeriodId) : null;
+  if (finalDebtPeriodId && !(await SchoolPeriod.findByPk(finalDebtPeriodId))) {
+    throw fail('El período de la deuda no existe');
+  }
+
+  let linkedCharge: Charge | null = null;
+  if (args.chargeId) {
+    linkedCharge = await Charge.findByPk(Number(args.chargeId));
+    if (!linkedCharge || linkedCharge.inscriptionId !== inscriptionId) {
+      throw fail('La deuda indicada no pertenece a esta inscripción');
+    }
+  }
+
+  let finalMonth = args.month ?? null;
+  let finalDebtPeriod = finalDebtPeriodId;
+  if (linkedCharge) {
+    finalDebtPeriod = linkedCharge.schoolPeriodId;
+    if (!finalMonth) finalMonth = linkedCharge.month;
+  } else if (!finalMonth && !args.nonMonthly) {
+    const buckets = await loadDebtBuckets(inscriptionId);
+    const periodIds = [...new Set(buckets.map(b => b.periodId))];
+    const periods = await SchoolPeriod.findAll({ where: { id: { [Op.in]: periodIds } } });
+    const ordered = orderBuckets(buckets, new Map(periods.map(p => [p.id, p])));
+    const target = ordered.find(b => b.month !== null && b.chargedVES - b.paidVES > 0.005);
+    if (target) {
+      finalMonth = target.month;
+      finalDebtPeriod = target.periodId;
+    } else {
+      // No monthly debt anywhere — assign to the current month of the viewed period
+      finalMonth = monthCodeFromDate(new Date());
+      finalDebtPeriod = finalDebtPeriodId ?? null;
+    }
+  }
+
+  let equivalent: number | null = null;
+  let equivalentCurrency: string | null = null;
+  const targetCharges = linkedCharge ? [linkedCharge] : await Charge.findAll({
+    where: {
+      inscriptionId,
+      active: true,
+      schoolPeriodId: finalDebtPeriod ?? schoolPeriodId,
+      ...(finalMonth ? { month: finalMonth } : args.nonMonthly ? { month: null } : {}),
+    },
+    order: [['id', 'ASC']],
+  });
+  const bucketCurrency = targetCharges[0]?.currency;
+  let atPar = false;
+  if (bucketCurrency) {
+    equivalentCurrency = bucketCurrency;
+    const debtPeriod = await SchoolPeriod.findByPk(finalDebtPeriod ?? schoolPeriodId, { attributes: ['id', 'usdAtPar'] });
+    atPar = appliesAtPar(currency, bucketCurrency, !!debtPeriod?.usdAtPar);
+    if (currency === bucketCurrency || atPar) {
+      equivalent = Number(amount);
+    } else {
+      const probe = { currency, amount: Number(amount), amountVES: args.amountVES, paymentDate: payDate } as Payment;
+      const v = await paymentInCurrency(probe, bucketCurrency, resolver);
+      equivalent = v != null ? Math.round(v * 100) / 100 : null;
+    }
+  }
+  return { finalMonth, finalDebtPeriod, equivalent, equivalentCurrency, atPar };
+}
+
+// ── Payment distribution over debts ──
+
+/** Writes the distribution's summary back onto the payment's compatibility fields. */
+async function applyDistribution(payment: Payment, parts: AllocationPart[], transaction?: Transaction) {
+  const currencies = [...new Set(parts.map(x => x.currency))];
+  const periods = [...new Set(parts.map(x => x.periodId))];
+  const months = [...new Set(parts.map(x => x.month))];
+  await payment.update({
+    chargeId: parts.length === 1 ? parts[0].chargeId : null,
+    month: months.length === 1 ? months[0] : null,
+    debtPeriodId: periods.length === 1 ? periods[0] : payment.schoolPeriodId,
+    equivalent: currencies.length === 1 ? Math.round(parts.reduce((sum, x) => sum + x.amount, 0) * 100) / 100 : null,
+    equivalentCurrency: currencies.length === 1 ? currencies[0] : null,
+    atPar: parts.some(x => x.atPar),
+  }, { transaction });
+}
+
+/** The debts a payment targets: a sellable item, academic debts only, an explicit
+ * charge, a month's bucket, month-less debts, or every debt (auto). */
+function paymentTargetFor(args: {
+  chargeId?: number | null; month?: string | null; nonMonthly?: boolean;
+  periodId: number; scope?: string;
+}): AllocationTarget {
+  if (args.scope === 'item') return { kind: 'item', chargeId: args.chargeId ? Number(args.chargeId) : undefined };
+  if (args.scope === 'tuition') return { kind: 'tuition' };
+  if (args.chargeId) return { kind: 'charge', chargeId: Number(args.chargeId) };
+  if (args.month && args.month !== '__other') return { kind: 'month', periodId: args.periodId, month: args.month };
+  if (args.nonMonthly || args.month === '__other') return { kind: 'oneTime', periodId: args.periodId };
+  return { kind: 'auto' };
+}
+
+// ── Duplicate payment detection ──
+
+interface DuplicateInfo {
+  id: number; studentName: string; registeredBy: string | null; paymentDate: Date; createdAt: Date;
+  amount: number; currency: string; method: string; reference: string | null;
+}
+
+async function describeDuplicate(p: Payment): Promise<DuplicateInfo> {
+  const [ins, who] = await Promise.all([
+    Inscription.findByPk(p.inscriptionId, { include: [{ model: Person, as: 'student', attributes: ['firstName', 'lastName'] }] }),
+    p.registeredByPersonId ? Person.findByPk(p.registeredByPersonId, { attributes: ['firstName', 'lastName'] }) : null,
+  ]);
+  const st = (ins as any)?.student;
+  return {
+    id: p.id,
+    studentName: st ? `${st.lastName}, ${st.firstName}` : '—',
+    registeredBy: who ? `${who.lastName}, ${who.firstName}` : null,
+    paymentDate: p.paymentDate,
+    createdAt: p.createdAt,
+    amount: Number(p.amount),
+    currency: p.currency,
+    method: p.method,
+    reference: p.reference,
+  };
+}
+
+const duplicateResponse = (d: DuplicateInfo) => ({
+  code: 'DUPLICATE_PAYMENT',
+  message: 'Este pago parece estar duplicado',
+  duplicate: d,
+});
+
+const DUPLICATE_WINDOW_MS = 10 * 60 * 1000;
+
+async function findDuplicatePayment(args: {
+  dedupeKey: string | null; inscriptionId: number; method: string; currency: string; amount: number; payDate: Date;
+}): Promise<DuplicateInfo | null> {
+  if (args.dedupeKey) {
+    const byKey = await Payment.findOne({ where: { dedupeKey: args.dedupeKey } });
+    if (byKey) return describeDuplicate(byKey);
+    // A distinct reference proves a distinct operation: skip the time-window heuristic.
+    return null;
+  }
+  const recent = await Payment.findOne({
+    where: {
+      inscriptionId: args.inscriptionId,
+      method: args.method,
+      currency: args.currency,
+      amount: args.amount,
+      paymentDate: {
+        [Op.gte]: new Date(`${args.payDate.toISOString().slice(0, 10)}T00:00:00Z`),
+        [Op.lte]: new Date(`${args.payDate.toISOString().slice(0, 10)}T23:59:59.999Z`),
+      },
+      createdAt: { [Op.gte]: new Date(Date.now() - DUPLICATE_WINDOW_MS) },
+    } as any,
+  });
+  return recent ? describeDuplicate(recent) : null;
+}
 
 // ── Create a charge (debt) ──
 
@@ -699,19 +1003,148 @@ export const bulkCreateCharges = async (req: Request, res: Response) => {
 
 // ── Delete a payment ──
 
+const correctionReason = (value: unknown): string | null => {
+  const reason = String(value ?? '').trim();
+  return reason.length >= 3 ? reason.slice(0, 500) : null;
+};
+
+/**
+ * DELETE /payments/:id  body { reason } — removes a payment entered by mistake.
+ * The reason is mandatory and the payment is kept as a snapshot in the audit trail.
+ */
 export const deletePayment = async (req: Request, res: Response) => {
+  const t = await sequelize.transaction();
   try {
-    const { id } = req.params;
-    const payment = await Payment.findByPk(Number(id));
-    if (!payment) return res.status(404).json({ message: 'Pago no encontrado' });
+    const payment = await Payment.findByPk(Number(req.params.id), { transaction: t });
+    if (!payment) {
+      await t.rollback();
+      return res.status(404).json({ message: 'Pago no encontrado' });
+    }
+    const reason = correctionReason(req.body?.reason);
+    if (!reason) {
+      await t.rollback();
+      return res.status(400).json({ message: 'Indique el motivo de la eliminación' });
+    }
     const inscriptionId = payment.inscriptionId;
-    await payment.destroy();
+    await PaymentAuditLog.create({
+      paymentId: payment.id,
+      action: 'deleted',
+      fromInscriptionId: inscriptionId,
+      performedByPersonId: (req.session as any)?.user?.personId ?? null,
+      reason,
+      snapshot: JSON.stringify(payment.toJSON()),
+    }, { transaction: t });
+    await PaymentAllocation.destroy({ where: { paymentId: payment.id }, transaction: t });
+    await payment.destroy({ transaction: t });
+    await t.commit();
     // Deleting a payment may reopen a debt — the hold only lifts automatically.
     await clearPapersHoldIfSettled(inscriptionId);
     return res.json({ message: 'Pago eliminado' });
   } catch (error) {
+    await t.rollback();
     console.error('[deletePayment] Error:', error);
     return res.status(500).json({ message: 'Error al eliminar pago' });
+  }
+};
+
+/**
+ * POST /payments/:id/move  body { toInscriptionId, reason } — a payment charged to the wrong
+ * student goes to the right one. The payment keeps its id, date, registrar and operation data;
+ * it is re-allocated to the destination's oldest outstanding debt. Both students must belong
+ * to the same school period.
+ */
+export const movePayment = async (req: Request, res: Response) => {
+  const t = await sequelize.transaction();
+  try {
+    const payment = await Payment.findByPk(Number(req.params.id), { transaction: t });
+    if (!payment) {
+      await t.rollback();
+      return res.status(404).json({ message: 'Pago no encontrado' });
+    }
+    const reason = correctionReason(req.body?.reason);
+    if (!reason) {
+      await t.rollback();
+      return res.status(400).json({ message: 'Indique el motivo del cambio de estudiante' });
+    }
+    const toInscriptionId = Number(req.body?.toInscriptionId);
+    const target = toInscriptionId ? await Inscription.findByPk(toInscriptionId, { transaction: t }) : null;
+    if (!target) {
+      await t.rollback();
+      return res.status(400).json({ message: 'Seleccione el estudiante destino' });
+    }
+    if (target.id === payment.inscriptionId) {
+      await t.rollback();
+      return res.status(400).json({ message: 'El pago ya pertenece a ese estudiante' });
+    }
+    if (target.schoolPeriodId !== payment.schoolPeriodId) {
+      await t.rollback();
+      return res.status(400).json({ message: 'El estudiante destino debe ser del mismo período escolar' });
+    }
+
+    const fromInscriptionId = payment.inscriptionId;
+    const snapshot = JSON.stringify(payment.toJSON());
+
+    // The old allocations belonged to the previous student's debts: clear them and distribute again.
+    await payment.update({ inscriptionId: target.id, chargeId: null, month: null, debtPeriodId: null, equivalent: null, equivalentCurrency: null, atPar: false }, { transaction: t });
+    await PaymentAllocation.destroy({ where: { paymentId: payment.id }, transaction: t });
+    const parts = await distributePayment(payment, { kind: 'auto' }, { transaction: t });
+    if (parts.length) {
+      await applyDistribution(payment, parts, t);
+    } else {
+      const alloc = await allocatePayment({
+        inscriptionId: target.id,
+        schoolPeriodId: payment.schoolPeriodId,
+        currency: payment.currency,
+        amount: Number(payment.amount),
+        amountVES: payment.amountVES != null ? Number(payment.amountVES) : null,
+        payDate: payment.paymentDate,
+        resolver: makeRateResolver(t),
+      });
+      await payment.update({
+        month: alloc.finalMonth,
+        debtPeriodId: alloc.finalDebtPeriod,
+        equivalent: alloc.equivalent,
+        equivalentCurrency: alloc.equivalentCurrency,
+        atPar: alloc.atPar,
+      }, { transaction: t });
+    }
+
+    await PaymentAuditLog.create({
+      paymentId: payment.id,
+      action: 'moved',
+      fromInscriptionId,
+      toInscriptionId: target.id,
+      performedByPersonId: (req.session as any)?.user?.personId ?? null,
+      reason,
+      snapshot,
+    }, { transaction: t });
+    await t.commit();
+
+    await clearPapersHoldIfSettled(target.id);
+    await clearPapersHoldIfSettled(fromInscriptionId);
+    return res.json(payment);
+  } catch (error: any) {
+    await t.rollback();
+    if (error?.status === 400) return res.status(400).json({ message: error.message });
+    console.error('[movePayment] Error:', error);
+    return res.status(500).json({ message: 'Error al cambiar el pago de estudiante' });
+  }
+};
+
+/** GET /payments/audit?inscriptionId= — corrections that touched a student's payments. */
+export const listPaymentAudit = async (req: Request, res: Response) => {
+  try {
+    const inscriptionId = Number(req.query.inscriptionId);
+    if (!inscriptionId) return res.status(400).json({ message: 'inscriptionId es requerido' });
+    const logs = await PaymentAuditLog.findAll({
+      where: { [Op.or]: [{ fromInscriptionId: inscriptionId }, { toInscriptionId: inscriptionId }] },
+      include: [{ model: Person, as: 'performer', attributes: ['id', 'firstName', 'lastName'] }],
+      order: [['createdAt', 'DESC']],
+    });
+    return res.json(logs.map(l => ({ ...l.toJSON(), snapshot: JSON.parse(l.snapshot) })));
+  } catch (error) {
+    console.error('[listPaymentAudit] Error:', error);
+    return res.status(500).json({ message: 'Error al obtener la auditoría de pagos' });
   }
 };
 
@@ -794,6 +1227,10 @@ export const getInscriptionDebt = async (req: Request, res: Response) => {
         charged: Math.round(b.charged * 100) / 100,
         paid: Math.round(b.paid * 100) / 100,
         remaining: Math.round(Math.max(b.charged - b.paid, 0) * 100) / 100,
+        // Per debt currency — a bucket can mix them (EUR enrollment + USD uniform).
+        byCurrency: Object.fromEntries(Object.entries(b.byCurrency).map(([cur, v]) => [
+          cur, { charged: Math.round(v.charged * 100) / 100, paid: Math.round(v.paid * 100) / 100 },
+        ])),
         charges: b.charges.map((c: any) => ({ id: c.id, type: c.type, description: c.description, amount: Number(c.amount), currency: c.currency })),
         paymentCount: b.payments.length,
       })),

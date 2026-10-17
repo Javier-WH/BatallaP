@@ -9,6 +9,7 @@ import {
 } from '@ant-design/icons';
 import { useSchool } from '@/context/SchoolContext';
 import BillingCalendarCard from './components/BillingCalendarCard';
+import ParSettlementCard from './components/ParSettlementCard';
 import BanksCard from './components/BanksCard';
 import ChargeSyncModal from './components/ChargeSyncModal';
 import DiscountReasonsCard from './components/DiscountReasonsCard';
@@ -587,6 +588,13 @@ const PaymentsConfig: React.FC = () => {
             key: 'billingCalendar',
             label: <span><CalendarOutlined /> Calendario de Cobro</span>,
             children: <BillingCalendarCard />,
+          },
+
+          // ── Tab: Dólares a la par ──
+          {
+            key: 'parSettlement',
+            label: <span><DollarOutlined /> Dólares a la par</span>,
+            children: <ParSettlementCard />,
           },
 
           // ── Tab: Bancos ──

@@ -17,6 +17,7 @@ import {
   upsertFee,
   updateFee,
   updateBillingCalendar,
+  updateParSettlement,
   listDiscountReasons,
   createDiscountReason,
   updateDiscountReason,
@@ -73,6 +74,7 @@ router.post('/charges/apply', applyChargeSync);
 
 // ── Billing calendar ──
 router.put('/billing-calendar/:schoolPeriodId', updateBillingCalendar);
+router.put('/par-settlement/:schoolPeriodId', updateParSettlement);
 
 // ── Sellable Items ──
 router.get('/sellable-items', listSellableItems);

@@ -1,11 +1,11 @@
 import { DataTypes, Model, Optional } from 'sequelize';
 import sequelize from '@/config/database';
 
-export type PaymentMethod = 'pago_movil' | 'efectivo' | 'transferencia' | 'zelle' | 'tarjeta' | 'otro';
+import { PAYMENT_METHOD_LIST, type PaymentMethodCode } from '@/services/paymentRulesService';
 
-export const PAYMENT_METHODS: PaymentMethod[] = [
-  'pago_movil', 'efectivo', 'transferencia', 'zelle', 'tarjeta', 'otro',
-];
+export type PaymentMethod = PaymentMethodCode;
+
+export const PAYMENT_METHODS: PaymentMethod[] = [...PAYMENT_METHOD_LIST];
 
 interface PaymentAttributes {
   id: number;
@@ -16,21 +16,26 @@ interface PaymentAttributes {
   chargeId: number | null;     // which Charge this payment settles (null = direct)
   month: string | null;        // 'Sep', 'Oct', ... (null = non-monthly, e.g. uniform)
   amount: number;              // amount in original currency
-  currency: string;            // 'USD', 'EUR', 'VES'
+  currency: string;            // 'USD', 'EUR', 'VES', 'USDT'
   amountVES: number | null;    // amount converted to VES at time of payment
   exchangeRate: number | null; // rate used for VES conversion
   debtPeriodId: number | null; // period whose debt this settles (null = schoolPeriodId)
   equivalent: number | null;   // amount in the debt bucket's currency at the payment-date rate
   equivalentCurrency: string | null;
+  atPar: boolean;              // USD/USDT credited 1:1 against a EUR debt (period setting usdAtPar)
   method: PaymentMethod;
   reference: string | null;    // transaction reference
   bank: string | null;
+  account: string | null;      // payer's user/email on platforms (Binance, Zelle, ...)
+  registeredByPersonId: number | null; // administrator who recorded the payment
+  clientRequestId: string | null;      // idempotency key of the form submission
+  dedupeKey: string | null;            // fingerprint of the operation (unique) — blocks duplicates
   paymentDate: Date;           // when the payment was made
   notes: string | null;
 }
 
 interface PaymentCreationAttributes
-  extends Optional<PaymentAttributes, 'id' | 'feeId' | 'sellableItemId' | 'chargeId' | 'month' | 'amountVES' | 'exchangeRate' | 'debtPeriodId' | 'equivalent' | 'equivalentCurrency' | 'reference' | 'bank' | 'notes'> {}
+  extends Optional<PaymentAttributes, 'id' | 'feeId' | 'sellableItemId' | 'chargeId' | 'month' | 'amountVES' | 'exchangeRate' | 'debtPeriodId' | 'equivalent' | 'equivalentCurrency' | 'atPar' | 'reference' | 'bank' | 'account' | 'registeredByPersonId' | 'clientRequestId' | 'dedupeKey' | 'notes'> {}
 
 class Payment extends Model<PaymentAttributes, PaymentCreationAttributes>
   implements PaymentAttributes {
@@ -48,9 +53,14 @@ class Payment extends Model<PaymentAttributes, PaymentCreationAttributes>
   public debtPeriodId!: number | null;
   public equivalent!: number | null;
   public equivalentCurrency!: string | null;
+  public atPar!: boolean;
   public method!: PaymentMethod;
   public reference!: string | null;
   public bank!: string | null;
+  public account!: string | null;
+  public registeredByPersonId!: number | null;
+  public clientRequestId!: string | null;
+  public dedupeKey!: string | null;
   public paymentDate!: Date;
   public notes!: string | null;
 
@@ -125,8 +135,13 @@ Payment.init(
       type: DataTypes.STRING(10),
       allowNull: true,
     },
+    atPar: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
     method: {
-      type: DataTypes.ENUM(...PAYMENT_METHODS),
+      type: DataTypes.STRING(20),
       allowNull: false,
       defaultValue: 'efectivo',
     },
@@ -137,6 +152,25 @@ Payment.init(
     bank: {
       type: DataTypes.STRING(50),
       allowNull: true,
+    },
+    account: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
+    registeredByPersonId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: { model: 'people', key: 'id' },
+    },
+    clientRequestId: {
+      type: DataTypes.STRING(64),
+      allowNull: true,
+      unique: true,
+    },
+    dedupeKey: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      unique: true,
     },
     paymentDate: {
       type: DataTypes.DATE,

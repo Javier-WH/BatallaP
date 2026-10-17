@@ -197,8 +197,8 @@ describe('Constancia preview - academic variables', () => {
       .expect(200);
 
     expect(res.body.variables['subject.1.name']).toBe(subject.name);
-    expect(res.body.variables['subject.1.term.1.score']).toBe('');
-    expect(res.body.variables['subject.1.score']).toBe('');
+    expect(res.body.variables['subject.1.term.1.score']).toBe('—');
+    expect(res.body.variables['subject.1.score']).toBe('—');
   });
 
   it('renders literal subject scores as letters using the letter_grades scale', async () => {
@@ -301,7 +301,7 @@ describe('Constancia preview - academic variables', () => {
       .expect(200);
 
     expect(res.body.variables['subject.1.name']).toBe(subject.name);
-    expect(res.body.variables['subject.1.score']).toBe('');
+    expect(res.body.variables['subject.1.score']).toBe('—');
   });
 
   it('resolves term and final scores in a historical period without council checklists', async () => {

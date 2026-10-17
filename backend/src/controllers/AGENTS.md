@@ -45,7 +45,7 @@
 | `healthController` | Liveness | Probe simple. |
 | `bankController` | Catálogo de bancos | GET abierto a sesión; POST/PUT (multipart `icon`) exigen Master/Admin. Código Sudeban de 4 dígitos único. |
 | `paymentsController` | Config de pagos | Tasas, fees versionados, planes de inscripción, items vendibles, motivos de descuento, preview/apply de generación de deudas. Guard `requirePaymentsAccess` (Master/Admin). |
-| `ledgerController` | Deudas y pagos | `getLedgerBySection` agrupa por **período de la deuda** (`priorPeriods` para deudas de otros años); `createPayment` distribuye cronológicamente con equivalencia de moneda (`debtBalanceService`); `createCharge`/`bulk` aceptan `schoolPeriodId` distinto al de la inscripción; `getInscriptionDebt`/`releasePapers` (resumen de deuda + liberación de `papersHold`, accesibles a Control de Estudios). |
+| `ledgerController` | Deudas y pagos | `getLedgerBySection` agrupa por **período de la deuda** (`priorPeriods` para deudas de otros años); `createPayment` reparte el pago entre las deudas pendientes en orden cronológico, cada parte en la moneda de su deuda (`paymentAllocationService` → `PaymentAllocation`; el excedente queda en la última deuda); `createCharge`/`bulk` aceptan `schoolPeriodId` distinto al de la inscripción; `getInscriptionDebt`/`releasePapers` (resumen de deuda + liberación de `papersHold`, accesibles a Control de Estudios). |
 
 ## Al añadir un controller nuevo
 

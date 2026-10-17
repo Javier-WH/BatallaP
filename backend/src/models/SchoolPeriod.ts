@@ -19,9 +19,10 @@ interface SchoolPeriodAttributes {
   status: SchoolPeriodStatus;
   billingStartMonth: number; // 1–12, first month billed (default 9 = September)
   billingEndMonth: number;   // 1–12, last month billed (default 8 = August)
+  usdAtPar: boolean;         // USD/USDT payments settle EUR debts 1:1 (face value) instead of converting by rate
 }
 
-interface SchoolPeriodCreationAttributes extends Optional<SchoolPeriodAttributes, 'id' | 'startYear' | 'endYear' | 'status' | 'billingStartMonth' | 'billingEndMonth'> { }
+interface SchoolPeriodCreationAttributes extends Optional<SchoolPeriodAttributes, 'id' | 'startYear' | 'endYear' | 'status' | 'billingStartMonth' | 'billingEndMonth' | 'usdAtPar'> { }
 
 class SchoolPeriod extends Model<SchoolPeriodAttributes, SchoolPeriodCreationAttributes> implements SchoolPeriodAttributes {
   public id!: number;
@@ -32,6 +33,7 @@ class SchoolPeriod extends Model<SchoolPeriodAttributes, SchoolPeriodCreationAtt
   public status!: SchoolPeriodStatus;
   public billingStartMonth!: number;
   public billingEndMonth!: number;
+  public usdAtPar!: boolean;
 
   // Virtual, derived from status. Kept for backwards compatibility with existing
   // consumers. Cannot be used inside a Sequelize `where` clause: filter by `status`.
@@ -80,6 +82,11 @@ SchoolPeriod.init(
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 8,
+    },
+    usdAtPar: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
     },
     isActive: {
       type: DataTypes.VIRTUAL,

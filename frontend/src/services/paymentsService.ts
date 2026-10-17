@@ -222,6 +222,12 @@ export async function updateBillingCalendar(
   return data;
 }
 
+/** Turns on/off "USD or USDT settle EUR debts 1:1" for a school period. */
+export async function updateParSettlement(schoolPeriodId: number, usdAtPar: boolean): Promise<{ schoolPeriodId: number; usdAtPar: boolean }> {
+  const { data } = await api.put(`/payments/par-settlement/${schoolPeriodId}`, { usdAtPar });
+  return data;
+}
+
 // ── Sellable Items ──
 
 export async function listSellableItems(params?: { active?: boolean; category?: string }): Promise<SellableItem[]> {
@@ -301,6 +307,8 @@ export interface LedgerStudent {
 export interface LedgerBucket {
   charges: any[];
   payments: any[];
+  /** Charged / paid per debt currency — a cell can mix them (EUR enrollment + USD uniform). */
+  byCurrency?: Record<string, { charged: number; paid: number }>;
   /** Currency the bucket's debts are denominated in (payments are converted to it). */
   currency: string | null;
   grossCharged: number;
@@ -337,6 +345,8 @@ export interface LedgerDiscount {
 export interface LedgerResponse {
   students: LedgerStudent[];
   months: string[];
+  /** Section totals per debt currency; pending never goes negative per month. */
+  totals?: Record<string, { charged: number; paid: number; pending: number }>;
   monthlyFeeByMonth: Record<string, { id: number; amount: number; currency: string; currencyName: string } | null>;
   monthlyFee: {
     id: number;
@@ -377,12 +387,46 @@ export interface PaymentPayload {
   amountVES?: number | null;
   exchangeRate?: number | null;
   method?: string;
+  /** Last 4 digits of the operation for bank methods; operation id (optional) for platforms. */
   reference?: string;
   bank?: string;
+  /** Payer's user/email on platforms (Binance, Bybit, OKX, Zinli, Zelle). */
+  account?: string;
+  /** Calendar day of the payment (YYYY-MM-DD). */
   paymentDate?: string;
   notes?: string;
   /** Settles enrollment / one-time debts: the payment is not assigned to any month. */
   nonMonthly?: boolean;
+  /** Debt scope: 'tuition' = only academic debts (enrollment + monthly fees); 'item' = sellable items only (direct purchase, use with chargeId). Default = every debt in order. */
+  scope?: 'tuition' | 'item';
+  /** Idempotency key of the form submission. */
+  clientRequestId?: string;
+  /** Register even though the server flagged a possible duplicate. */
+  allowDuplicate?: boolean;
+}
+
+export interface DuplicatePaymentInfo {
+  id: number;
+  studentName: string;
+  registeredBy: string | null;
+  paymentDate: string;
+  createdAt: string;
+  amount: number;
+  currency: string;
+  method: string;
+  reference: string | null;
+}
+
+/** The part of a payment credited to one charge, in the charge's currency. */
+export interface PaymentAllocationView {
+  chargeId: number;
+  amount: number;
+  currency: string;
+  month: string | null;
+  periodId: number;
+  atPar: boolean;
+  description: string | null;
+  type: string | null;
 }
 
 export async function createPayment(payload: PaymentPayload): Promise<any> {
@@ -462,8 +506,32 @@ export async function bulkCreateCharges(charges: ChargePayload[]): Promise<{ cre
   return data;
 }
 
-export async function deletePayment(id: number): Promise<void> {
-  await api.delete(`/ledger/payments/${id}`);
+/** Removes a payment entered by mistake; the reason is mandatory and audited. */
+export async function deletePayment(id: number, reason: string): Promise<void> {
+  await api.delete(`/ledger/payments/${id}`, { data: { reason } });
+}
+
+/** Moves a payment charged to the wrong student to the right one (same school period). */
+export async function movePayment(id: number, toInscriptionId: number, reason: string): Promise<any> {
+  const { data } = await api.post(`/ledger/payments/${id}/move`, { toInscriptionId, reason });
+  return data;
+}
+
+export interface PaymentAuditEntry {
+  id: number;
+  paymentId: number;
+  action: 'deleted' | 'moved';
+  fromInscriptionId: number;
+  toInscriptionId: number | null;
+  reason: string;
+  createdAt: string;
+  performer: { id: number; firstName: string; lastName: string } | null;
+  snapshot: Record<string, any>;
+}
+
+export async function listPaymentAudit(inscriptionId: number): Promise<PaymentAuditEntry[]> {
+  const { data } = await api.get<PaymentAuditEntry[]>('/ledger/payments/audit', { params: { inscriptionId } });
+  return data;
 }
 
 export async function deleteCharge(id: number): Promise<void> {
@@ -480,6 +548,8 @@ export interface DebtBucketView {
   charged: number;
   paid: number;
   remaining: number;
+  /** Charged / paid per debt currency — a bucket can mix them. */
+  byCurrency?: Record<string, { charged: number; paid: number }>;
   charges: { id: number; type: string; description: string; amount: number; currency: string }[];
   paymentCount: number;
 }

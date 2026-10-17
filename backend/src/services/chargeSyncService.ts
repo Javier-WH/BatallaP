@@ -11,7 +11,7 @@
  * sections and withdrawn inscriptions are skipped.
  */
 import { Op, Transaction } from 'sequelize';
-import { Charge, Inscription, Payment, SchoolPeriod, Section } from '@/models/index';
+import { Charge, Inscription, Payment, PaymentAllocation, SchoolPeriod, Section } from '@/models/index';
 import { resolveEntryMonth } from '@/services/billingCalendarService';
 import { buildPeriodSchedule, ScheduledChargeEntry } from '@/services/chargeScheduleService';
 
@@ -69,9 +69,10 @@ export async function planPeriodChargeSync(schoolPeriodId: number, transaction?:
   const charges = await Charge.findAll({ where: { inscriptionId: { [Op.in]: ids } }, transaction });
   const payments = await Payment.findAll({
     where: { inscriptionId: { [Op.in]: ids } },
-    attributes: ['inscriptionId', 'month', 'chargeId', 'amount'],
+    attributes: ['id', 'inscriptionId', 'month', 'chargeId', 'amount'],
+    include: [{ model: PaymentAllocation, as: 'allocations', attributes: ['chargeId', 'amount'] }],
     transaction,
-  });
+  }) as any[];
 
   const chargeById = new Map(charges.map(c => [c.id, c]));
   const scheduledByInscription = new Map<number, Map<string, Charge>>();
@@ -86,9 +87,18 @@ export async function planPeriodChargeSync(schoolPeriodId: number, transaction?:
       activeMonthTotal.set(key, (activeMonthTotal.get(key) ?? 0) + Number(c.amount));
     }
   }
+  // Allocations credit each charge in its own currency; payments without
+  // allocations (registered before they existed) count via the old month/charge
+  // heuristic.
   const paidByMonth = new Map<string, number>();
   const paidByCharge = new Map<number, number>();
   for (const p of payments) {
+    if (p.allocations?.length) {
+      for (const a of p.allocations) {
+        paidByCharge.set(a.chargeId, (paidByCharge.get(a.chargeId) ?? 0) + Number(a.amount));
+      }
+      continue;
+    }
     const amount = Number(p.amount);
     const month = p.month ?? (p.chargeId ? chargeById.get(p.chargeId)?.month : null);
     if (month) {
@@ -99,12 +109,13 @@ export async function planPeriodChargeSync(schoolPeriodId: number, transaction?:
   }
 
   const isFullyPaid = (c: Charge): boolean => {
+    const paidToCharge = paidByCharge.get(c.id) ?? 0;
+    if (paidToCharge > 0) return paidToCharge >= Number(c.amount) - 0.005;
     if (c.month) {
       const paid = paidByMonth.get(`${c.inscriptionId}|${c.month}`) ?? 0;
       return paid > 0 && paid >= (activeMonthTotal.get(`${c.inscriptionId}|${c.month}`) ?? Number(c.amount));
     }
-    const paid = paidByCharge.get(c.id) ?? 0;
-    return paid > 0 && paid >= Number(c.amount);
+    return false;
   };
 
   const scheduleCache = new Map<string, Awaited<ReturnType<typeof buildPeriodSchedule>>>();

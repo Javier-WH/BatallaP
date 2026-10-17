@@ -376,6 +376,32 @@ export const updateBillingCalendar = async (req: Request, res: Response) => {
 };
 
 // ─────────────────────────────────────────────────────────────
+// USD at par (settle EUR debts with dollars 1:1)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * PUT /payments/par-settlement/:schoolPeriodId  body { usdAtPar: boolean }
+ * When on, payments in USD or USDT (cash, Zelle, Zinli, Binance…) settle EUR
+ * debts of that period at face value (40 USD settle 40 EUR). Payments in
+ * bolívares are always converted at the payment-date rate. Only affects
+ * payments registered from now on.
+ */
+export const updateParSettlement = async (req: Request, res: Response) => {
+  try {
+    if (typeof req.body?.usdAtPar !== 'boolean') {
+      return res.status(400).json({ message: 'usdAtPar debe ser verdadero o falso' });
+    }
+    const period = await SchoolPeriod.findByPk(Number(req.params.schoolPeriodId));
+    if (!period) return res.status(404).json({ message: 'Período no encontrado' });
+    await period.update({ usdAtPar: req.body.usdAtPar });
+    return res.json({ schoolPeriodId: period.id, usdAtPar: period.usdAtPar });
+  } catch (error) {
+    console.error('[updateParSettlement] Error:', error);
+    return res.status(500).json({ message: 'Error al actualizar la configuración de divisa a la par' });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
 // Discount reasons (catalog for discounts / scholarships)
 // ─────────────────────────────────────────────────────────────
 

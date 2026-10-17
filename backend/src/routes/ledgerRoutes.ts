@@ -6,6 +6,8 @@ import {
   createCharge,
   bulkCreateCharges,
   deletePayment,
+  movePayment,
+  listPaymentAudit,
   deleteCharge,
   getSectionsForPeriod,
   updateEntryMonth,
@@ -54,6 +56,12 @@ router.post('/charges/bulk', bulkCreateCharges);
 
 // DELETE a payment
 router.delete('/payments/:id', deletePayment);
+
+// POST move a payment entered under the wrong student to the right one
+router.post('/payments/:id/move', movePayment);
+
+// GET corrections (deleted / moved payments) of a student
+router.get('/payments/audit', listPaymentAudit);
 
 // DELETE a charge
 router.delete('/charges/:id', deleteCharge);
