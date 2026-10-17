@@ -160,3 +160,55 @@ export interface StudentSummary {
   records: StudentSummaryRecord[];
   totals: { present: number; absent: number; late: number; excused: number; kicked: number } | null;
 }
+
+// ── Statistical summary ──
+
+export interface AttendanceCounts {
+  totalBlocks: number;
+  attendedBlocks: number;
+  lateBlocks: number;
+  absentBlocks: number;
+  justifiedBlocks: number;
+  kickedBlocks: number;
+  totalDays: number;
+  absentDays: number;
+  justifiedDays: number;
+  kickedDays: number;
+  attendedDays: number;
+}
+
+export type SummaryStudent = ReportStudent & AttendanceCounts & { withdrawn: boolean };
+
+export interface SummaryRange {
+  termId: number | null;
+  termName: string | null;
+  dateFrom: string | null;
+  dateTo: string | null;
+}
+
+export interface AttendanceSummaryReport extends SummaryRange {
+  students: SummaryStudent[];
+  totals: AttendanceCounts;
+}
+
+export type AbsenceCategory = 'absent' | 'justified' | 'late' | 'kicked' | 'jubilado';
+
+export interface AbsenceDetailRow {
+  recordId: number;
+  date: string;
+  periodId: string;
+  start: string | null;
+  end: string | null;
+  subjectName: string | null;
+  teacherName: string | null;
+  status: AttendanceStatus;
+  category: AbsenceCategory;
+  reason: string | null;
+}
+
+export interface AbsenceDetailReport extends SummaryRange {
+  student: ReportStudent & { withdrawn: boolean };
+  schoolPeriodId: number;
+  counts: AttendanceCounts;
+  rows: AbsenceDetailRow[];
+}

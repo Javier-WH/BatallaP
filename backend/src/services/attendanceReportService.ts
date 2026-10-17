@@ -12,6 +12,8 @@ import {
   PeriodGradeSection,
   Grade,
   Section,
+  Term,
+  InscriptionSubject,
 } from '@/models';
 import { getDayNameForDate, getPeriodInfoMap, periodSortKey, shiftOfKey, type AttendanceStatus } from './attendanceService';
 import { compareStudents } from './studentSortService';
@@ -464,4 +466,237 @@ export async function searchStudents(schoolPeriodId: number, q: string) {
   return (list as any[])
     .sort((a, b) => compareStudents(a.student ?? {}, b.student ?? {}))
     .map(toReportStudent);
+}
+
+// ── Statistical summary (list of students with attendance totals) ──
+
+export interface AttendanceCounts {
+  /** Class blocks. */
+  totalBlocks: number;
+  attendedBlocks: number;
+  lateBlocks: number;
+  absentBlocks: number;
+  justifiedBlocks: number;
+  kickedBlocks: number;
+  /** Calendar days with at least one record. */
+  totalDays: number;
+  /** Days with at least one unjustified absence (jubilado included). */
+  absentDays: number;
+  /** Days whose only absences are justified. */
+  justifiedDays: number;
+  kickedDays: number;
+  attendedDays: number;
+}
+
+export interface SummaryStudent extends ReportStudent, AttendanceCounts {
+  withdrawn: boolean;
+}
+
+export interface SummaryRange {
+  termId: number | null;
+  termName: string | null;
+  dateFrom: string | null;
+  dateTo: string | null;
+}
+
+const emptyCounts = (): AttendanceCounts => ({
+  totalBlocks: 0, attendedBlocks: 0, lateBlocks: 0, absentBlocks: 0, justifiedBlocks: 0, kickedBlocks: 0,
+  totalDays: 0, absentDays: 0, justifiedDays: 0, kickedDays: 0, attendedDays: 0,
+});
+
+/** Counts of one student from its records grouped by date. */
+export function countAttendance(byDate: Map<string, DayRecord[]> | undefined): AttendanceCounts {
+  const c = emptyCounts();
+  if (!byDate) return c;
+  for (const records of byDate.values()) {
+    if (records.length === 0) continue;
+    let unjustified = 0;
+    let justified = 0;
+    let kicked = 0;
+    for (const r of records) {
+      c.totalBlocks += 1;
+      if (isAttended(r.status)) c.attendedBlocks += 1;
+      if (r.status === 'late') c.lateBlocks += 1;
+      if (r.status === 'kicked') { c.kickedBlocks += 1; kicked += 1; }
+      else if (r.status === 'absent' || r.status === 'excused') {
+        if (isJustifiedAbsence(r.status, r.reason)) { c.justifiedBlocks += 1; justified += 1; }
+        else { c.absentBlocks += 1; unjustified += 1; }
+      }
+    }
+    c.totalDays += 1;
+    if (kicked > 0) c.kickedDays += 1;
+    if (unjustified > 0) c.absentDays += 1;
+    else if (justified > 0) c.justifiedDays += 1;
+    else c.attendedDays += 1;
+  }
+  return c;
+}
+
+const sumCounts = (list: AttendanceCounts[]): AttendanceCounts =>
+  list.reduce((acc, c) => {
+    (Object.keys(acc) as (keyof AttendanceCounts)[]).forEach(k => { acc[k] += c[k]; });
+    return acc;
+  }, emptyCounts());
+
+const isoDate = (d: Date | string) => new Date(d).toISOString().slice(0, 10);
+
+/** Date window of a term (lapso). Terms without both dates cannot bound attendance. */
+export async function resolveSummaryRange(schoolPeriodId: number, termId?: number | null): Promise<SummaryRange> {
+  if (!termId) return { termId: null, termName: null, dateFrom: null, dateTo: null };
+  const term = await Term.findByPk(termId);
+  if (!term || term.schoolPeriodId !== schoolPeriodId) {
+    throw Object.assign(new Error('El lapso no pertenece al período'), { status: 400 });
+  }
+  if (!term.openDate || !term.closeDate) {
+    throw Object.assign(new Error(`El lapso "${term.name}" no tiene fechas de inicio y cierre configuradas`), { status: 400 });
+  }
+  return { termId: term.id, termName: term.name, dateFrom: isoDate(term.openDate), dateTo: isoDate(term.closeDate) };
+}
+
+/**
+ * Students of a period (withdrawn included, tagged) with their attendance
+ * totals in blocks and days. Optionally restricted to a term, grade or section.
+ * A withdrawn student keeps the section where they took classes.
+ */
+export async function getAttendanceSummary(params: {
+  schoolPeriodId: number; termId?: number | null; gradeId?: number | null; sectionId?: number | null;
+}) {
+  const { schoolPeriodId, gradeId, sectionId } = params;
+  const range = await resolveSummaryRange(schoolPeriodId, params.termId);
+
+  const list = await Inscription.findAll({
+    where: { schoolPeriodId, ...(gradeId ? { gradeId } : {}) },
+    include: inscriptionIncludes,
+  }) as any[];
+
+  // Withdrawn inscriptions lost their sectionId: recover it from their subjects.
+  const withdrawnIds = list.filter(i => i.withdrawnAt && !i.sectionId).map(i => i.id);
+  const sectionByInscription = new Map<number, any>();
+  if (withdrawnIds.length > 0) {
+    const rows = await InscriptionSubject.findAll({
+      where: { inscriptionId: withdrawnIds, sectionId: { [Op.ne]: null } } as any,
+    }) as any[];
+    const sectionIds = [...new Set(rows.map(r => r.sectionId))];
+    const sections = await Section.findAll({ where: { id: sectionIds } });
+    const sectionById = new Map(sections.map(s => [s.id, s]));
+    for (const r of rows) {
+      if (!sectionByInscription.has(r.inscriptionId)) sectionByInscription.set(r.inscriptionId, sectionById.get(r.sectionId) ?? null);
+    }
+  }
+
+  const resolved = list
+    .map(ins => ({ ins, section: ins.section ?? sectionByInscription.get(ins.id) ?? null }))
+    // Materia Pendiente is a period-closure artifact, not a real section.
+    .filter(({ section }) => !section?.isMateriaPendiente)
+    .filter(({ ins, section }) => (ins.withdrawnAt || section) && (!sectionId || section?.id === sectionId));
+
+  const records = await loadRecords(
+    resolved.map(r => r.ins.id),
+    range.dateFrom ?? '1900-01-01',
+    range.dateTo ?? '2999-12-31',
+  );
+
+  // Grade → section → canonical nómina order.
+  const students: SummaryStudent[] = resolved
+    .sort((a, b) =>
+      ((a.ins.grade?.order ?? 0) - (b.ins.grade?.order ?? 0))
+      || String(a.section?.name ?? '').localeCompare(String(b.section?.name ?? ''), 'es')
+      || compareStudents(a.ins.student ?? {}, b.ins.student ?? {}))
+    .map(({ ins, section }) => ({
+      ...toReportStudent({ id: ins.id, personId: ins.personId, student: ins.student, grade: ins.grade, section, rosterNumber: ins.rosterNumber }),
+      withdrawn: !!ins.withdrawnAt,
+      ...countAttendance(records.get(ins.id)),
+    }));
+
+  return { ...range, students, totals: sumCounts(students) };
+}
+
+export interface AbsenceDetailRow {
+  recordId: number;
+  date: string;
+  periodId: string;
+  start: string | null;
+  end: string | null;
+  subjectName: string | null;
+  teacherName: string | null;
+  status: AttendanceStatus;
+  /** 'absent' = unjustified, 'jubilado' = unjustified after attending earlier in the same shift. */
+  category: 'absent' | 'justified' | 'late' | 'kicked' | 'jubilado';
+  reason: string | null;
+}
+
+/**
+ * Every non-present record of one student, with date, class block, subject
+ * and teacher — so the supervisor sees exactly when they missed.
+ */
+export async function getAbsenceDetail(params: { inscriptionId: number; termId?: number | null }) {
+  const ins = await Inscription.findByPk(params.inscriptionId, { include: inscriptionIncludes }) as any;
+  if (!ins) throw Object.assign(new Error('Inscripción no encontrada'), { status: 404 });
+  const range = await resolveSummaryRange(ins.schoolPeriodId, params.termId);
+
+  const records = await AttendanceRecord.findAll({
+    where: { inscriptionId: ins.id },
+    include: [{
+      model: AttendanceSession,
+      as: 'session',
+      required: true,
+      ...(range.dateFrom && range.dateTo ? { where: { sessionDate: { [Op.between]: [range.dateFrom, range.dateTo] } } } : {}),
+      include: [{
+        model: ScheduleEntry,
+        as: 'scheduleEntry',
+        include: [{ model: Subject, as: 'subject' }, { model: Person, as: 'teacher' }],
+      }],
+    }],
+  }) as any[];
+
+  const periodInfo = await getPeriodInfoMap();
+  const byDate = new Map<string, { r: any; entry: any; sortKey: number }[]>();
+  for (const r of records) {
+    const entry = r.session?.scheduleEntry;
+    if (!entry) continue;
+    const date = String(r.session.sessionDate).slice(0, 10);
+    if (!byDate.has(date)) byDate.set(date, []);
+    byDate.get(date)!.push({ r, entry, sortKey: periodSortKey(entry.periodId) });
+  }
+
+  const rows: AbsenceDetailRow[] = [];
+  for (const [date, items] of byDate) {
+    items.sort((a, b) => a.sortKey - b.sortKey || a.r.id - b.r.id);
+    for (const { r, entry, sortKey } of items) {
+      const status = r.status as AttendanceStatus;
+      if (status === 'present') continue;
+      let category: AbsenceDetailRow['category'];
+      if (status === 'late') category = 'late';
+      else if (status === 'kicked') category = 'kicked';
+      else if (isJustifiedAbsence(status, r.reason)) category = 'justified';
+      else {
+        const wasPresent = items.some(o => o.sortKey < sortKey
+          && shiftOfKey(o.sortKey) === shiftOfKey(sortKey) && isAttended(o.r.status));
+        category = wasPresent ? 'jubilado' : 'absent';
+      }
+      const t = entry.teacher;
+      rows.push({
+        recordId: r.id,
+        date,
+        periodId: entry.periodId,
+        start: periodInfo.get(entry.periodId)?.start ?? null,
+        end: periodInfo.get(entry.periodId)?.end ?? null,
+        subjectName: entry.subject?.name ?? null,
+        teacherName: t ? `${t.lastName}, ${t.firstName}` : null,
+        status,
+        category,
+        reason: r.reason ?? null,
+      });
+    }
+  }
+  rows.sort((a, b) => a.date.localeCompare(b.date) || periodSortKey(a.periodId) - periodSortKey(b.periodId));
+
+  const dayRecords = await loadRecords([ins.id], range.dateFrom ?? '1900-01-01', range.dateTo ?? '2999-12-31');
+  return {
+    ...range,
+    student: { ...toReportStudent(ins), withdrawn: !!ins.withdrawnAt },
+    schoolPeriodId: ins.schoolPeriodId,
+    counts: countAttendance(dayRecords.get(ins.id)),
+    rows,
+  };
 }

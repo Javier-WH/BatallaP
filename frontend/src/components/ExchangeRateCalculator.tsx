@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { InputNumber, DatePicker, Tag, Space, Divider, Statistic, Checkbox, Button, message } from 'antd';
-import { ReloadOutlined } from '@ant-design/icons';
+import { InputNumber, DatePicker, Tag, Space, Divider, Statistic, Checkbox, Button, message, Tooltip } from 'antd';
+import { ReloadOutlined, CopyOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import dayjs from 'dayjs';
 import {
@@ -145,6 +145,25 @@ const ExchangeRateCalculator: React.FC<ExchangeRateCalculatorProps> = ({ active,
     .filter(r => r.rate !== null)
     .map(r => ({ value: r.currency, label: <><CurrencySymbol currency={r.currency} /> ({r.name})</> }));
 
+  // Copies the plain amount (no currency symbol, dot decimals) e.g. "35.78".
+  const copyResult = async (value: number) => {
+    const text = value.toFixed(2);
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // Fallback for webviews without the clipboard API
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    message.success(`${text} copiado al portapapeles`);
+  };
+
   return (
     <Space direction="vertical" style={{ width: '100%' }} size="middle">
       {/* Date picker */}
@@ -274,6 +293,7 @@ const ExchangeRateCalculator: React.FC<ExchangeRateCalculatorProps> = ({ active,
           min={0}
           step={100}
           style={{ width: '100%' }}
+          inputMode="decimal"
           formatter={(value) => value ? `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''}
           parser={(value) => Number(value?.replace(/,/g, '') || 0)}
           placeholder="0"
@@ -285,17 +305,31 @@ const ExchangeRateCalculator: React.FC<ExchangeRateCalculatorProps> = ({ active,
         <div className="space-y-3">
           {calcResults.map(r => (
             <div key={r.currency} className="bg-slate-50 rounded-xl p-4">
-              <Statistic
-                title={calcDirection === 'from_ves'
-                  ? <>Equivalente en <CurrencySymbol currency={r.currency} /></>
-                  : <>Equivalente en Bolívares (Bs) — <CurrencySymbol currency={r.currency} /></>}
-                value={r.result !== null ? r.result : '—'}
-                precision={r.result !== null ? 2 : undefined}
-                prefix={calcDirection === 'from_ves'
-                  ? <CurrencySymbol currency={r.currency} />
-                  : <span style={{ color: CURRENCY_META[r.currency]?.color }}>Bs </span>}
-                valueStyle={{ fontWeight: 700 }}
-              />
+              <div className="flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <Statistic
+                    title={calcDirection === 'from_ves'
+                      ? <>Equivalente en <CurrencySymbol currency={r.currency} /></>
+                      : <>Equivalente en Bolívares (Bs) — <CurrencySymbol currency={r.currency} /></>}
+                    value={r.result !== null ? r.result : '—'}
+                    precision={r.result !== null ? 2 : undefined}
+                    prefix={calcDirection === 'from_ves'
+                      ? <CurrencySymbol currency={r.currency} />
+                      : <span style={{ color: CURRENCY_META[r.currency]?.color }}>Bs </span>}
+                    valueStyle={{ fontWeight: 700 }}
+                  />
+                </div>
+                {r.result !== null && (
+                  <Tooltip title="Copiar monto">
+                    <Button
+                      type="text"
+                      icon={<CopyOutlined style={{ fontSize: 20 }} />}
+                      onClick={() => copyResult(r.result!)}
+                      style={{ width: 40, height: 40 }}
+                    />
+                  </Tooltip>
+                )}
+              </div>
               <div className="mt-1 text-xs text-slate-400">
                 Tasa: <strong>{r.rate?.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs/<CurrencySymbol currency={r.currency} /></strong> — Fecha: {r.date ? dayjs(r.date).format('DD/MM/YYYY') : '—'}
               </div>

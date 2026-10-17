@@ -396,6 +396,8 @@ Ver [`flows/grade-edit.md`](./flows/grade-edit.md).
 | GET | `/reports/student-weeks?inscriptionId=&dateFrom=&dateTo=` | Staff. Un estudiante: filas = semanas, columnas = Lun–Vie. |
 | GET | `/reports/student-day?inscriptionId=&date=` | Staff. Un estudiante × bloques de clase del día. |
 | GET | `/reports/student-search?schoolPeriodId=&q=` | Staff. Búsqueda por apellido/nombre/cédula (mín. 2 caracteres, 20 resultados). |
+| GET | `/reports/summary?schoolPeriodId=&termId=&gradeId=&sectionId=` | Staff. Resumen estadístico: lista de estudiantes del período (**retirados incluidos**, con `withdrawn`; conservan la sección donde cursaron vía `InscriptionSubject`) con totales en **horas** (bloques: `attendedBlocks`, `absentBlocks` injustificadas, `justifiedBlocks`, `lateBlocks`, `kickedBlocks`, `totalBlocks`) y en **días** (`absentDays` = días con ≥1 inasistencia injustificada, `justifiedDays`, `attendedDays`, `totalDays`), más `totals` generales. `termId` vacío = todo el año; con `termId` el rango es `Term.openDate`–`closeDate` (400 si el lapso no tiene fechas). Orden: grado → sección → nómina. Excluye secciones de Materia Pendiente. |
+| GET | `/reports/absence-detail?inscriptionId=&termId=` | Staff. Detalle de un estudiante: cada registro no presente con fecha, bloque/hora, materia, profesor, `category` (`absent`, `jubilado`, `justified`, `late`, `kicked`) y motivo, más `counts`. Alimenta el modal que se abre al hacer clic en una cifra del resumen. |
 
 **Reglas de negocio**:
 - `absent` y `kicked` requieren `reason` (validado en service y UI).

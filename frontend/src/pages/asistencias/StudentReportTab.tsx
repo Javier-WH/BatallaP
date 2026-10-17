@@ -18,7 +18,15 @@ const studentLabel = (s: ReportStudent) =>
  * "Por Estudiante": search a student; rows = weeks of the selected range,
  * columns = Lun–Vie. Clicking a day cell opens that day's detail by class block.
  */
-const StudentReportTab: React.FC = () => {
+export interface StudentReportInitial {
+  student: ReportStudent;
+  dateFrom: string;
+  dateTo: string;
+  /** Changes on every request so the same student can be reopened. */
+  nonce: number;
+}
+
+const StudentReportTab: React.FC<{ initial?: StudentReportInitial | null }> = ({ initial }) => {
   const { viewPeriod } = useSchool();
   const [options, setOptions] = useState<ReportStudent[]>([]);
   const [searching, setSearching] = useState(false);
@@ -50,6 +58,15 @@ const StudentReportTab: React.FC = () => {
   };
 
   useEffect(() => () => { if (searchTimer.current) clearTimeout(searchTimer.current); }, []);
+
+  // Opened from the summary list: preselect the student and range.
+  useEffect(() => {
+    if (!initial) return;
+    setOptions([initial.student]);
+    setStudent(initial.student);
+    setRange([dayjs(initial.dateFrom), dayjs(initial.dateTo)]);
+    setDay(null);
+  }, [initial?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dateFrom = range[0].format('YYYY-MM-DD');
   const dateTo = range[1].format('YYYY-MM-DD');

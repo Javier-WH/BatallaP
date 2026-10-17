@@ -38,6 +38,8 @@ import {
   getStudentWeeksReport,
   getStudentDayReport,
   searchStudents,
+  getAttendanceSummary,
+  getAbsenceDetail,
 } from '@/services/attendanceReportService';
 
 const hasRole = (user: any, roles: string[]): boolean => {
@@ -501,6 +503,25 @@ export const getStudentWeeksReportHandler = staffReport('getStudentWeeksReport',
 export const getStudentDayReportHandler = staffReport('getStudentDayReport', req => getStudentDayReport({
   inscriptionId: requireId(req.query.inscriptionId, 'inscriptionId'),
   date: requireDate(req.query.date, 'date'),
+}));
+
+const optionalId = (value: unknown): number | null => {
+  const n = Number(value);
+  return n > 0 ? n : null;
+};
+
+/** GET /api/attendance/reports/summary?schoolPeriodId=&termId=&gradeId=&sectionId= (termId empty = whole year) */
+export const getAttendanceSummaryHandler = staffReport('getAttendanceSummary', req => getAttendanceSummary({
+  schoolPeriodId: requireId(req.query.schoolPeriodId, 'schoolPeriodId'),
+  termId: optionalId(req.query.termId),
+  gradeId: optionalId(req.query.gradeId),
+  sectionId: optionalId(req.query.sectionId),
+}));
+
+/** GET /api/attendance/reports/absence-detail?inscriptionId=&termId= */
+export const getAbsenceDetailHandler = staffReport('getAbsenceDetail', req => getAbsenceDetail({
+  inscriptionId: requireId(req.query.inscriptionId, 'inscriptionId'),
+  termId: optionalId(req.query.termId),
 }));
 
 /** GET /api/attendance/reports/student-search?schoolPeriodId=&q= */

@@ -24,5 +24,7 @@ router.get('/reports/section-day', attendanceController.getSectionDayReportHandl
 router.get('/reports/student-weeks', attendanceController.getStudentWeeksReportHandler);
 router.get('/reports/student-day', attendanceController.getStudentDayReportHandler);
 router.get('/reports/student-search', attendanceController.searchReportStudentsHandler);
+router.get('/reports/summary', attendanceController.getAttendanceSummaryHandler);
+router.get('/reports/absence-detail', attendanceController.getAbsenceDetailHandler);
 
 export default router;

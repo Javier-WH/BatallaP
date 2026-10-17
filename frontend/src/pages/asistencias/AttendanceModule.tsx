@@ -1,12 +1,16 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Button, Tabs } from 'antd';
-import { CheckSquareOutlined, TeamOutlined, AppstoreOutlined, UserOutlined, DownloadOutlined } from '@ant-design/icons';
+import { CheckSquareOutlined, TeamOutlined, AppstoreOutlined, UserOutlined, DownloadOutlined, BarChartOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
+import { useSchool } from '@/context/SchoolContext';
 import { useAuth } from '@/context/AuthContext';
 import TeacherAttendanceTab from './TeacherAttendanceTab';
 import StaffSessionsTab from './StaffSessionsTab';
 import SectionReportTab from './SectionReportTab';
-import StudentReportTab from './StudentReportTab';
+import StudentReportTab, { type StudentReportInitial } from './StudentReportTab';
+import SummaryReportTab from './SummaryReportTab';
 import { isRunningStandalone } from '@/utils/pwaInstall';
+import type { ReportStudent } from './types';
 
 const STAFF_ROLES = ['Master', 'Administrador', 'Control de Estudios'];
 
@@ -43,7 +47,18 @@ const InstallAttendanceAppLink: React.FC = () => {
  */
 const AttendanceModule: React.FC = () => {
   const { user } = useAuth();
+  const { viewPeriod } = useSchool();
   const [activeKey, setActiveKey] = useState<string>();
+  const [studentInitial, setStudentInitial] = useState<StudentReportInitial | null>(null);
+
+  // From the summary list: open "Por Estudiante" on that student. A whole-year
+  // summary has no dates, so fall back to the school year bounds.
+  const openStudentTab = useCallback((student: ReportStudent, dateFrom: string | null, dateTo: string | null) => {
+    const start = viewPeriod?.startYear ? `${viewPeriod.startYear}-09-01` : dayjs().startOf('year').format('YYYY-MM-DD');
+    const end = viewPeriod?.endYear ? `${viewPeriod.endYear}-08-31` : dayjs().format('YYYY-MM-DD');
+    setStudentInitial({ student, dateFrom: dateFrom ?? start, dateTo: dateTo ?? end, nonce: Date.now() });
+    setActiveKey('by-student');
+  }, [viewPeriod?.startYear, viewPeriod?.endYear]);
 
   const roles = useMemo(() => user?.roles ?? [], [user]);
   const isTeacher = roles.includes('Profesor');
@@ -78,12 +93,17 @@ const AttendanceModule: React.FC = () => {
         {
           key: 'by-student',
           label: <span><UserOutlined /> Por Estudiante</span>,
-          children: <StudentReportTab />,
+          children: <StudentReportTab initial={studentInitial} />,
+        },
+        {
+          key: 'summary',
+          label: <span><BarChartOutlined /> Resumen</span>,
+          children: <SummaryReportTab onOpenStudent={openStudentTab} />,
         },
       );
     }
     return tabs;
-  }, [isTeacher, isStaff]);
+  }, [isTeacher, isStaff, studentInitial, openStudentTab]);
 
   // Single-view users (teachers without staff roles) skip the redundant
   // "Asistencias" heading and the one-item tab bar.

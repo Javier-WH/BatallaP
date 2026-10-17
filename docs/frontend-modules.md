@@ -141,6 +141,8 @@ Todos los servicios consumen la instancia `api` con `withCredentials: true`.
 | `asistencias/StaffSessionsTab.tsx` | Vista de Control de Estudios/Admin: sesiones por rango de fechas con conteos; abre cualquier sesión para ver/editar. |
 | `asistencias/AdminAttendanceTab.tsx` | Vista de administración: resumen de asistencia por estudiante + catálogo de motivos de desbloqueo. |
 | `asistencias/SessionRosterModal.tsx` | Editor de nómina de una sesión: estados (presente/ausente/tarde/expulsado), motivo obligatorio para ausentes/expulsados, desbloqueo auditado de bloqueados. |
+| `asistencias/SummaryReportTab.tsx` | Pestaña **Resumen** (staff): lista estadística de estudiantes (cédula, apellidos, nombres, sexo, grado, sección) con asistencia/inasistencias en horas y días y su porcentaje. Filtros: lapso o todo el año, grado, sección, sexo, búsqueda, incluir retirados; columnas opcionales (justificadas, retardos, retirado de clase, total registrado); orden por cualquier columna; fila y tarjetas de totales generales; impresión limpia (landscape). Cada cifra de inasistencia abre `AbsenceDetailModal`. |
+| `asistencias/AbsenceDetailModal.tsx` | Modal con el detalle exacto (fecha, hora, materia, profesor, tipo, motivo) de las inasistencias/justificadas/retardos de un estudiante, con totales y %; botón para abrir "Por Estudiante" precargado (mismo rango). |
 | `asistencias/types.ts` | Tipos compartidos del módulo (espejo de los interfaces del backend). |
 
 ### Representante (`/representante`)
