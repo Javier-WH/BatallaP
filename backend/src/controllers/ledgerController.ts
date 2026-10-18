@@ -20,6 +20,40 @@ import {
 
 // ── Ledger: list students by section with their charges & payments ──
 
+/**
+ * Inscriptions of students who are withdrawn — i.e. their LATEST inscription
+ * has `withdrawnAt` set. A student who withdrew in an older period and later
+ * re-enrolled (latest inscription active) is NOT returned: they already show
+ * up in their section. Used by the "Sin sección" group of the ledger and by
+ * the withdrawn-student search.
+ */
+async function loadWithdrawnInscriptions(): Promise<any[]> {
+  const withdrawnIds = await Inscription.findAll({
+    where: { withdrawnAt: { [Op.ne]: null } },
+    attributes: ['personId'],
+  });
+  const personIds = [...new Set(withdrawnIds.map((i: any) => i.personId))];
+  if (personIds.length === 0) return [];
+
+  const all = await Inscription.findAll({
+    where: { personId: personIds as any },
+    include: [
+      { model: Person, as: 'student', attributes: ['id', 'firstName', 'lastName', 'documentType', 'document'] },
+      { model: Grade, as: 'grade', attributes: ['id', 'name', 'order'] },
+      { model: Section, as: 'section', attributes: ['id', 'name', 'isMateriaPendiente'] },
+      { model: SchoolPeriod, as: 'period', attributes: ['id', 'period', 'name', 'startYear', 'endYear'] },
+    ],
+    order: [['id', 'ASC']],
+  });
+
+  const latest = new Map<number, any>();
+  for (const ins of all as any[]) {
+    const cur = latest.get(ins.personId);
+    if (!cur || ins.id > cur.id) latest.set(ins.personId, ins);
+  }
+  return [...latest.values()].filter(i => i.withdrawnAt != null);
+}
+
 /** Whether a month-less bucket still has unpaid charges (per currency). */
 const enrollmentHasDebt = (b: { byCurrency: Record<string, { charged: number; paid: number }> }): boolean =>
   Object.values(b.byCurrency).some(v => v.charged - v.paid > 0.005);
@@ -28,23 +62,34 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
   try {
     const { schoolPeriodId, gradeId, sectionId } = req.params;
 
-    // Get all inscriptions for this grade+section+period, with student info
-    const inscriptions = await Inscription.findAll({
-      where: {
-        schoolPeriodId: Number(schoolPeriodId),
-        gradeId: Number(gradeId),
-        sectionId: Number(sectionId),
-      },
-      include: [
-        { model: Person, as: 'student', attributes: ['id', 'firstName', 'lastName', 'documentType', 'document'] },
-        { model: Grade, as: 'grade', attributes: ['id', 'name'] },
-        { model: Section, as: 'section', attributes: ['id', 'name'] },
-      ],
-      order: [
-        [{ model: Person, as: 'student' }, 'lastName', 'ASC'],
-        [{ model: Person, as: 'student' }, 'firstName', 'ASC'],
-      ],
-    });
+    // "Sin sección" (sectionId=null): withdrawn students of this grade — their
+    // latest inscription is withdrawn, from ANY period (old debts included).
+    let inscriptions: any[];
+    if (sectionId === 'null' || sectionId === '0') {
+      const withdrawn = await loadWithdrawnInscriptions();
+      inscriptions = withdrawn.filter((i: any) => i.gradeId === Number(gradeId));
+      inscriptions.sort((a: any, b: any) =>
+        (a.student?.lastName ?? '').localeCompare(b.student?.lastName ?? '', 'es')
+        || (a.student?.firstName ?? '').localeCompare(b.student?.firstName ?? '', 'es'));
+    } else {
+      // Get all inscriptions for this grade+section+period, with student info
+      inscriptions = await Inscription.findAll({
+        where: {
+          schoolPeriodId: Number(schoolPeriodId),
+          gradeId: Number(gradeId),
+          sectionId: Number(sectionId),
+        },
+        include: [
+          { model: Person, as: 'student', attributes: ['id', 'firstName', 'lastName', 'documentType', 'document'] },
+          { model: Grade, as: 'grade', attributes: ['id', 'name'] },
+          { model: Section, as: 'section', attributes: ['id', 'name'] },
+        ],
+        order: [
+          [{ model: Person, as: 'student' }, 'lastName', 'ASC'],
+          [{ model: Person, as: 'student' }, 'firstName', 'ASC'],
+        ],
+      });
+    }
 
     const period = await SchoolPeriod.findByPk(Number(schoolPeriodId), {
       attributes: ['id', 'billingStartMonth', 'billingEndMonth'],
@@ -1190,17 +1235,80 @@ export const getSectionsForPeriod = async (req: Request, res: Response) => {
         gradeOrder: (i.grade as any)?.order ?? 9999,
       }))
       .filter((v: any, idx: number, arr: any[]) => arr.findIndex((a: any) => a.gradeId === v.gradeId && a.sectionId === v.sectionId) === idx)
-      .filter((s: any) => !s.isMateriaPendiente)
+      .filter((s: any) => !s.isMateriaPendiente && s.sectionId != null);
+
+    // "Sin sección" groups: withdrawn students (latest inscription withdrawn).
+    // A group only appears when at least one of its members still owes money —
+    // a debt-free withdrawn group is noise, not work.
+    const withdrawn = await loadWithdrawnInscriptions();
+    const debtFlags = await Promise.all(withdrawn.map(i => inscriptionDebtSummary(i.id)));
+    for (let idx = 0; idx < withdrawn.length; idx++) {
+      if (!debtFlags[idx].hasDebt) continue;
+      const ins = withdrawn[idx];
+      if (sections.some(s => s.gradeId === ins.gradeId && s.sectionId == null)) continue;
+      sections.push({
+        sectionId: null,
+        sectionName: 'Sin sección',
+        isMateriaPendiente: false,
+        gradeId: ins.gradeId,
+        gradeName: ins.grade?.name ?? '—',
+        gradeOrder: ins.grade?.order ?? 9999,
+      });
+    }
+
+    const sorted = sections
       .sort((a: any, b: any) =>
         a.gradeOrder - b.gradeOrder
         || a.gradeName.localeCompare(b.gradeName, 'es')
         || a.sectionName.localeCompare(b.sectionName, 'es'))
       .map(({ isMateriaPendiente, gradeOrder, ...rest }) => rest);
 
-    return res.json(sections);
+    return res.json(sorted);
   } catch (error) {
     console.error('[getSectionsForPeriod] Error:', error);
     return res.status(500).json({ message: 'Error al obtener secciones' });
+  }
+};
+
+/**
+ * GET /ledger/withdrawn-students?q=
+ * Search withdrawn students (latest inscription withdrawn) by name or document.
+ * Powers the "add debt to a withdrawn student" flow: each result carries the
+ * inscriptionId the charge should be attached to.
+ */
+export const searchWithdrawnStudents = async (req: Request, res: Response) => {
+  try {
+    // Accent-insensitive: "diaz" must match "DÍAZ".
+    const fold = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const q = fold(String(req.query.q ?? '').trim());
+    if (q.length < 2) return res.json([]);
+
+    const withdrawn = await loadWithdrawnInscriptions();
+    const results = withdrawn
+      .filter((i: any) => {
+        const p = i.student ?? {};
+        const hay = fold(`${p.lastName ?? ''} ${p.firstName ?? ''} ${p.document ?? ''}`);
+        return hay.includes(q);
+      })
+      .sort((a: any, b: any) =>
+        (a.student?.lastName ?? '').localeCompare(b.student?.lastName ?? '', 'es')
+        || (a.student?.firstName ?? '').localeCompare(b.student?.firstName ?? '', 'es'))
+      .slice(0, 25)
+      .map((i: any) => ({
+        inscriptionId: i.id,
+        personId: i.personId,
+        name: `${i.student?.lastName ?? ''}, ${i.student?.firstName ?? ''}`.trim().replace(/^,\s*/, ''),
+        document: i.student?.document ?? '',
+        documentType: i.student?.documentType ?? '',
+        gradeName: i.grade?.name ?? '—',
+        periodName: i.period?.name ?? i.period?.period ?? '—',
+        withdrawnAt: i.withdrawnAt,
+      }));
+
+    return res.json(results);
+  } catch (error) {
+    console.error('[searchWithdrawnStudents] Error:', error);
+    return res.status(500).json({ message: 'Error al buscar estudiantes retirados' });
   }
 };
 

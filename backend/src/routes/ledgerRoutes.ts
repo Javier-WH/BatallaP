@@ -10,6 +10,7 @@ import {
   listPaymentAudit,
   deleteCharge,
   getSectionsForPeriod,
+  searchWithdrawnStudents,
   updateEntryMonth,
   getInscriptionDebt,
   releasePapers,
@@ -31,6 +32,10 @@ router.use(requirePaymentsAccess);
 
 // GET sections available for a period (for dropdown)
 router.get('/sections/:schoolPeriodId', getSectionsForPeriod);
+
+// GET withdrawn students (latest inscription withdrawn) by name/document —
+// powers the "add debt to a withdrawn student" flow.
+router.get('/withdrawn-students', searchWithdrawnStudents);
 
 // Discounts / scholarships of an inscription.
 // Declared BEFORE the generic /:schoolPeriodId/:gradeId/:sectionId route, which would swallow the GET.

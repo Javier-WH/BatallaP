@@ -5,15 +5,15 @@ import {
   ChevronDown, Search, Banknote, Smartphone, Landmark, CreditCard, Hash,
   Plus, X, DollarSign, TrendingUp, AlertTriangle,
   ArrowDownAZ, ArrowUpAZ, ArrowUpDown, MoreHorizontal, CalendarClock, BadgePercent,
-  ArrowRightLeft, Trash2,
+  ArrowRightLeft, Trash2, UserX,
 } from 'lucide-react';
 import PaymentCorrectionModal, { type CorrectionMode } from './components/PaymentCorrectionModal';
 import { useSchool } from '@/context/SchoolContext';
 import {
-  getLedgerSections, getLedgerBySection,
+  getLedgerSections, getLedgerBySection, searchWithdrawnStudents,
   createPayment, createCharge, updateEntryMonth, listSellableItems,
   type LedgerStudent, type LedgerSection, type SellableItem, type LedgerPriorPeriod, type LedgerBucket,
-  type DuplicatePaymentInfo,
+  type DuplicatePaymentInfo, type WithdrawnStudentResult,
 } from '@/services/paymentsService';
 import { listBanks, type Bank } from '@/services/bankService';
 import { billingMonthsOf } from '@/utils/billingMonths';
@@ -171,7 +171,7 @@ function TransactionRow({ txn, index, onCorrect }: { txn: any; index: number; on
 
 function MonthDetail({ month, data, monthlyFee, onAddPayment, onCorrectPayment, label }: {
   month: string;
-  data: { charges: any[]; payments: any[]; totalCharged: number; totalPaid: number; grossCharged?: number; totalDiscount?: number; byCurrency?: Record<string, { charged: number; paid: number }> } | undefined;
+  data: { charges: any[]; payments: any[]; currency?: string | null; totalCharged: number; totalPaid: number; grossCharged?: number; totalDiscount?: number; byCurrency?: Record<string, { charged: number; paid: number }> } | undefined;
   monthlyFee: { amount: number; currency: string } | null;
   onAddPayment: () => void;
   onCorrectPayment: (txn: any, mode: CorrectionMode) => void;
@@ -182,7 +182,12 @@ function MonthDetail({ month, data, monthlyFee, onAddPayment, onCorrectPayment, 
   const remaining = Math.max(charged - paid, 0);
   const overflow = Math.max(paid - charged, 0);
   const feeAmount = monthlyFee?.amount ?? 0;
-  const feeCurrency = monthlyFee?.currency ?? 'USD';
+  // Header amounts display in the bucket's own currency — the single
+  // byCurrency key when present (a EUR enrollment under USD monthly fees),
+  // falling back to the bucket currency and then the expected fee's.
+  const bucketCurrencies = Object.keys(data?.byCurrency ?? {});
+  const feeCurrency = (bucketCurrencies.length === 1 ? bucketCurrencies[0] : null)
+    ?? data?.currency ?? monthlyFee?.currency ?? 'USD';
   const title = label ?? (month === OTHER ? 'Inscripción y otros' : MONTH_FULL[month]);
 
   return (
@@ -263,18 +268,63 @@ function MonthDetail({ month, data, monthlyFee, onAddPayment, onCorrectPayment, 
 
 // ── Prior-period debts ──
 
-/** Aggregates several buckets into one (charged, paid) pair, in VES. */
+/**
+ * Aggregates several buckets into one (charged, paid) pair.
+ *
+ * Payments are always recorded in the DEBT's currency (allocations credit
+ * `charge.currency` — a VES payment settles the right USD amount, and an
+ * at-par USD payment settles EUR 1:1). So progress compares per currency,
+ * never converting payments: $80 last week is $80 today.
+ *
+ * - One currency → compare in that currency directly.
+ * - Mixed currencies → weight each currency by the charged-side VES rate of
+ *   the bucket that carries it; paid is capped at charged per currency, so
+ *   overpaying one currency never offsets another currency's debt.
+ * - No byCurrency breakdown (legacy) → VES sums.
+ */
 function mergedTotals(...buckets: (LedgerBucket | undefined | null)[]): { charged: number; paid: number } {
   const list = buckets.filter(Boolean) as LedgerBucket[];
-  return {
-    charged: list.reduce((s, b) => s + (b.totalChargedVES ?? 0), 0),
-    paid: list.reduce((s, b) => s + (b.totalPaidVES ?? 0), 0),
-  };
+  const byCurrency: Record<string, { charged: number; paid: number }> = {};
+  for (const b of list) {
+    for (const [cur, v] of Object.entries(b.byCurrency ?? {})) {
+      const t = (byCurrency[cur] ??= { charged: 0, paid: 0 });
+      t.charged += v.charged;
+      t.paid += v.paid;
+    }
+  }
+  const currencies = Object.keys(byCurrency);
+  if (currencies.length === 1) {
+    const t = byCurrency[currencies[0]];
+    return { charged: t.charged, paid: t.paid };
+  }
+  if (currencies.length === 0) {
+    return {
+      charged: list.reduce((s, b) => s + (b.totalChargedVES ?? 0), 0),
+      paid: list.reduce((s, b) => s + (b.totalPaidVES ?? 0), 0),
+    };
+  }
+  // Mixed: progress = fraction of debt value settled, weighted per currency.
+  let charged = 0, paid = 0;
+  for (const b of list) {
+    const entries = Object.values(b.byCurrency ?? {});
+    const chargedSum = entries.reduce((s, v) => s + v.charged, 0);
+    const implied = chargedSum > 0 ? (b.totalChargedVES ?? chargedSum) / chargedSum : 0;
+    for (const v of entries) {
+      charged += v.charged * implied;
+      paid += Math.min(v.paid, v.charged) * implied;
+    }
+  }
+  return { charged, paid };
 }
 
-/** Aggregates every bucket of a prior period into one (charged, paid) pair, in VES. */
-function priorTotals(group: LedgerPriorPeriod): { charged: number; paid: number } {
-  return mergedTotals(...Object.values(group.months), group.enrollment, group.other);
+/**
+ * Every bucket of every prior period, flattened. Prior-period debts fold into
+ * the student's entry-month cell (that year's enrollment cannot be paid until
+ * the old debt is settled anyway — the payment order already enforces it).
+ */
+function priorBucketsOf(student: LedgerStudent): LedgerBucket[] {
+  return (student.priorPeriods ?? []).flatMap(g =>
+    [...Object.values(g.months ?? {}), g.enrollment, g.other].filter(Boolean) as LedgerBucket[]);
 }
 
 /** Display merge of month-less buckets (prior periods show them as one "Otras deudas" row). */
@@ -430,6 +480,77 @@ function Field({ label, children, className = '' }: { label: string; children: R
       <span className="block text-[10px] font-semibold text-[#8B909A] uppercase tracking-wide mb-1">{label}</span>
       {children}
     </label>
+  );
+}
+
+// ── Modal: Debt to a withdrawn student ──
+
+/**
+ * Search withdrawn students (whose latest inscription was withdrawn) so a
+ * manual/historical debt can be attached to that inscription. Picking a result
+ * hands it to `onPick`, which opens the regular AddChargeModal prefilled.
+ */
+function WithdrawnDebtModal({ onPick, onClose }: {
+  onPick: (s: WithdrawnStudentResult) => void;
+  onClose: () => void;
+}) {
+  const [q, setQ] = useState('');
+  const [results, setResults] = useState<WithdrawnStudentResult[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  useEffect(() => {
+    if (q.trim().length < 2) { setResults([]); return; }
+    setSearching(true);
+    const t = setTimeout(() => {
+      searchWithdrawnStudents(q.trim())
+        .then(setResults)
+        .catch(() => setResults([]))
+        .finally(() => setSearching(false));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white border border-[#C5CAD2] w-full max-w-md shadow-lg max-h-[95vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[#E4E6EB] bg-[#EDEEF1]">
+          <h3 className="text-sm font-bold uppercase tracking-wide">Deuda a estudiante retirado</h3>
+          <button onClick={onClose} className="text-[#6B7280] hover:text-[#14181F]"><X size={16} /></button>
+        </div>
+        <div className="p-4">
+          <Field label="Buscar por nombre o cédula">
+            <input autoFocus value={q} onChange={e => setQ(e.target.value)}
+              placeholder="Ej: Díaz, Nirmaris o V-12345678"
+              className={inputCls} />
+          </Field>
+          <div className="mt-3 border border-[#E4E6EB] divide-y divide-[#E4E6EB] max-h-72 overflow-y-auto">
+            {q.trim().length < 2 ? (
+              <div className="px-3 py-6 text-center text-xs text-[#8B909A]">Escribe al menos 2 letras para buscar.</div>
+            ) : searching && results.length === 0 ? (
+              <div className="px-3 py-6 text-center text-xs text-[#8B909A]">Buscando…</div>
+            ) : results.length === 0 ? (
+              <div className="px-3 py-6 text-center text-xs text-[#8B909A]">Sin estudiantes retirados que coincidan.</div>
+            ) : results.map(r => (
+              <button key={r.inscriptionId} type="button" onClick={() => onPick(r)}
+                className="w-full text-left px-3 py-2.5 hover:bg-[#F5F7FA] flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-[#14181F]">{r.name}</div>
+                  <div className="text-[11px] text-[#8B909A]">
+                    {r.documentType ? `${r.documentType}-` : ''}{r.document || 's/ced'} · {r.gradeName} · {r.periodName}
+                  </div>
+                </div>
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-[#B42318] shrink-0">
+                  Retirado{r.withdrawnAt ? ` ${new Date(r.withdrawnAt).toLocaleDateString('es-VE')}` : ''}
+                </span>
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-[#8B909A]">
+            La deuda se registrará sobre la última inscripción del estudiante, sin reactivarlo.
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -888,13 +1009,20 @@ export default function PaymentLedger() {
   const [discountStudentId, setDiscountStudentId] = useState<number | null>(null);
   const [sellableItems, setSellableItems] = useState<SellableItem[]>([]);
   const [flash, setFlash] = useState<string | null>(null);
+  // Withdrawn-debt flow: search modal + the picked student injected into AddChargeModal.
+  const [withdrawnModal, setWithdrawnModal] = useState(false);
+  const [extraChargeStudent, setExtraChargeStudent] = useState<LedgerStudent | null>(null);
 
   // Load sections when period changes
-  useEffect(() => {
+  const loadSections = useCallback(() => {
     if (!schoolPeriodId) return;
     getLedgerSections(schoolPeriodId).then(setSections).catch(() => setSections([]));
-    setSelectedSection(null);
   }, [schoolPeriodId]);
+
+  useEffect(() => {
+    loadSections();
+    setSelectedSection(null);
+  }, [loadSections]);
 
   // Load ledger data when section changes
   const loadLedger = useCallback(async () => {
@@ -935,16 +1063,9 @@ export default function PaymentLedger() {
   const cycleNameSort = () =>
     setNameSort(m => m === 'canonical' ? 'asc' : m === 'asc' ? 'desc' : 'canonical');
 
-  // Prior debt periods referenced by any student — one column each, oldest first
-  const priorPeriodList = useMemo(() => {
-    const map = new Map<number, { periodId: number; periodName: string; periodCode: string | null }>();
-    for (const s of students) {
-      for (const g of s.priorPeriods ?? []) {
-        if (!map.has(g.periodId)) map.set(g.periodId, { periodId: g.periodId, periodName: g.periodName, periodCode: g.periodCode });
-      }
-    }
-    return [...map.values()];
-  }, [students]);
+  // Prior-period debts are NOT a column: they fold into the student's first
+  // cell (entry month) — that year's enrollment cannot be paid until the old
+  // debt is settled, and the payment order already enforces it.
 
   const toggle = (inscriptionId: number, month: string) => {
     const key = `${inscriptionId}-${month}`;
@@ -1081,9 +1202,12 @@ export default function PaymentLedger() {
         currency: form.currency,
       });
       setChargeModal(null);
+      setExtraChargeStudent(null);
       setFlash(`Deuda de ${form.amount} ${form.currency} registrada · ${MONTH_FULL[form.month] || 'no mensual'}`);
       setTimeout(() => setFlash(null), 3500);
       loadLedger();
+      // A debt on a withdrawn student can create a new "Sin sección" group.
+      loadSections();
     } catch {
       setFlash('Error al registrar deuda');
       setTimeout(() => setFlash(null), 3500);
@@ -1101,6 +1225,34 @@ export default function PaymentLedger() {
     setFlash(message);
     setTimeout(() => setFlash(null), 4000);
     loadLedger();
+  };
+
+  // Withdrawn student picked in the search modal → open AddChargeModal with a
+  // stub entry so their inscription can be selected even though they are not
+  // in the currently loaded ledger.
+  const pickWithdrawn = (r: WithdrawnStudentResult) => {
+    const emptyBucket = (): LedgerBucket => ({
+      charges: [], payments: [], byCurrency: {}, currency: null,
+      grossCharged: 0, totalDiscount: 0, totalCharged: 0, totalPaid: 0,
+      totalChargedVES: 0, totalPaidVES: 0,
+    });
+    setExtraChargeStudent({
+      inscriptionId: r.inscriptionId,
+      personId: r.personId,
+      name: r.name,
+      document: r.document,
+      rosterNumber: null,
+      entryMonth: null,
+      gradeName: r.gradeName,
+      sectionName: 'Sin sección',
+      months: {},
+      enrollment: emptyBucket(),
+      other: emptyBucket(),
+      priorPeriods: [],
+      discounts: [],
+    });
+    setChargeModal({ studentId: r.inscriptionId });
+    setWithdrawnModal(false);
   };
 
   // Per-student totals, computed once per ledger load (shown in the row corners).
@@ -1124,7 +1276,7 @@ export default function PaymentLedger() {
     s.entryMonth && months.includes(s.entryMonth) ? s.entryMonth : months[0];
 
   // Extra columns: prior debt periods + extraordinary debts ("Otros")
-  const tableWidth = NAME_COL + (months.length + priorPeriodList.length + (hasOther ? 1 : 0)) * MONTH_COL;
+  const tableWidth = NAME_COL + (months.length + (hasOther ? 1 : 0)) * MONTH_COL;
 
   return (
     <div className="min-h-screen bg-[#EDEEF1] font-sans text-[#14181F] p-6">
@@ -1134,9 +1286,11 @@ export default function PaymentLedger() {
           <div className="flex items-center gap-3 px-4 py-3 border-r border-[#E4E6EB]">
             <span className="text-[10px] font-semibold text-[#8B909A] uppercase tracking-wide">Sección</span>
             <select
-              value={selectedSection ? `${selectedSection.gradeId}-${selectedSection.sectionId}` : ''}
+              value={selectedSection ? `${selectedSection.gradeId}-${selectedSection.sectionId ?? 'null'}` : ''}
               onChange={e => {
-                const [gid, sid] = e.target.value.split('-').map(Number);
+                const [gidStr, sidStr] = e.target.value.split('-');
+                const gid = Number(gidStr);
+                const sid = sidStr === 'null' ? null : Number(sidStr);
                 const found = sections.find(s => s.gradeId === gid && s.sectionId === sid);
                 setSelectedSection(found ?? null);
               }}
@@ -1144,7 +1298,7 @@ export default function PaymentLedger() {
             >
               <option value="" disabled>Seleccionar…</option>
               {sections.map(s => (
-                <option key={`${s.gradeId}-${s.sectionId}`} value={`${s.gradeId}-${s.sectionId}`}>{s.gradeName} — {s.sectionName}</option>
+                <option key={`${s.gradeId}-${s.sectionId ?? 'null'}`} value={`${s.gradeId}-${s.sectionId ?? 'null'}`}>{s.gradeName} — {s.sectionName}</option>
               ))}
             </select>
           </div>
@@ -1157,6 +1311,13 @@ export default function PaymentLedger() {
             </div>
           )}
           <div className="flex items-stretch flex-1 justify-end">
+            <div className="flex items-center px-3 py-2 border-l border-[#E4E6EB]">
+              <button type="button" onClick={() => setWithdrawnModal(true)}
+                title="Registrar una deuda a un estudiante retirado (incluidas deudas históricas)"
+                className="flex items-center gap-1.5 text-xs font-semibold text-[#2F5EA8] hover:text-[#1E4478]">
+                <UserX size={14} /> Deuda a retirado…
+              </button>
+            </div>
             {selectedSection && (
               <div className="flex items-center px-3 py-2 border-l border-[#E4E6EB]">
                 <div className="relative">
@@ -1228,13 +1389,6 @@ export default function PaymentLedger() {
                     {nameSort === 'desc' && <ArrowUpAZ size={13} className="text-[#2F5EA8]" />}
                     {nameSort === 'canonical' && <ArrowUpDown size={12} className="opacity-50" />}
                   </button>
-                  {priorPeriodList.map(pp => (
-                    <div key={pp.periodId} style={{ width: MONTH_COL }}
-                      title={pp.periodName}
-                      className="py-2.5 text-[11px] font-semibold text-center border-r border-[#DBDEE4] uppercase tracking-wide bg-[#FDF6E5] text-[#8A5A00]">
-                      {pp.periodCode ?? 'Anterior'}
-                    </div>
-                  ))}
                   {hasOther && (
                     <div style={{ width: MONTH_COL }}
                       className="py-2.5 text-[11px] font-semibold text-center border-r border-[#DBDEE4] uppercase tracking-wide text-[#5B6472]">
@@ -1317,23 +1471,6 @@ export default function PaymentLedger() {
                           </button>
                         </div>
 
-                        {priorPeriodList.map(pp => {
-                          const group = student.priorPeriods?.find(g => g.periodId === pp.periodId);
-                          const { charged, paid } = group ? priorTotals(group) : { charged: 0, paid: 0 };
-                          const key = `p${pp.periodId}`;
-                          return (
-                            <MonthCell
-                              key={pp.periodId}
-                              paid={paid}
-                              charged={charged}
-                              month={key}
-                              months={months}
-                              forceStatus={priorStatus(paid, charged)}
-                              isOpen={openKey === `${student.inscriptionId}-${key}`}
-                              onClick={() => toggle(student.inscriptionId, key)}
-                            />
-                          );
-                        })}
                         {hasOther && (() => {
                           const { charged, paid } = mergedTotals(student.other);
                           return (
@@ -1350,10 +1487,15 @@ export default function PaymentLedger() {
                         {months.map(m => {
                           const data = student.months[m];
                           const key = `${student.inscriptionId}-${m}`;
-                          // The entry month's cell also carries the enrollment-plan debts
+                          const priors = priorBucketsOf(student);
+                          const priorT = mergedTotals(...priors);
+                          // The entry month's cell carries the enrollment-plan
+                          // debts AND any prior-period debt (which is always
+                          // past due — it must be settled before this year's).
                           const { charged, paid } = m === entryMonthOf(student)
-                            ? mergedTotals(data, student.enrollment)
+                            ? mergedTotals(data, student.enrollment, ...priors)
                             : { charged: data?.totalCharged ?? 0, paid: data?.totalPaid ?? 0 };
+                          const priorDue = m === entryMonthOf(student) && priorT.charged - priorT.paid > 0.005;
                           return (
                             <MonthCell
                               key={m}
@@ -1361,6 +1503,7 @@ export default function PaymentLedger() {
                               charged={charged}
                               month={m}
                               months={months}
+                              forceStatus={priorDue ? priorStatus(paid, charged) : undefined}
                               isOpen={openKey === key}
                               onClick={() => toggle(student.inscriptionId, m)}
                               corner={m === months[months.length - 1] ? (
@@ -1381,13 +1524,7 @@ export default function PaymentLedger() {
                             <ChevronDown size={13} className="text-[#2F5EA8]" />
                           </div>
                           <div style={{ width: tableWidth - NAME_COL }}>
-                            {openMonth.startsWith('p') ? (
-                              <PriorPeriodDetail
-                                group={student.priorPeriods.find(g => g.periodId === Number(openMonth.slice(1)))!}
-                                onAddPayment={() => setPaymentModal({ studentId: student.inscriptionId })}
-                                onCorrectPayment={handleCorrectPayment}
-                              />
-                            ) : openMonth === OTHER ? (
+                            {openMonth === OTHER ? (
                               <MonthDetail
                                 label="Otras deudas"
                                 month={OTHER}
@@ -1398,6 +1535,14 @@ export default function PaymentLedger() {
                               />
                             ) : openMonth === entryMonthOf(student) ? (
                               <>
+                                {(student.priorPeriods ?? []).map(g => (
+                                  <PriorPeriodDetail
+                                    key={g.periodId}
+                                    group={g}
+                                    onAddPayment={() => setPaymentModal({ studentId: student.inscriptionId })}
+                                    onCorrectPayment={handleCorrectPayment}
+                                  />
+                                ))}
                                 {(student.enrollment?.charges?.length || student.enrollment?.payments?.length) ? (
                                   <MonthDetail
                                     label="Inscripción"
@@ -1490,7 +1635,7 @@ export default function PaymentLedger() {
 
       {chargeModal !== null && (
         <AddChargeModal
-          students={students}
+          students={extraChargeStudent ? [...students, extraChargeStudent] : students}
           months={months}
           periods={allPeriods}
           currentPeriodId={schoolPeriodId!}
@@ -1498,8 +1643,15 @@ export default function PaymentLedger() {
           feeByMonth={monthlyFeeByMonth}
           sellableItems={sellableItems}
           monthlyFee={monthlyFee}
-          onClose={() => setChargeModal(null)}
+          onClose={() => { setChargeModal(null); setExtraChargeStudent(null); }}
           onSubmit={handleAddCharge}
+        />
+      )}
+
+      {withdrawnModal && (
+        <WithdrawnDebtModal
+          onPick={pickWithdrawn}
+          onClose={() => setWithdrawnModal(false)}
         />
       )}
     </div>

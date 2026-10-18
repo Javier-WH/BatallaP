@@ -139,7 +139,11 @@ export async function planPeriodChargeSync(schoolPeriodId: number, transaction?:
       } else if (!found.active) {
         plan.reactivate.push({ inscriptionId: insc.id, chargeId: found.id, entry });
       } else if (round2(Number(found.amount)) !== round2(entry.amount) || found.currency !== entry.currency) {
-        if (isFullyPaid(found)) plan.skippedPaid++;
+        // Never re-denominate a charge that already received money: its
+        // allocations are recorded in the old currency and would misstate.
+        const touched = (paidByCharge.get(found.id) ?? 0) > 0
+          || !!(found.month && (paidByMonth.get(`${insc.id}|${found.month}`) ?? 0) > 0);
+        if (isFullyPaid(found) || (found.currency !== entry.currency && touched)) plan.skippedPaid++;
         else plan.update.push({ inscriptionId: insc.id, chargeId: found.id, entry, previousAmount: Number(found.amount) });
       }
     }

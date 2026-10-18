@@ -22,6 +22,7 @@ import type { ChargeType } from '@/models/Charge';
 import {
   chargeableMonthsFrom, entryMonthForDate, getBillingMonths, resolveEntryMonth, type MonthCode,
 } from '@/services/billingCalendarService';
+import { makeRateResolver } from '@/services/debtBalanceService';
 import { resolveEnrollmentPlan, resolveFee } from '@/services/feeResolverService';
 
 export interface ScheduledChargeEntry {
@@ -71,6 +72,7 @@ export async function buildPeriodSchedule(
 
   const types = await ExchangeRateType.findAll({ transaction });
   const currencyOf = (typeId: number) => types.find(t => t.id === typeId)?.currency ?? 'USD';
+  const round2 = (n: number) => Math.round(n * 100) / 100;
 
   // ── Enrollment: the plan in force at the entry month ──
   const plan = await resolveEnrollmentPlan(periodId, entry, transaction);
@@ -86,29 +88,55 @@ export async function buildPeriodSchedule(
       order: [['id', 'ASC']],
       transaction,
     });
+    // The plan expresses its total in a target currency ("Moneda del Total"):
+    //  - same_amount: same numeric amount billed in that currency (55 USD → 55 EUR);
+    //  - exchange_rate: each item converted through bolívares at today's rate.
+    // Items already billed in the target currency pass through unchanged.
+    const targetCurrency = types.find(t => t.id === plan.targetExchangeRateTypeId)?.currency ?? null;
+    const resolver = makeRateResolver(transaction);
+    const today = new Date();
+    const warned = new Set<string>();
+    const planItemCharge = async (itemCurrency: string, amount: number): Promise<{ amount: number; currency: string }> => {
+      if (!targetCurrency || itemCurrency === targetCurrency) return { amount, currency: itemCurrency };
+      if (plan.conversionMode === 'exchange_rate') {
+        const [srcRate, dstRate] = await Promise.all([
+          resolver.vesPerUnit(itemCurrency, today),
+          resolver.vesPerUnit(targetCurrency, today),
+        ]);
+        if (!srcRate || !dstRate) {
+          const w = `Sin tasa vigente para convertir ${itemCurrency} a ${targetCurrency} en el plan «${plan.name}»`;
+          if (!warned.has(w)) { warned.add(w); result.warnings.push(w); }
+          return { amount, currency: itemCurrency };
+        }
+        return { amount: round2(amount * srcRate / dstRate), currency: targetCurrency };
+      }
+      return { amount, currency: targetCurrency };
+    };
     for (const item of items as any[]) {
       const qty = Number(item.quantity ?? 1);
       const suffix = qty > 1 ? ` x${qty}` : '';
       if (item.itemType === 'fee' && item.fee) {
         const fee = (await resolveFee(periodId, item.fee.key, entry, transaction)) ?? item.fee;
+        const billed = await planItemCharge(currencyOf(fee.exchangeRateTypeId), Number(fee.amount) * qty);
         result.entries.push({
           scheduleKey: `plan:fee:${fee.key}`,
           type: FEE_KEY_TO_TYPE[fee.key as Fee['key']],
           month: null,
           description: `${fee.name}${suffix}`,
-          amount: Number(fee.amount) * qty,
-          currency: currencyOf(fee.exchangeRateTypeId),
+          amount: billed.amount,
+          currency: billed.currency,
           feeId: fee.id,
           sellableItemId: null,
         });
       } else if (item.itemType === 'sellable_item' && item.sellableItem) {
+        const billed = await planItemCharge(currencyOf(item.sellableItem.exchangeRateTypeId), Number(item.sellableItem.amount) * qty);
         result.entries.push({
           scheduleKey: `plan:item:${item.sellableItem.id}`,
           type: 'item',
           month: null,
           description: `${item.sellableItem.name}${suffix}`,
-          amount: Number(item.sellableItem.amount) * qty,
-          currency: currencyOf(item.sellableItem.exchangeRateTypeId),
+          amount: billed.amount,
+          currency: billed.currency,
           feeId: null,
           sellableItemId: item.sellableItem.id,
         });

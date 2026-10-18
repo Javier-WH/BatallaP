@@ -311,9 +311,7 @@ export async function inscriptionDebtSummary(
   const ordered = orderBuckets(buckets, new Map(periods.map(p => [p.id, p])));
 
   const totals: InscriptionDebtSummary['totals'] = {};
-  let outstandingVES = 0;
   for (const b of ordered) {
-    outstandingVES += Math.max(b.chargedVES - b.paidVES, 0);
     // Per debt currency: an overpaid currency does not offset another one.
     for (const [currency, v] of Object.entries(b.byCurrency)) {
       const t = (totals[currency] ??= { charged: 0, paid: 0, remaining: 0 });
@@ -322,12 +320,21 @@ export async function inscriptionDebtSummary(
       t.remaining += Math.max(v.charged - v.paid, 0);
     }
   }
-  for (const t of Object.values(totals)) {
+  // Outstanding in bolívares = remaining per currency valued at TODAY's rate.
+  // Subtracting paidVES (bolívares valued at each payment's date) from
+  // chargedVES (valued today) would manufacture phantom debt whenever the
+  // exchange rate moved after a full payment in the debt's own currency —
+  // $165 paid against a $165 charge is settled, not "97% paid".
+  const resolver = makeRateResolver(options.transaction);
+  let outstandingVES = 0;
+  for (const [currency, t] of Object.entries(totals)) {
+    const rate = currency === 'VES' ? 1 : await resolver.vesPerUnit(currency, new Date());
+    outstandingVES += t.remaining * (rate ?? 0);
     t.charged = Math.round(t.charged * 100) / 100;
     t.paid = Math.round(t.paid * 100) / 100;
     t.remaining = Math.round(t.remaining * 100) / 100;
   }
-  return { buckets: ordered, totals, outstandingVES, hasDebt: outstandingVES > 0.005 };
+  return { buckets: ordered, totals, outstandingVES, hasDebt: Object.values(totals).some(t => t.remaining > 0.005) };
 }
 
 /**

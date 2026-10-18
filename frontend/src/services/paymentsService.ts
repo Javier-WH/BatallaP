@@ -357,7 +357,8 @@ export interface LedgerResponse {
 }
 
 export interface LedgerSection {
-  sectionId: number;
+  /** null = the "Sin sección" group (withdrawn students of the grade with outstanding debt). */
+  sectionId: number | null;
   sectionName: string;
   gradeId: number;
   gradeName: string;
@@ -368,8 +369,25 @@ export async function getLedgerSections(schoolPeriodId: number): Promise<LedgerS
   return data;
 }
 
-export async function getLedgerBySection(schoolPeriodId: number, gradeId: number, sectionId: number): Promise<LedgerResponse> {
-  const { data } = await api.get<LedgerResponse>(`/ledger/${schoolPeriodId}/${gradeId}/${sectionId}`);
+export async function getLedgerBySection(schoolPeriodId: number, gradeId: number, sectionId: number | null): Promise<LedgerResponse> {
+  const { data } = await api.get<LedgerResponse>(`/ledger/${schoolPeriodId}/${gradeId}/${sectionId ?? 'null'}`);
+  return data;
+}
+
+/** Withdrawn student result — the latest withdrawn inscription of a person. */
+export interface WithdrawnStudentResult {
+  inscriptionId: number;
+  personId: number;
+  name: string;
+  document: string;
+  documentType: string;
+  gradeName: string;
+  periodName: string;
+  withdrawnAt: string | null;
+}
+
+export async function searchWithdrawnStudents(q: string): Promise<WithdrawnStudentResult[]> {
+  const { data } = await api.get<WithdrawnStudentResult[]>('/ledger/withdrawn-students', { params: { q } });
   return data;
 }
 

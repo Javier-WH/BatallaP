@@ -183,4 +183,53 @@ describe('generateChargesForInscription', () => {
     const res = await generateChargesForInscription(insc.id);
     expect(res.created).toBe(0);
   });
+
+  it("bills plan items in the plan's target currency under same_amount (55 USD → 55 EUR)", async () => {
+    const ctx = await setup();
+    const eurType = await ExchangeRateType.create({ code: `EUR_${ctx.period.id}`, name: 'Euro', currency: 'EUR', isDefault: false, active: true } as any);
+    await ctx.plan!.update({ targetExchangeRateTypeId: eurType.id, conversionMode: 'same_amount' } as any);
+    const insc = await enroll(ctx, { entryMonth: 'Sep' });
+    await generateChargesForInscription(insc.id);
+
+    const charges = await chargesOf(insc.id);
+    const planCharges = charges.filter(c => c.scheduleKey?.startsWith('plan:'));
+    expect(planCharges.every(c => c.currency === 'EUR')).toBe(true);
+    expect(Number(charges.find(c => c.type === 'matricula')!.amount)).toBe(100);
+    expect(Number(charges.find(c => c.type === 'gastos_administrativos')!.amount)).toBe(20);
+    // Monthly fees are not plan items: they keep the fee's own currency.
+    expect(charges.filter(c => c.scheduleKey?.startsWith('mensualidad:')).every(c => c.currency === 'USD')).toBe(true);
+  });
+
+  it('converts plan items through bolívares under exchange_rate mode', async () => {
+    const ctx = await setup();
+    const { ExchangeRate } = await import('@/models/index');
+    const eurType = await ExchangeRateType.create({ code: `EUR_${ctx.period.id}`, name: 'Euro', currency: 'EUR', isDefault: true, active: true } as any);
+    const today = new Date().toISOString().slice(0, 10);
+    // USD at 100 VES, EUR at 200 VES → a 100 USD item becomes 50 EUR.
+    await ExchangeRate.create({ exchangeRateTypeId: ctx.type.id, date: today, rate: 100 } as any);
+    await ExchangeRate.create({ exchangeRateTypeId: eurType.id, date: today, rate: 200 } as any);
+    await ctx.plan!.update({ targetExchangeRateTypeId: eurType.id, conversionMode: 'exchange_rate' } as any);
+    const insc = await enroll(ctx, { entryMonth: 'Sep' });
+    await generateChargesForInscription(insc.id);
+
+    const charges = await chargesOf(insc.id);
+    const matricula = charges.find(c => c.type === 'matricula')!;
+    expect(matricula.currency).toBe('EUR');
+    expect(Number(matricula.amount)).toBe(50);
+    const gastos = charges.find(c => c.type === 'gastos_administrativos')!;
+    expect(gastos.currency).toBe('EUR');
+    expect(Number(gastos.amount)).toBe(10);
+  });
+
+  it('exchange_rate mode keeps the item currency and warns when a rate is missing', async () => {
+    const ctx = await setup();
+    const eurType = await ExchangeRateType.create({ code: `EUR_${ctx.period.id}`, name: 'Euro', currency: 'EUR', isDefault: true, active: true } as any);
+    await ctx.plan!.update({ targetExchangeRateTypeId: eurType.id, conversionMode: 'exchange_rate' } as any);
+    const insc = await enroll(ctx, { entryMonth: 'Sep' });
+    const res = await generateChargesForInscription(insc.id);
+
+    const charges = await chargesOf(insc.id);
+    expect(charges.find(c => c.type === 'matricula')!.currency).toBe('USD');
+    expect(res.warnings.some(w => /convertir USD a EUR/i.test(w))).toBe(true);
+  });
 });
