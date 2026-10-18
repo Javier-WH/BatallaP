@@ -1,0 +1,191 @@
+[
+  {
+    "code": "0102",
+    "name": "Banco de Venezuela, S.A. Banco Universal",
+    "shortName": "Banco de Venezuela",
+    "rif": "G200099976",
+    "icon": "/uploads/banks/bdv.png"
+  },
+  {
+    "code": "0104",
+    "name": "Venezolano de Crédito, S.A. Banco Universal",
+    "shortName": "Venezolano de Crédito",
+    "rif": "J000029709",
+    "icon": "/uploads/banks/bvc.png"
+  },
+  {
+    "code": "0105",
+    "name": "Mercantil Banco, C.A. Banco Universal",
+    "shortName": "Mercantil",
+    "rif": "J000029610",
+    "icon": "/uploads/banks/mercantil.png"
+  },
+  {
+    "code": "0108",
+    "name": "BBVA Provincial, S.A. Banco Universal",
+    "shortName": "BBVA Provincial",
+    "rif": "J000029679",
+    "icon": "/uploads/banks/bbva-provincial.png"
+  },
+  {
+    "code": "0114",
+    "name": "Bancaribe C.A. Banco Universal",
+    "shortName": "Bancaribe",
+    "rif": "J000029490",
+    "icon": "/uploads/banks/bancaribe.png"
+  },
+  {
+    "code": "0115",
+    "name": "Banco Exterior C.A. Banco Universal",
+    "shortName": "Banco Exterior",
+    "rif": "J000029504",
+    "icon": "/uploads/banks/banco-exterior.png"
+  },
+  {
+    "code": "0128",
+    "name": "Banco Caroní C.A. Banco Universal",
+    "shortName": "Banco Caroní",
+    "rif": "J095048551",
+    "icon": "/uploads/banks/banco-caroni.png"
+  },
+  {
+    "code": "0134",
+    "name": "Banesco, Banco Universal S.A.C.A.",
+    "shortName": "Banesco",
+    "rif": "J070133805",
+    "icon": "/uploads/banks/banesco.png"
+  },
+  {
+    "code": "0137",
+    "name": "Banco Sofitasa, Banco Universal",
+    "shortName": "Sofitasa",
+    "rif": "J090283846",
+    "icon": "/uploads/banks/sofitasa.png"
+  },
+  {
+    "code": "0138",
+    "name": "Banco Plaza, Banco Universal",
+    "shortName": "Banco Plaza",
+    "rif": "J002970553",
+    "icon": "/uploads/banks/banco-plaza.png"
+  },
+  {
+    "code": "0146",
+    "name": "Bangente C.A",
+    "shortName": "Bangente",
+    "rif": "J301442040",
+    "icon": "/uploads/banks/bangente.png"
+  },
+  {
+    "code": "0151",
+    "name": "BFC Banco Fondo Común C.A. Banco Universal",
+    "shortName": "BFC",
+    "rif": "J000723060",
+    "icon": "/uploads/banks/bfc-banco-fondo-comun.png"
+  },
+  {
+    "code": "0156",
+    "name": "100% Banco, Banco Universal C.A.",
+    "shortName": "100% Banco",
+    "rif": "J085007768",
+    "icon": "/uploads/banks/100_banco.png"
+  },
+  {
+    "code": "0157",
+    "name": "DelSur Banco Universal C.A.",
+    "shortName": "DelSur",
+    "rif": "J000797234",
+    "icon": "/uploads/banks/delsur.png"
+  },
+  {
+    "code": "0163",
+    "name": "Banco del Tesoro, C.A. Banco Universal",
+    "shortName": "Banco del Tesoro",
+    "rif": "G200051876",
+    "icon": "/uploads/banks/banco-del-tesoro.png"
+  },
+  {
+    "code": "0166",
+    "name": "Banco Agrícola de Venezuela, C.A. Banco Universal",
+    "shortName": "Banco Agrícola de Venezuela",
+    "rif": "G200057955",
+    "icon": "/uploads/banks/banco-agricola.png"
+  },
+  {
+    "code": "0168",
+    "name": "Bancrecer, S.A. Banco Microfinanciero",
+    "shortName": "Bancrecer",
+    "rif": "J316374173",
+    "icon": "/uploads/banks/bancrecer.png"
+  },
+  {
+    "code": "0169",
+    "name": "Mi Banco, Banco Microfinanciero, C.A.",
+    "shortName": "Mi Banco",
+    "rif": "J315941023",
+    "icon": "/uploads/banks/mibanco.png"
+  },
+  {
+    "code": "0171",
+    "name": "Banco Activo, Banco Universal",
+    "shortName": "Banco Activo",
+    "rif": "J080066227",
+    "icon": "/uploads/banks/activo.png"
+  },
+  {
+    "code": "0172",
+    "name": "Bancamiga, Banco Universal C.A.",
+    "shortName": "Bancamiga",
+    "rif": "J316287599",
+    "icon": "/uploads/banks/bancamiga.png"
+  },
+  {
+    "code": "0173",
+    "name": "Banco Internacional de Desarrollo, C.A. Banco Universal",
+    "shortName": "BID",
+    "rif": "J294640109",
+    "icon": "/uploads/banks/banco-internacional-de-desarrollo.png"
+  },
+  {
+    "code": "0174",
+    "name": "Banplus Banco Universal, C.A",
+    "shortName": "Banplus",
+    "rif": "J000423032",
+    "icon": "/uploads/banks/banplus.png"
+  },
+  {
+    "code": "0007",
+    "name": "Banco Digital de Los Trabajadores, Banco Universal, C.A.",
+    "shortName": "BDT",
+    "rif": "G200091487",
+    "icon": "/uploads/banks/banco-digital-trabajadores.png"
+  },
+  {
+    "code": "0177",
+    "name": "Banco de la Fuerza Armada Nacional Bolivariana, B.U.",
+    "shortName": "BANFANB",
+    "rif": "G200106573",
+    "icon": "/uploads/banks/banfanb.png"
+  },
+  {
+    "code": "0178",
+    "name": "N58 Banco Digital, S.A. Banco Microfinanciero S.A.",
+    "shortName": "N58",
+    "rif": "J503581107",
+    "icon": "/uploads/banks/n58-banco.png"
+  },
+  {
+    "code": "0191",
+    "name": "Banco Nacional de Crédito, C.A. Banco Universal",
+    "shortName": "BNC",
+    "rif": "J309841327",
+    "icon": "/uploads/banks/Banco_Nacional_de_Credito.png"
+  },
+  {
+    "code": "0601",
+    "name": "Instituto Municipal de Crédito Popular",
+    "shortName": "IMCP",
+    "rif": "J000145903",
+    "icon": "/uploads/banks/imcp.png"
+  }
+]

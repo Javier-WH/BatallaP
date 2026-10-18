@@ -1,6 +1,6 @@
 {
   "name": "batalla-project",
-  "version": "1.0.42",
+  "version": "1.0.43",
   "description": "School Management System - Backend + Frontend",
   "scripts": {
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
