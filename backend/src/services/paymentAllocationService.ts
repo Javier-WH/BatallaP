@@ -203,6 +203,16 @@ async function remainingByCharge(
   return out;
 }
 
+/** Active charges of an inscription with their net amount and what is still unpaid (each in its own currency). */
+export async function pendingByCharge(
+  inscriptionId: number,
+  transaction?: Transaction,
+): Promise<Array<{ charge: Charge; net: number; remaining: number }>> {
+  const ctx = await orderedContext(inscriptionId, -1, transaction);
+  if (!ctx) return [];
+  return ctx.ordered.map(o => ({ charge: o.charge, net: o.net, remaining: ctx.remaining.get(o.charge.id) ?? 0 }));
+}
+
 // ── Order enforcement ──
 
 interface OrderedContext {

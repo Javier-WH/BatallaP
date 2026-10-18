@@ -98,6 +98,14 @@ Endpoint: `POST /api/period-closure/:periodId/execute`
      - Si es regular sin pendientes: crear inscripción `regular` en grado siguiente.
      - Si no se pudo crear la inscripción (configuración faltante): registrar
        `skipped: true` en el log e incrementar `stats.skipped`.
+     - **Deudas**: tras generar las deudas del período nuevo, el saldo pendiente
+       de la inscripción vieja se hereda (`debtCarryoverService`): cada cargo con
+       saldo se re-crea en la inscripción nueva como deuda manual de su **período
+       original** (aparece como "Deuda del período anterior", va primero en el
+       orden de pagos y bloquea los pagos del año nuevo hasta saldarse). El cargo
+       viejo se retira o queda reducido a lo ya pagado; `papersHold` se conserva.
+       Los egresados y retirados no reciben inscripción nueva: su deuda queda en
+       su última inscripción y sigue cobrable ("Sin sección" para retirados).
   5. Rotar estados: período cerrado → `historico`, siguiente → `activo`, crear nuevo `preinscripcion`.
   6. Cerrar `RevisionPeriod` (`status='closed'`).
   7. Dejar `PeriodClosure.status = 'closed'`.

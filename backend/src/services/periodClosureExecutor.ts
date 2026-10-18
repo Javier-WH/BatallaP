@@ -26,6 +26,7 @@ import { TermSectionClosureService } from './termSectionClosureService';
 import { loadClosureStudentGroups, sortClosureStudentGroups } from './periodClosureStudentService';
 import { renumberRosters } from './rosterNumberService';
 import { safeGenerateCharges } from './chargeScheduleService';
+import { safeCarryOverDebts } from './debtCarryoverService';
 
 interface ClosureValidationResult {
   valid: boolean;
@@ -416,6 +417,8 @@ export class PeriodClosureExecutor {
           addRosterScope(targetGradeId, finalSectionId);
           // Promoted students owe the next period from its first month (entryMonth NULL).
           await safeGenerateCharges(newInscription.id, transaction);
+          // Unpaid debts of the closing period are inherited as prior-period debts.
+          await safeCarryOverDebts(inscription.id, newInscription.id, transaction);
 
           // Create the Matriculation record so the promoted student appears
           // in the matriculation list. The unique constraint on
