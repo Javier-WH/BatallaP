@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { requirePaymentsAccess, requireSession } from '@/middlewares/paymentsAccessMiddleware';
+import itemIconUpload from '@/middlewares/itemIconUploadMiddleware';
 import {
   // Exchange rate types
   listExchangeRateTypes,
@@ -28,6 +29,8 @@ import {
   createSellableItem,
   updateSellableItem,
   deleteSellableItem,
+  uploadSellableItemIcon,
+  clearSellableItemIcon,
   // Enrollment plans
   listEnrollmentPlans,
   getEnrollmentPlan,
@@ -80,6 +83,8 @@ router.put('/par-settlement/:schoolPeriodId', updateParSettlement);
 router.get('/sellable-items', listSellableItems);
 router.post('/sellable-items', createSellableItem);
 router.put('/sellable-items/:id', updateSellableItem);
+router.put('/sellable-items/:id/icon', itemIconUpload.single('icon'), uploadSellableItemIcon);
+router.delete('/sellable-items/:id/icon', clearSellableItemIcon);
 router.delete('/sellable-items/:id', deleteSellableItem);
 
 // ── Enrollment Plans ──

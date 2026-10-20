@@ -34,6 +34,7 @@ export interface ScheduledChargeEntry {
   currency: string;
   feeId: number | null;
   sellableItemId: number | null;
+  quantity: number;
 }
 
 export interface ChargeSchedule {
@@ -127,6 +128,7 @@ export async function buildPeriodSchedule(
           currency: billed.currency,
           feeId: fee.id,
           sellableItemId: null,
+          quantity: qty,
         });
       } else if (item.itemType === 'sellable_item' && item.sellableItem) {
         const billed = await planItemCharge(currencyOf(item.sellableItem.exchangeRateTypeId), Number(item.sellableItem.amount) * qty);
@@ -139,6 +141,7 @@ export async function buildPeriodSchedule(
           currency: billed.currency,
           feeId: null,
           sellableItemId: item.sellableItem.id,
+          quantity: qty,
         });
       }
     }
@@ -160,6 +163,7 @@ export async function buildPeriodSchedule(
       currency: currencyOf(fee.exchangeRateTypeId),
       feeId: fee.id,
       sellableItemId: null,
+      quantity: 1,
     });
   }
 
@@ -237,6 +241,7 @@ export async function generateChargesForInscription(
         active: true,
         source: 'schedule',
         scheduleKey: entry.scheduleKey,
+        quantity: entry.quantity ?? 1,
       }, { transaction });
       result.created++;
     } else if (!found.active) {
@@ -247,6 +252,7 @@ export async function generateChargesForInscription(
         description: entry.description,
         amount: entry.amount,
         currency: entry.currency,
+        quantity: entry.quantity ?? 1,
       }, { transaction });
       result.reactivated++;
     } else {

@@ -18,9 +18,10 @@ interface ChargeAttributes {
   type: ChargeType;
   month: string | null;         // 'Sep', 'Oct', ... (null = one-time charge)
   description: string;
-  amount: number;               // amount owed in original currency
+  amount: number;               // total owed in original currency (unit price × quantity)
   currency: string;             // 'USD', 'EUR', 'VES'
   amountVES: number | null;     // amount in VES (for comparison)
+  quantity: number;             // units bought (items); deliveries are tracked per unit
   dueDate: Date | null;         // when the charge is due
   active: boolean;
   source: ChargeSource;         // 'schedule' = generated from costs/plan, 'manual' = created by hand
@@ -28,7 +29,7 @@ interface ChargeAttributes {
 }
 
 interface ChargeCreationAttributes
-  extends Optional<ChargeAttributes, 'id' | 'feeId' | 'sellableItemId' | 'month' | 'amountVES' | 'dueDate' | 'active' | 'source' | 'scheduleKey'> {}
+  extends Optional<ChargeAttributes, 'id' | 'feeId' | 'sellableItemId' | 'month' | 'amountVES' | 'dueDate' | 'active' | 'source' | 'scheduleKey' | 'quantity'> {}
 
 class Charge extends Model<ChargeAttributes, ChargeCreationAttributes>
   implements ChargeAttributes {
@@ -43,6 +44,7 @@ class Charge extends Model<ChargeAttributes, ChargeCreationAttributes>
   public amount!: number;
   public currency!: string;
   public amountVES!: number | null;
+  public quantity!: number;
   public dueDate!: Date | null;
   public active!: boolean;
   public source!: ChargeSource;
@@ -104,6 +106,11 @@ Charge.init(
     amountVES: {
       type: DataTypes.DECIMAL(18, 2),
       allowNull: true,
+    },
+    quantity: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 1,
     },
     dueDate: {
       type: DataTypes.DATE,

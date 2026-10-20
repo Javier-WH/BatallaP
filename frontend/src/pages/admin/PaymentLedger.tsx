@@ -1,17 +1,19 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Dropdown, Modal, type MenuProps } from 'antd';
 import DiscountsModal from './components/DiscountsModal';
 import {
   ChevronDown, Search, Banknote, Smartphone, Landmark, CreditCard, Hash,
   Plus, X, DollarSign, TrendingUp, AlertTriangle,
   ArrowDownAZ, ArrowUpAZ, ArrowUpDown, MoreHorizontal, CalendarClock, BadgePercent,
-  ArrowRightLeft, Trash2, UserX,
+  ArrowRightLeft, Trash2, UserX, Check, PackageCheck,
 } from 'lucide-react';
+import { ItemGlyph } from './itemIcons';
 import PaymentCorrectionModal, { type CorrectionMode } from './components/PaymentCorrectionModal';
 import { useSchool } from '@/context/SchoolContext';
 import {
   getLedgerSections, getLedgerBySection, searchWithdrawnStudents,
   createPayment, createCharge, updateEntryMonth, listSellableItems,
+  deliverItemUnits, undoItemDelivery,
   type LedgerStudent, type LedgerSection, type SellableItem, type LedgerPriorPeriod, type LedgerBucket,
   type DuplicatePaymentInfo, type WithdrawnStudentResult,
 } from '@/services/paymentsService';
@@ -28,6 +30,43 @@ const MONTH_FULL: Record<string, string> = {
 };
 // Pseudo-month key of the column that groups enrollment and other one-time debts.
 const OTHER = '__other';
+/**
+ * Click-and-drag horizontal scrolling for a wide container (mouse only — touch
+ * already scrolls natively). A drag past a few pixels swallows the click that
+ * would otherwise open the cell under the cursor.
+ */
+function useDragScroll<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [dragging, setDragging] = useState(false);
+  const onMouseDown = useCallback((e: React.MouseEvent<T>) => {
+    const el = ref.current;
+    if (!el || e.button !== 0 || el.scrollWidth <= el.clientWidth) return;
+    const startX = e.clientX;
+    const startLeft = el.scrollLeft;
+    let moved = false;
+    const onMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - startX;
+      if (!moved && Math.abs(dx) < 5) return;
+      if (!moved) { moved = true; setDragging(true); }
+      el.scrollLeft = startLeft - dx;
+      ev.preventDefault();
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      setDragging(false);
+      if (moved) {
+        const swallow = (ev: Event) => { ev.stopPropagation(); ev.preventDefault(); };
+        window.addEventListener('click', swallow, { capture: true, once: true });
+        setTimeout(() => window.removeEventListener('click', swallow, true), 0);
+      }
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, []);
+  return { ref, onMouseDown, dragging };
+}
+
 const NAME_COL = 468;
 const MONTH_COL = 143;
 const METHODS = PAYMENT_METHODS;
@@ -75,11 +114,13 @@ function initials(name: string): string {
 
 // ── Sub-components ──
 
-function MonthCell({ paid, charged, month, months, onClick, isOpen, forceStatus, corner }: {
+function MonthCell({ paid, charged, month, months, onClick, isOpen, forceStatus, corner, badges }: {
   paid: number; charged: number; month: string; months: string[]; onClick: () => void; isOpen: boolean;
   forceStatus?: keyof typeof STATUS;
   /** Small text pinned to the top-right corner (the student's pending debt in the last column). */
   corner?: React.ReactNode;
+  /** Sellable-item badges pinned to the top-left corner (purchases of this month). */
+  badges?: React.ReactNode;
 }) {
   const pct = charged > 0 ? Math.min(Math.round((paid / charged) * 100), 100) : 0;
   const status = forceStatus ?? statusFor(paid, charged, month, months);
@@ -100,6 +141,9 @@ function MonthCell({ paid, charged, month, months, onClick, isOpen, forceStatus,
       )}
       {corner && (
         <span className="absolute top-0.5 right-1 text-[9px] leading-none font-semibold tabular-nums pointer-events-none">{corner}</span>
+      )}
+      {badges && (
+        <span className="absolute top-0.5 left-1 flex items-center gap-0.5">{badges}</span>
       )}
       {hasData ? (
         <span className="relative text-[13px] font-semibold tabular-nums" style={{ color: s.text }}>{pct}%</span>
@@ -126,11 +170,16 @@ function TransactionRow({ txn, index, onCorrect }: { txn: any; index: number; on
       <div className="w-36 shrink-0 border-r border-[#E4E6EB] flex flex-col justify-center px-2.5 py-2 tabular-nums font-medium text-[#0F7A45]">
         {Number(txn.amount).toFixed(2)} {txn.currency}
         {txn.currency === 'VES' && txn.amountVES != null && (
-          <span className="text-[10px] font-normal text-[#9CA3AF] tabular-nums">Bs. {Number(txn.amountVES).toLocaleString('es-VE')}</span>
+          <span className="text-[10px] font-normal text-[#9CA3AF] tabular-nums">
+            Bs. {Number(txn.amountVES).toLocaleString('es-VE')}
+            {txn.equivalent != null && txn.equivalentCurrency && txn.equivalentCurrency !== txn.currency && (
+              <span title="Equivalente total en la moneda de la deuda, a la tasa de la fecha del pago"> ({Number(txn.equivalent).toFixed(2)} {txn.equivalentCurrency})</span>
+            )}
+          </span>
         )}
-        {txn.atPar && txn.equivalent != null && (
-          <span className="text-[10px] font-semibold text-[#1A7A3E] tabular-nums" title="Dólares acreditados 1:1 contra una deuda en euros">
-            = {Number(txn.equivalent).toFixed(2)} {txn.equivalentCurrency} · a la par
+        {txn.currency !== 'VES' && txn.equivalent != null && txn.equivalentCurrency && txn.equivalentCurrency !== txn.currency && (
+          <span className="text-[10px] font-semibold text-[#1A7A3E] tabular-nums" title={txn.atPar ? 'Dólares acreditados 1:1 contra una deuda en euros' : 'Equivalente total en la moneda de la deuda, a la tasa de la fecha del pago'}>
+            = {Number(txn.equivalent).toFixed(2)} {txn.equivalentCurrency}{txn.atPar ? ' · a la par' : ''}
           </span>
         )}
         {txn.allocations?.length > 0 && (
@@ -169,12 +218,13 @@ function TransactionRow({ txn, index, onCorrect }: { txn: any; index: number; on
   );
 }
 
-function MonthDetail({ month, data, monthlyFee, onAddPayment, onCorrectPayment, label }: {
+function MonthDetail({ month, data, monthlyFee, onAddPayment, onCorrectPayment, onChanged, label }: {
   month: string;
   data: { charges: any[]; payments: any[]; currency?: string | null; totalCharged: number; totalPaid: number; grossCharged?: number; totalDiscount?: number; byCurrency?: Record<string, { charged: number; paid: number }> } | undefined;
   monthlyFee: { amount: number; currency: string } | null;
   onAddPayment: () => void;
   onCorrectPayment: (txn: any, mode: CorrectionMode) => void;
+  onChanged: () => void;
   label?: string;
 }) {
   const paid = data?.totalPaid ?? 0;
@@ -232,16 +282,29 @@ function MonthDetail({ month, data, monthlyFee, onAddPayment, onCorrectPayment, 
       </div>
       {data?.charges?.length ? (
         <div className="border-b border-[#E4E6EB] bg-white">
-          {data.charges.map((c: any) => (
-            <div key={c.id} className="flex items-center gap-3 px-3 py-1.5 text-xs border-b border-[#F0F1F4] last:border-b-0">
-              <span className="flex-1 truncate">{c.description}</span>
-              <span className="tabular-nums text-[#6B7280]">{Number(c.amount).toFixed(2)} {c.currency}</span>
-              {c.discountAmount > 0 && (
-                <span className="tabular-nums text-[#0F7A45]">-{Number(c.discountAmount).toFixed(2)}</span>
-              )}
-              <span className="tabular-nums font-semibold w-24 text-right">{(Number(c.amount) - Number(c.discountAmount ?? 0)).toFixed(2)} {c.currency}</span>
+          {(() => { const paidBy = chargePaidBy(data); return data.charges.map((c: any) => {
+            const net = Math.round((Number(c.amount) - Number(c.discountAmount ?? 0)) * 100) / 100;
+            const paid = Math.min(paidBy.get(c.id) ?? 0, net);
+            const pending = Math.max(net - paid, 0);
+            return (
+            <div key={c.id} className="px-3 py-1.5 text-xs border-b border-[#F0F1F4] last:border-b-0">
+              <div className="flex items-center gap-3">
+                <span className="flex-1 truncate">{c.description}</span>
+                <span className="tabular-nums text-[#6B7280]">
+                  {c.discountAmount > 0 ? `${Number(c.amount).toFixed(2)} −${Number(c.discountAmount).toFixed(2)} = ` : ''}
+                  <b className="font-semibold text-[#14181F]">{net.toFixed(2)} {c.currency}</b>
+                </span>
+                <span className="tabular-nums text-[#0F7A45] w-28 text-right">
+                  {paid > 0.005 ? `Pagado ${paid.toFixed(2)}` : ''}
+                </span>
+                <span className="tabular-nums text-[#8A5A00] w-28 text-right">
+                  {pending > 0.005 ? `Falta ${pending.toFixed(2)}` : ''}
+                </span>
+              </div>
+              {c.type === 'item' && <ChargeDeliveries charge={c} onChanged={onChanged} />}
             </div>
-          ))}
+            );
+          }); })()}
         </div>
       ) : null}
       {data?.payments?.length ? (
@@ -356,10 +419,175 @@ function priorStatus(paid: number, charged: number): keyof typeof STATUS {
   return 'overdue'; // prior-period debts are always past due
 }
 
-function PriorPeriodDetail({ group, onAddPayment, onCorrectPayment }: {
+// ── Sellable-item badges ("buffs") inside the month cells ──
+
+/** Paid amount credited to each charge of a bucket set (via its payments' allocations). */
+function chargePaidBy(...buckets: ({ payments?: any[] } | undefined | null)[]): Map<number, number> {
+  const paidBy = new Map<number, number>();
+  const seenPay = new Set<number>();
+  for (const b of buckets) {
+    if (!b) continue;
+    for (const p of b.payments ?? []) {
+      if (seenPay.has(p.id)) continue;
+      seenPay.add(p.id);
+      for (const a of p.allocations ?? []) {
+        paidBy.set(a.chargeId, (paidBy.get(a.chargeId) ?? 0) + Number(a.amount));
+      }
+      if ((!p.allocations?.length) && p.chargeId) {
+        paidBy.set(p.chargeId, (paidBy.get(p.chargeId) ?? 0) + Number(p.equivalent ?? p.amount ?? 0));
+      }
+    }
+  }
+  return paidBy;
+}
+
+const deliveredOf = (c: any): number =>
+  (c.deliveries ?? []).reduce((s: number, d: any) => s + Number(d.quantity ?? 0), 0);
+
+/**
+ * One badge per sellable-item charge: gray while unpaid, colored once paid.
+ * A green check marks fully delivered charges; a "d/q" chip counts partial
+ * deliveries. Shows the item's configured icon (image > Lucide > box).
+ */
+function ItemBadges({ charges, paidBy }: { charges: any[]; paidBy: Map<number, number> }) {
+  const items = (charges ?? []).filter(c => c.type === 'item');
+  if (items.length === 0) return null;
+  return (
+    <>
+      {items.map(c => {
+        const net = Number(c.amount) - Number(c.discountAmount ?? 0);
+        const paid = (paidBy.get(c.id) ?? 0) >= net - 0.005;
+        const qty = Math.max(1, Number(c.quantity ?? 1));
+        const delivered = deliveredOf(c);
+        const name = c.sellableItem?.name ?? c.description ?? 'Item';
+        const tip = `${name} — ${paid ? 'pagado' : 'pendiente de pago'} — entregado ${delivered}/${qty}`;
+        return (
+          <span
+            key={c.id}
+            title={tip}
+            className={`relative inline-flex items-center justify-center w-[18px] h-[18px] rounded-[3px] border bg-white/90
+              ${paid ? 'border-[#9AA6B5] text-[#2F5EA8]' : 'border-[#C3C9D2] text-[#8B909A] opacity-60'}`}
+          >
+            <ItemGlyph icon={c.sellableItem?.icon} iconImage={c.sellableItem?.iconImage} size={12} className={paid ? '' : 'grayscale'} />
+            {delivered >= qty ? (
+              <span className="absolute -top-1.5 -right-1.5 w-3 h-3 rounded-full bg-[#0F7A45] flex items-center justify-center">
+                <Check size={8} strokeWidth={4} className="text-white" />
+              </span>
+            ) : delivered > 0 ? (
+              <span className="absolute -bottom-1.5 -right-1 rounded-sm bg-[#2F5EA8] text-white text-[7px] leading-none px-0.5 font-semibold">
+                {delivered}/{qty}
+              </span>
+            ) : null}
+          </span>
+        );
+      })}
+    </>
+  );
+}
+
+/** Item charges of several buckets (a cell can merge enrollment + priors). */
+function itemChargesOf(...buckets: (LedgerBucket | undefined | null)[]): any[] {
+  const out: any[] = [];
+  const seen = new Set<number>();
+  for (const b of buckets) {
+    for (const c of b?.charges ?? []) {
+      if (c.type !== 'item' || seen.has(c.id)) continue;
+      seen.add(c.id);
+      out.push(c);
+    }
+  }
+  return out;
+}
+
+// ── Delivery tracking inside a cell's charge detail ──
+
+function ChargeDeliveries({ charge, onChanged }: { charge: any; onChanged: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [qty, setQty] = useState('');
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  const qtyTotal = Math.max(1, Number(charge.quantity ?? 1));
+  const delivered = deliveredOf(charge);
+  const pending = qtyTotal - delivered;
+
+  const submit = async () => {
+    const q = Math.round(Number(qty || pending));
+    if (!q || q < 1) return;
+    setSaving(true);
+    try {
+      await deliverItemUnits(charge.id, { quantity: q, note: note.trim() || undefined });
+      setOpen(false); setQty(''); setNote('');
+      onChanged();
+    } catch (err: any) {
+      alert(err?.response?.data?.message ?? 'Error al registrar la entrega');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const undo = async (d: any) => {
+    if (!confirm(`¿Deshacer la entrega de ${d.quantity} unidad(es)?`)) return;
+    try {
+      await undoItemDelivery(d.id);
+      onChanged();
+    } catch (err: any) {
+      alert(err?.response?.data?.message ?? 'Error al deshacer la entrega');
+    }
+  };
+
+  return (
+    <div className="mt-0.5 space-y-0.5">
+      {(charge.deliveries ?? []).map((d: any) => (
+        <div key={d.id} className="group/del flex items-center gap-1.5 text-[10px] text-[#0F7A45]">
+          <PackageCheck size={11} />
+          <span>
+            {d.quantity} und. entregada{d.quantity > 1 ? 's' : ''}
+            {d.deliveredBy ? ` por ${d.deliveredBy.firstName} ${d.deliveredBy.lastName}` : ''}
+            {' · '}{new Date(d.createdAt).toLocaleDateString('es-VE')}
+            {d.note ? ` · ${d.note}` : ''}
+          </span>
+          <button
+            onClick={() => undo(d)}
+            className="opacity-0 group-hover/del:opacity-100 text-[#B42318] hover:bg-[#FDE8E6] p-0.5"
+            title="Deshacer esta entrega"
+          >
+            <X size={10} />
+          </button>
+        </div>
+      ))}
+      {pending > 0 && !open && (
+        <button
+          onClick={() => { setOpen(true); setQty(String(pending)); }}
+          className="flex items-center gap-1 text-[10px] font-semibold text-[#2F5EA8] hover:bg-[#DCE5F7] px-1.5 py-0.5 border border-[#B7C7E6]"
+        >
+          <PackageCheck size={11} /> Entregar ({pending} pendiente{pending > 1 ? 's' : ''})
+        </button>
+      )}
+      {open && (
+        <div className="flex items-center gap-1.5">
+          <input
+            type="number" min={1} max={pending} value={qty} onChange={e => setQty(e.target.value)}
+            className="w-14 border border-[#C5CAD2] px-1 py-0.5 text-[11px] tabular-nums"
+          />
+          <input
+            type="text" value={note} onChange={e => setNote(e.target.value)} placeholder="Nota (opcional)"
+            className="flex-1 border border-[#C5CAD2] px-1.5 py-0.5 text-[11px]"
+          />
+          <button onClick={submit} disabled={saving} className="text-[10px] font-semibold text-white bg-[#2F5EA8] hover:bg-[#284F8E] px-2 py-0.5 disabled:opacity-50">
+            {saving ? '…' : 'Entregar'}
+          </button>
+          <button onClick={() => setOpen(false)} className="text-[10px] text-[#6B7280] hover:text-[#14181F] px-1">✕</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PriorPeriodDetail({ group, onAddPayment, onCorrectPayment, onChanged }: {
   group: LedgerPriorPeriod;
   onAddPayment: (monthKey: string) => void;
   onCorrectPayment: (txn: any, mode: CorrectionMode) => void;
+  onChanged: () => void;
 }) {
   const flat = mergeBuckets(group.enrollment, group.other);
   const ordered = [
@@ -408,13 +636,29 @@ function PriorPeriodDetail({ group, onAddPayment, onCorrectPayment }: {
           </div>
           {data.charges?.length ? (
             <div className="bg-white border-t border-[#F0F1F4]">
-              {data.charges.map((c: any) => (
-                <div key={c.id} className="flex items-center gap-3 px-3 py-1 text-xs border-b border-[#F0F1F4] last:border-b-0">
-                  <span className="flex-1 truncate">{c.description}</span>
-                  <span className="tabular-nums text-[#6B7280]">{Number(c.amount).toFixed(2)} {c.currency}</span>
-                  <span className="tabular-nums font-semibold w-24 text-right">{(Number(c.amount) - Number(c.discountAmount ?? 0)).toFixed(2)} {c.currency}</span>
+              {(() => { const paidBy = chargePaidBy(data); return data.charges.map((c: any) => {
+                const net = Math.round((Number(c.amount) - Number(c.discountAmount ?? 0)) * 100) / 100;
+                const paid = Math.min(paidBy.get(c.id) ?? 0, net);
+                const pending = Math.max(net - paid, 0);
+                return (
+                <div key={c.id} className="px-3 py-1 text-xs border-b border-[#F0F1F4] last:border-b-0">
+                  <div className="flex items-center gap-3">
+                    <span className="flex-1 truncate">{c.description}</span>
+                    <span className="tabular-nums text-[#6B7280]">
+                      {c.discountAmount > 0 ? `${Number(c.amount).toFixed(2)} −${Number(c.discountAmount).toFixed(2)} = ` : ''}
+                      <b className="font-semibold text-[#14181F]">{net.toFixed(2)} {c.currency}</b>
+                    </span>
+                    <span className="tabular-nums text-[#0F7A45] w-28 text-right">
+                      {paid > 0.005 ? `Pagado ${paid.toFixed(2)}` : ''}
+                    </span>
+                    <span className="tabular-nums text-[#8A5A00] w-28 text-right">
+                      {pending > 0.005 ? `Falta ${pending.toFixed(2)}` : ''}
+                    </span>
+                  </div>
+                  {c.type === 'item' && <ChargeDeliveries charge={c} onChanged={onChanged} />}
                 </div>
-              ))}
+                );
+              }); })()}
             </div>
           ) : null}
           {data.payments?.length ? (
@@ -801,6 +1045,7 @@ function AddChargeModal({ students, months, periods, currentPeriodId, feeByMonth
     month: (prefill as any).month || (months.includes(CURRENT_MONTH) ? CURRENT_MONTH : months[0]),
     type: 'mensualidad',
     sellableItemId: '',
+    quantity: '1',
     description: 'Mensualidad',
     amount: String((feeByMonth[(prefill as any).month || CURRENT_MONTH] ?? monthlyFee)?.amount ?? ''),
     currency: (feeByMonth[(prefill as any).month || CURRENT_MONTH] ?? monthlyFee)?.currency || 'USD',
@@ -844,7 +1089,21 @@ function AddChargeModal({ students, months, periods, currentPeriodId, feeByMonth
     setForm(f => ({
       ...f,
       sellableItemId: e.target.value,
-      ...(item ? { description: item.name, amount: String(item.amount), currency: item.exchangeRateType?.currency ?? f.currency } : {}),
+      ...(item ? {
+        description: item.name,
+        amount: String(Math.round(item.amount * (Number(f.quantity) || 1) * 100) / 100),
+        currency: item.exchangeRateType?.currency ?? f.currency,
+      } : {}),
+    }));
+  };
+
+  const changeQuantity = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const quantity = e.target.value;
+    const item = sellableItems.find(i => i.id === Number(form.sellableItemId));
+    setForm(f => ({
+      ...f,
+      quantity,
+      ...(item ? { amount: String(Math.round(item.amount * (Number(quantity) || 1) * 100) / 100) } : {}),
     }));
   };
 
@@ -898,6 +1157,11 @@ function AddChargeModal({ students, months, periods, currentPeriodId, feeByMonth
                   <option key={i.id} value={i.id}>{i.name} — {Number(i.amount).toFixed(2)} {i.exchangeRateType?.currency ?? ''}</option>
                 ))}
               </select>
+            </Field>
+          )}
+          {form.type === 'item' && (
+            <Field label="Cantidad">
+              <input type="number" min={1} step={1} value={form.quantity} onChange={changeQuantity} required className={inputCls} />
             </Field>
           )}
           <Field label="Descripción" className="col-span-2">
@@ -990,6 +1254,7 @@ function LegendSwatch({ color, label }: { color: string; label: string }) {
 // ── Main Component ──
 
 export default function PaymentLedger() {
+  const dragScroll = useDragScroll<HTMLDivElement>();
   const { viewPeriod, allPeriods } = useSchool();
   const schoolPeriodId = viewPeriod?.id;
 
@@ -1095,11 +1360,14 @@ export default function PaymentLedger() {
       });
       setPaymentModal(null);
       const allocs: { amount: number; currency: string; description: string | null; atPar: boolean }[] = created?.allocations ?? [];
-      // The breakdown of which debts the payment settled, each in its own currency.
+      // The total in the debt currency plus the breakdown of which debts the payment settled.
+      const totalNote = created?.equivalent != null && created?.equivalentCurrency && created.equivalentCurrency !== form.currency
+        ? ` = ${Number(created.equivalent).toFixed(2)} ${created.equivalentCurrency}${created.atPar ? ' a la par' : ''}`
+        : '';
       const splitNote = allocs.length
         ? ' → ' + allocs.map(a => `${Number(a.amount).toFixed(2)} ${a.currency}${a.atPar ? ' a la par' : ''}${a.description ? ` · ${a.description}` : ''}`).join(' + ')
-        : (created?.atPar ? ` · a la par (= ${Number(created.equivalent).toFixed(2)} ${created.equivalentCurrency})` : '');
-      setFlash(`Pago de ${form.amount} ${form.currency} registrado${splitNote || (form.scope === 'auto' ? ' · distribución automática' : '')}`);
+        : '';
+      setFlash(`Pago de ${form.amount} ${form.currency} registrado${totalNote}${splitNote || (form.scope === 'auto' ? ' · distribución automática' : '')}`);
       setTimeout(() => setFlash(null), allocs.length > 1 ? 8000 : 3500);
       loadLedger();
     } catch (err: any) {
@@ -1200,6 +1468,7 @@ export default function PaymentLedger() {
         description: form.description,
         amount: parseFloat(form.amount),
         currency: form.currency,
+        quantity: form.type === 'item' ? Math.max(1, Math.round(Number(form.quantity) || 1)) : undefined,
       });
       setChargeModal(null);
       setExtraChargeStudent(null);
@@ -1310,8 +1579,9 @@ export default function PaymentLedger() {
               <Stat label="Estudiantes" value={students.length} />
             </div>
           )}
-          <div className="flex items-stretch flex-1 justify-end">
-            <div className="flex items-center px-3 py-2 border-l border-[#E4E6EB]">
+          {/* Wrapped onto its own row on narrow screens: left-aligned and full width (no blank gap); right-aligned when it shares the row. */}
+          <div className="flex items-stretch flex-1 min-w-full min-[1500px]:min-w-0 justify-start min-[1500px]:justify-end border-t border-[#E4E6EB] min-[1500px]:border-t-0">
+            <div className="flex items-center px-3 py-2 min-[1500px]:border-l border-[#E4E6EB]">
               <button type="button" onClick={() => setWithdrawnModal(true)}
                 title="Registrar una deuda a un estudiante retirado (incluidas deudas históricas)"
                 className="flex items-center gap-1.5 text-xs font-semibold text-[#2F5EA8] hover:text-[#1E4478]">
@@ -1319,14 +1589,14 @@ export default function PaymentLedger() {
               </button>
             </div>
             {selectedSection && (
-              <div className="flex items-center px-3 py-2 border-l border-[#E4E6EB]">
-                <div className="relative">
+              <div className="flex items-center px-3 py-2 border-l border-[#E4E6EB] flex-1 min-[1500px]:flex-none">
+                <div className="relative w-full min-[1500px]:w-auto">
                   <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
                   <input
                     value={query}
                     onChange={e => setQuery(e.target.value)}
                     placeholder="Buscar estudiante…"
-                    className="pl-8 pr-3 py-1.5 text-sm border border-[#C5CAD2] w-48
+                    className="pl-8 pr-3 py-1.5 text-sm border border-[#C5CAD2] w-full min-[1500px]:w-48
                       focus:outline-none focus:ring-2 focus:ring-[#2F5EA8] focus:border-[#2F5EA8] placeholder:text-[#9CA3AF]"
                   />
                 </div>
@@ -1374,7 +1644,11 @@ export default function PaymentLedger() {
         ) : (
           /* table */
           <div className="bg-white border-x border-b border-[#C5CAD2] overflow-hidden">
-            <div className="overflow-x-auto">
+            <div
+              ref={dragScroll.ref}
+              onMouseDown={dragScroll.onMouseDown}
+              className={`overflow-x-auto ${dragScroll.dragging ? 'cursor-grabbing select-none' : ''}`}
+            >
               <div style={{ width: tableWidth }}>
                 <div className="flex bg-[#EDEEF1] border-b-2 border-[#B9BEC7]">
                   <button
@@ -1409,6 +1683,12 @@ export default function PaymentLedger() {
                   const [openInscription, openMonth] = openKey?.split('-') ?? ['', ''];
                   const isOpen = openKey === `${student.inscriptionId}-${openMonth}` && openInscription === String(student.inscriptionId);
                   const rowBg = rowIndex % 2 === 1 ? 'bg-[#FAFBFC]' : 'bg-white';
+                  // Paid credited per charge (drives the item-badge paid/pending color).
+                  const paidByCharges = chargePaidBy(
+                    student.enrollment, student.other,
+                    ...Object.values(student.months ?? {}),
+                    ...priorBucketsOf(student),
+                  );
 
                   return (
                     <div key={student.inscriptionId}>
@@ -1496,6 +1776,9 @@ export default function PaymentLedger() {
                             ? mergedTotals(data, student.enrollment, ...priors)
                             : { charged: data?.totalCharged ?? 0, paid: data?.totalPaid ?? 0 };
                           const priorDue = m === entryMonthOf(student) && priorT.charged - priorT.paid > 0.005;
+                          const badges = m === entryMonthOf(student)
+                            ? itemChargesOf(data, student.enrollment, ...priors)
+                            : itemChargesOf(data);
                           return (
                             <MonthCell
                               key={m}
@@ -1506,6 +1789,7 @@ export default function PaymentLedger() {
                               forceStatus={priorDue ? priorStatus(paid, charged) : undefined}
                               isOpen={openKey === key}
                               onClick={() => toggle(student.inscriptionId, m)}
+                              badges={badges.length ? <ItemBadges charges={badges} paidBy={paidByCharges} /> : undefined}
                               corner={m === months[months.length - 1] ? (
                                 <span className="text-[#B42318]" title="Deuda pendiente de este estudiante">
                                   Debe {formatTotals(totalsOf(student).pending)}
@@ -1532,6 +1816,7 @@ export default function PaymentLedger() {
                                 monthlyFee={monthlyFee ? { amount: 0, currency: monthlyFee.currency } : null}
                                 onAddPayment={() => setPaymentModal({ studentId: student.inscriptionId })}
                                 onCorrectPayment={handleCorrectPayment}
+                                onChanged={loadLedger}
                               />
                             ) : openMonth === entryMonthOf(student) ? (
                               <>
@@ -1541,6 +1826,7 @@ export default function PaymentLedger() {
                                     group={g}
                                     onAddPayment={() => setPaymentModal({ studentId: student.inscriptionId })}
                                     onCorrectPayment={handleCorrectPayment}
+                                    onChanged={loadLedger}
                                   />
                                 ))}
                                 {(student.enrollment?.charges?.length || student.enrollment?.payments?.length) ? (
@@ -1551,6 +1837,7 @@ export default function PaymentLedger() {
                                     monthlyFee={monthlyFee ? { amount: 0, currency: monthlyFee.currency } : null}
                                     onAddPayment={() => setPaymentModal({ studentId: student.inscriptionId })}
                                     onCorrectPayment={handleCorrectPayment}
+                                    onChanged={loadLedger}
                                   />
                                 ) : null}
                                 {student.months[openMonth] ? (
@@ -1560,6 +1847,7 @@ export default function PaymentLedger() {
                                     monthlyFee={monthlyFeeByMonth[openMonth] ?? monthlyFee}
                                     onAddPayment={() => setPaymentModal({ studentId: student.inscriptionId })}
                                     onCorrectPayment={handleCorrectPayment}
+                                    onChanged={loadLedger}
                                   />
                                 ) : null}
                               </>
@@ -1570,6 +1858,7 @@ export default function PaymentLedger() {
                                 monthlyFee={monthlyFeeByMonth[openMonth] ?? monthlyFee}
                                 onAddPayment={() => setPaymentModal({ studentId: student.inscriptionId })}
                                 onCorrectPayment={handleCorrectPayment}
+                                onChanged={loadLedger}
                               />
                             )}
                           </div>

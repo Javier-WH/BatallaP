@@ -18,6 +18,8 @@ import {
   createInscriptionDiscount,
   updateInscriptionDiscount,
   deleteInscriptionDiscount,
+  deliverItemUnits,
+  undoItemDelivery,
 } from '@/controllers/ledgerController';
 
 const router = Router();
@@ -70,5 +72,11 @@ router.get('/payments/audit', listPaymentAudit);
 
 // DELETE a charge
 router.delete('/charges/:id', deleteCharge);
+
+// POST record hand-over of N units of an item charge (audited: who delivered)
+router.post('/charges/:id/deliveries', deliverItemUnits);
+
+// DELETE undo a mistaken delivery record
+router.delete('/deliveries/:id', undoItemDelivery);
 
 export default router;

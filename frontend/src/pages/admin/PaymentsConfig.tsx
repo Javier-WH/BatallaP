@@ -22,9 +22,11 @@ import {
   listExchangeRates, upsertExchangeRate, fetchBcvRates,
   listFees, upsertFee, updateFee,
   listSellableItems, createSellableItem, updateSellableItem, deleteSellableItem,
+  uploadSellableItemIcon, clearSellableItemIcon,
   listEnrollmentPlans, createEnrollmentPlan, updateEnrollmentPlan, deleteEnrollmentPlan,
   calculateEnrollmentPlan,
 } from '@/services/paymentsService';
+import { ITEM_ICONS, ItemGlyph } from './itemIcons';
 
 const { Title } = Typography;
 
@@ -61,6 +63,11 @@ const PaymentsConfig: React.FC = () => {
   const [itemModalOpen, setItemModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<SellableItem | null>(null);
   const [itemForm] = Form.useForm();
+  // Badge icon of the item being edited: Lucide name, uploaded file, clear flag.
+  const [itemIconSel, setItemIconSel] = useState<string | null>(null);
+  const [itemIconFile, setItemIconFile] = useState<File | null>(null);
+  const [itemIconPreview, setItemIconPreview] = useState<string | null>(null);
+  const [itemIconCleared, setItemIconCleared] = useState(false);
 
   // ── Enrollment Plans ──
   const [plans, setPlans] = useState<EnrollmentPlan[]>([]);
@@ -244,6 +251,10 @@ const PaymentsConfig: React.FC = () => {
   // ── Sellable Item handlers ──
   const openItemModal = (item?: SellableItem) => {
     setEditingItem(item ?? null);
+    setItemIconSel(item?.icon ?? null);
+    setItemIconFile(null);
+    setItemIconPreview(null);
+    setItemIconCleared(false);
     if (item) itemForm.setFieldsValue(item);
     else {
       itemForm.resetFields();
@@ -258,13 +269,16 @@ const PaymentsConfig: React.FC = () => {
   const handleSaveItem = async () => {
     try {
       const values = await itemForm.validateFields();
+      let saved: SellableItem;
       if (editingItem) {
-        await updateSellableItem(editingItem.id, values);
+        saved = await updateSellableItem(editingItem.id, { ...values, icon: itemIconSel });
         message.success('Item actualizado');
       } else {
-        await createSellableItem(values);
+        saved = await createSellableItem({ ...values, icon: itemIconSel });
         message.success('Item creado');
       }
+      if (itemIconFile) await uploadSellableItemIcon(saved.id, itemIconFile);
+      else if (itemIconCleared) await clearSellableItemIcon(saved.id);
       setItemModalOpen(false);
       loadItems();
     } catch { /* validation error */ }
@@ -416,6 +430,16 @@ const PaymentsConfig: React.FC = () => {
   ];
 
   const itemColumns = [
+    {
+      title: 'Badge', key: 'icon', width: 60,
+      render: (_: any, i: SellableItem) => (
+        <Tooltip title="Badge que se muestra en el ledger">
+          <span className="inline-flex items-center justify-center w-6 h-6 rounded border border-[#DBDEE4] bg-white text-[#2F5EA8]">
+            <ItemGlyph icon={i.icon} iconImage={i.iconImage} size={15} />
+          </span>
+        </Tooltip>
+      ),
+    },
     { title: 'Nombre', dataIndex: 'name', key: 'name' },
     { title: 'Categoría', dataIndex: 'category', key: 'category', render: (c: string | null) => c ? <Tag>{c}</Tag> : null },
     { title: 'Monto', dataIndex: 'amount', key: 'amount', render: (v: number) => v.toLocaleString('es-VE', { minimumFractionDigits: 2 }) },
@@ -505,8 +529,22 @@ const PaymentsConfig: React.FC = () => {
   ];
 
   return (
-    <div className="p-6">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+    <div className="p-3 sm:p-6">
+      <style>{`
+        .payments-tabs .ant-tabs-nav { margin-bottom: 12px; }
+        .payments-tabs .ant-tabs-tab { padding: 8px 10px !important; margin: 0 !important; }
+        .payments-tabs .ant-tabs-tab + .ant-tabs-tab { margin-left: 3px !important; }
+        @media (max-width: 1100px) {
+          .payments-tabs .ant-tabs-nav-wrap { overflow: visible !important; }
+          .payments-tabs .ant-tabs-nav-wrap::before,
+          .payments-tabs .ant-tabs-nav-wrap::after,
+          .payments-tabs .ant-tabs-nav-operations { display: none !important; }
+          .payments-tabs .ant-tabs-nav-list { flex-wrap: wrap; gap: 4px; transform: none !important; }
+          .payments-tabs .ant-tabs-tab { padding: 6px 9px !important; font-size: 13px; }
+          .payments-tabs .ant-tabs-tab + .ant-tabs-tab { margin-left: 0 !important; }
+        }
+      `}</style>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
         <Title level={3} style={{ margin: 0 }}><DollarOutlined /> Configuración de Pagos</Title>
         <Button type="primary" icon={<SyncOutlined />} onClick={() => setChargeSyncOpen(true)}>
           Generar / actualizar deudas
@@ -519,6 +557,9 @@ const PaymentsConfig: React.FC = () => {
       />
 
       <Tabs
+        className="payments-tabs"
+        size="small"
+        tabBarGutter={2}
         activeKey={activeTab}
         onChange={setActiveTab}
         items={[
@@ -825,6 +866,51 @@ const PaymentsConfig: React.FC = () => {
           </Form.Item>
           <Form.Item name="category" label="Categoría">
             <Input placeholder="Uniforme, Distintivo, etc." />
+          </Form.Item>
+          <Form.Item label="Icono del badge (se muestra en la celda del ledger)">
+            <div className="flex flex-wrap gap-1 mb-2">
+              {Object.entries(ITEM_ICONS).map(([name, Icon]) => (
+                <button
+                  type="button"
+                  key={name}
+                  title={name}
+                  onClick={() => setItemIconSel(itemIconSel === name ? null : name)}
+                  className={`w-8 h-8 inline-flex items-center justify-center rounded border transition-colors
+                    ${itemIconSel === name ? 'border-[#2F5EA8] bg-[#DCE5F7] text-[#2F5EA8]' : 'border-[#DBDEE4] bg-white text-[#5B6472] hover:border-[#2F5EA8]'}`}
+                >
+                  <Icon size={15} />
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center justify-center w-8 h-8 rounded border border-[#DBDEE4] bg-white">
+                {itemIconPreview
+                  ? <img src={itemIconPreview} alt="" className="w-6 h-6 object-contain" />
+                  : <ItemGlyph icon={itemIconSel} iconImage={itemIconCleared ? null : editingItem?.iconImage} size={18} />}
+              </span>
+              <label className="cursor-pointer text-xs font-semibold text-[#2F5EA8] border border-[#B7C7E6] px-2 py-1 hover:bg-[#DCE5F7]">
+                Subir imagen…
+                <input
+                  type="file" accept="image/*" className="hidden"
+                  onChange={e => {
+                    const f = e.target.files?.[0] ?? null;
+                    setItemIconFile(f);
+                    setItemIconPreview(f ? URL.createObjectURL(f) : null);
+                    setItemIconCleared(false);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+              {(itemIconFile || (editingItem?.iconImage && !itemIconCleared)) && (
+                <Button
+                  size="small"
+                  onClick={() => { setItemIconFile(null); setItemIconPreview(null); setItemIconCleared(!!editingItem?.iconImage); }}
+                >
+                  Quitar imagen
+                </Button>
+              )}
+              <span className="text-[11px] text-[#8B909A]">La imagen tiene prioridad sobre el icono.</span>
+            </div>
           </Form.Item>
           <Form.Item name="amount" label="Monto" rules={[{ required: true }]}>
             <InputNumber min={0} step={0.01} style={{ width: '100%' }} />

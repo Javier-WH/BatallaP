@@ -3,7 +3,7 @@ import sequelize from '@/config/database';
 import { Op, Transaction, UniqueConstraintError } from 'sequelize';
 import {
   Inscription, Person, Grade, Section, SchoolPeriod,
-  Payment, PaymentAllocation, PaymentAuditLog, Charge, Fee, SellableItem, ExchangeRate, ExchangeRateType,
+  Payment, PaymentAllocation, PaymentAuditLog, Charge, ChargeDelivery, Fee, SellableItem, ExchangeRate, ExchangeRateType,
   InscriptionDiscount, DiscountReason,
 } from '@/models/index';
 import { DISCOUNT_KINDS, DISCOUNT_SCOPES } from '@/models/InscriptionDiscount';
@@ -107,7 +107,11 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
       where: { inscriptionId: { [Op.in]: inscriptionIds }, active: true },
       include: [
         { model: Fee, as: 'fee', attributes: ['id', 'name', 'amount', 'key'] },
-        { model: SellableItem, as: 'sellableItem', attributes: ['id', 'name', 'amount'] },
+        { model: SellableItem, as: 'sellableItem', attributes: ['id', 'name', 'amount', 'icon', 'iconImage'] },
+        {
+          model: ChargeDelivery, as: 'deliveries',
+          include: [{ model: Person, as: 'deliveredBy', attributes: ['id', 'firstName', 'lastName'] }],
+        },
       ],
     });
 
@@ -951,7 +955,7 @@ export const createCharge = async (req: Request, res: Response) => {
   try {
     const {
       inscriptionId, schoolPeriodId, feeId, sellableItemId,
-      type, month, description, amount, currency, amountVES, dueDate,
+      type, month, description, amount, currency, amountVES, dueDate, quantity,
     } = req.body;
 
     if (!inscriptionId || !schoolPeriodId || !type || !description || amount === undefined || !currency) {
@@ -994,6 +998,7 @@ export const createCharge = async (req: Request, res: Response) => {
       amount: Number(amount),
       currency,
       amountVES: finalAmountVES,
+      quantity: Math.max(1, Math.round(Number(quantity ?? 1)) || 1),
       dueDate: dueDate ? new Date(dueDate) : null,
       active: true,
     });
@@ -1033,6 +1038,7 @@ export const bulkCreateCharges = async (req: Request, res: Response) => {
       amount: Number(c.amount),
       currency: c.currency,
       amountVES: c.amountVES ?? null,
+      quantity: Math.max(1, Math.round(Number(c.quantity ?? 1)) || 1),
       dueDate: c.dueDate ? new Date(c.dueDate) : null,
       active: true,
     })), { transaction: t });
@@ -1360,5 +1366,63 @@ export const releasePapers = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[releasePapers] Error:', error);
     return res.status(500).json({ message: 'Error al liberar los documentos' });
+  }
+};
+
+// ── Item deliveries: hand-over of bought sellable-item units ──
+
+/** Delivered units of a charge, excluding a delivery row when undoing. */
+const deliveredUnits = async (chargeId: number, excludeId?: number): Promise<number> => {
+  const rows = await ChargeDelivery.findAll({
+    where: { chargeId, ...(excludeId ? { id: { [Op.ne]: excludeId } } : {}) },
+    attributes: ['quantity'],
+  });
+  return rows.reduce((s, r) => s + r.quantity, 0);
+};
+
+/** POST /ledger/charges/:id/deliveries — record that N units were handed over. */
+export const deliverItemUnits = async (req: Request, res: Response) => {
+  try {
+    const charge = await Charge.findByPk(Number(req.params.id), {
+      include: [{ model: SellableItem, as: 'sellableItem', attributes: ['id', 'name'] }],
+    });
+    if (!charge) return res.status(404).json({ message: 'Deuda no encontrada' });
+    if (charge.type !== 'item') {
+      return res.status(400).json({ message: 'Solo se pueden entregar deudas de items vendibles' });
+    }
+    const quantity = Math.round(Number(req.body.quantity ?? 1));
+    if (!Number.isFinite(quantity) || quantity < 1) {
+      return res.status(400).json({ message: 'La cantidad debe ser un entero mayor a cero' });
+    }
+    const pending = (charge.quantity ?? 1) - (await deliveredUnits(charge.id));
+    if (quantity > pending) {
+      return res.status(400).json({ message: `Solo quedan ${pending} unidad(es) por entregar` });
+    }
+    const delivery = await ChargeDelivery.create({
+      chargeId: charge.id,
+      quantity,
+      note: String(req.body.note ?? '').trim().slice(0, 500) || null,
+      deliveredByPersonId: (req.session as any)?.user?.personId ?? null,
+    });
+    const created = await ChargeDelivery.findByPk(delivery.id, {
+      include: [{ model: Person, as: 'deliveredBy', attributes: ['id', 'firstName', 'lastName'] }],
+    });
+    return res.status(201).json(created);
+  } catch (error) {
+    console.error('[deliverItemUnits] Error:', error);
+    return res.status(500).json({ message: 'Error al registrar la entrega' });
+  }
+};
+
+/** DELETE /ledger/deliveries/:id — undo a mistaken delivery record. */
+export const undoItemDelivery = async (req: Request, res: Response) => {
+  try {
+    const delivery = await ChargeDelivery.findByPk(Number(req.params.id));
+    if (!delivery) return res.status(404).json({ message: 'Entrega no encontrada' });
+    await delivery.destroy();
+    return res.json({ message: 'Entrega eliminada' });
+  } catch (error) {
+    console.error('[undoItemDelivery] Error:', error);
+    return res.status(500).json({ message: 'Error al eliminar la entrega' });
   }
 };

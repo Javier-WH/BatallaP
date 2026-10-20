@@ -112,6 +112,46 @@ describe('payments split across debts in different currencies', () => {
     expect(s.other.byCurrency.USD.paid).toBe(20); // 10 USD still owed
   });
 
+  it('auto pays matrícula > gastos > mensualidad incluida > items > mensualidades, even when the quota was generated first', async () => {
+    // The enrollment plan emits its month-less entry "Mensualidad" before matrícula —
+    // it still ranks inside the enrollment package, after matrícula and gastos.
+    const entryFee = await charge({ type: 'mensualidad', month: null, description: 'Mensualidad', amount: 55, currency: 'USD', amountVES: 44000 });
+    const matricula = await charge({ type: 'matricula', month: null, description: 'Matrícula', amount: 55, currency: 'USD', amountVES: 44000 });
+    const gastos = await charge({ type: 'gastos_administrativos', month: null, description: 'Gastos Administrativos', amount: 55, currency: 'USD', amountVES: 44000 });
+    const distintivo = await charge({ type: 'item', description: 'Distintivo', amount: 10, currency: 'USD', amountVES: 8000 });
+    const oct = await charge({ type: 'mensualidad', month: 'Oct', description: 'Mensualidad', amount: 55, currency: 'USD', amountVES: 44000 });
+
+    // $55 covers matrícula first — not the entry quota nor October.
+    const res = await pay({ method: 'efectivo', currency: 'USD', amount: 55 }).expect(201);
+    expect(res.body.allocations).toHaveLength(1);
+    expect(res.body.allocations[0].chargeId).toBe(matricula.id);
+    expect(Number(res.body.allocations[0].amount)).toBe(55);
+
+    // $120 more: gastos (55) → entry quota (55, part of the enrollment package) → distintivo (10); October is untouched.
+    const res2 = await pay({ method: 'efectivo', currency: 'USD', amount: 120 }).expect(201);
+    const order = res2.body.allocations.map((a: any) => a.chargeId);
+    expect(order).toEqual([gastos.id, entryFee.id, distintivo.id]);
+    expect(Number(res2.body.allocations.find((a: any) => a.chargeId === entryFee.id).amount)).toBe(55);
+    expect(res2.body.allocations.find((a: any) => a.chargeId === oct.id)).toBeUndefined();
+  });
+
+  it('an unpaid item blocks a payment targeted to a mensualidad', async () => {
+    const distintivo = await charge({ type: 'item', month: 'Oct', description: 'Distintivo', amount: 10, currency: 'USD', amountVES: 8000 });
+    const oct = await charge({ type: 'mensualidad', month: 'Oct', description: 'Mensualidad', amount: 55, currency: 'USD', amountVES: 44000 });
+    const nov = await charge({ type: 'mensualidad', month: 'Nov', description: 'Mensualidad', amount: 55, currency: 'USD', amountVES: 44000 });
+
+    // Aiming straight at the Oct mensualidad charge is blocked by the pending item.
+    const res = await pay({ method: 'efectivo', currency: 'USD', amount: 55, chargeId: oct.id }).expect(400);
+    expect(res.body.code).toBe('OUT_OF_ORDER_PAYMENT');
+    expect(res.body.blocking[0].description).toBe(distintivo.description);
+
+    // November is blocked too — items rank before all mensualidades of the period.
+    const res2 = await pay({ method: 'efectivo', currency: 'USD', amount: 55, month: 'Nov' }).expect(400);
+    expect(res2.body.code).toBe('OUT_OF_ORDER_PAYMENT');
+    expect(res2.body.blocking[0].description).toBe(distintivo.description);
+    void nov;
+  });
+
   it('the excess rolls on to the next debt while any is left', async () => {
     const { eur, usd } = await enrollmentAndUniform();
     const oct = await charge({ type: 'mensualidad', month: 'Oct', amount: 55, currency: 'USD', amountVES: 44000 });

@@ -8,11 +8,13 @@ interface SellableItemAttributes {
   amount: number;
   exchangeRateTypeId: number;
   category: string | null;
+  icon: string | null;        // Lucide icon name for the ledger badge
+  iconImage: string | null;   // uploaded image path; takes precedence over `icon`
   active: boolean;
 }
 
 interface SellableItemCreationAttributes
-  extends Optional<SellableItemAttributes, 'id' | 'description' | 'category' | 'active'> {}
+  extends Optional<SellableItemAttributes, 'id' | 'description' | 'category' | 'icon' | 'iconImage' | 'active'> {}
 
 class SellableItem extends Model<SellableItemAttributes, SellableItemCreationAttributes>
   implements SellableItemAttributes {
@@ -22,6 +24,8 @@ class SellableItem extends Model<SellableItemAttributes, SellableItemCreationAtt
   public amount!: number;
   public exchangeRateTypeId!: number;
   public category!: string | null;
+  public icon!: string | null;
+  public iconImage!: string | null;
   public active!: boolean;
 
   public readonly createdAt!: Date;
@@ -54,6 +58,14 @@ SellableItem.init(
     },
     category: {
       type: DataTypes.STRING(100),
+      allowNull: true,
+    },
+    icon: {
+      type: DataTypes.STRING(60),
+      allowNull: true,
+    },
+    iconImage: {
+      type: DataTypes.STRING(255),
       allowNull: true,
     },
     active: {

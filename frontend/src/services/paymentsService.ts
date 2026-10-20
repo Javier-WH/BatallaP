@@ -41,6 +41,8 @@ export interface SellableItem {
   amount: number;
   exchangeRateTypeId: number;
   category: string | null;
+  icon: string | null;        // Lucide icon name of the ledger badge
+  iconImage: string | null;   // uploaded badge image; takes precedence over `icon`
   active: boolean;
   exchangeRateType?: ExchangeRateType;
 }
@@ -242,6 +244,20 @@ export async function createSellableItem(payload: Partial<SellableItem>): Promis
 
 export async function updateSellableItem(id: number, payload: Partial<SellableItem>): Promise<SellableItem> {
   const { data } = await api.put<SellableItem>(`/payments/sellable-items/${id}`, payload);
+  return data;
+}
+
+/** Upload a custom badge image for an item (multipart `icon`). */
+export async function uploadSellableItemIcon(id: number, file: File): Promise<SellableItem> {
+  const fd = new FormData();
+  fd.append('icon', file);
+  const { data } = await api.put<SellableItem>(`/payments/sellable-items/${id}/icon`, fd);
+  return data;
+}
+
+/** Remove the uploaded badge image (the Lucide icon stays as fallback). */
+export async function clearSellableItemIcon(id: number): Promise<SellableItem> {
+  const { data } = await api.delete<SellableItem>(`/payments/sellable-items/${id}/icon`);
   return data;
 }
 
@@ -512,6 +528,8 @@ export interface ChargePayload {
   currency: string;
   amountVES?: number | null;
   dueDate?: string;
+  /** Units bought (items only); deliveries are tracked per unit. */
+  quantity?: number;
 }
 
 export async function createCharge(payload: ChargePayload): Promise<any> {
@@ -522,6 +540,29 @@ export async function createCharge(payload: ChargePayload): Promise<any> {
 export async function bulkCreateCharges(charges: ChargePayload[]): Promise<{ created: number }> {
   const { data } = await api.post<{ created: number }>('/ledger/charges/bulk', { charges });
   return data;
+}
+
+// ── Item deliveries ──
+
+export interface ChargeDelivery {
+  id: number;
+  chargeId: number;
+  quantity: number;
+  note: string | null;
+  deliveredByPersonId: number | null;
+  deliveredBy?: { id: number; firstName: string; lastName: string } | null;
+  createdAt: string;
+}
+
+/** Record that `quantity` units of an item charge were handed over. */
+export async function deliverItemUnits(chargeId: number, payload: { quantity?: number; note?: string }): Promise<ChargeDelivery> {
+  const { data } = await api.post<ChargeDelivery>(`/ledger/charges/${chargeId}/deliveries`, payload);
+  return data;
+}
+
+/** Undo a mistaken delivery record. */
+export async function undoItemDelivery(deliveryId: number): Promise<void> {
+  await api.delete(`/ledger/deliveries/${deliveryId}`);
 }
 
 /** Removes a payment entered by mistake; the reason is mandatory and audited. */

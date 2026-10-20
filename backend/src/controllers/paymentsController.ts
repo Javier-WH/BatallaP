@@ -520,7 +520,7 @@ export const listSellableItems = async (req: Request, res: Response) => {
 
 export const createSellableItem = async (req: Request, res: Response) => {
   try {
-    const { name, description, amount, exchangeRateTypeId, category, active } = req.body;
+    const { name, description, amount, exchangeRateTypeId, category, active, icon } = req.body;
     if (!name || amount === undefined || !exchangeRateTypeId) {
       return res.status(400).json({ message: 'name, amount y exchangeRateTypeId son requeridos' });
     }
@@ -530,6 +530,7 @@ export const createSellableItem = async (req: Request, res: Response) => {
       amount: Number(amount),
       exchangeRateTypeId: Number(exchangeRateTypeId),
       category: category ?? null,
+      icon: icon ? String(icon).slice(0, 60) : null,
       active: active !== false,
     });
     return res.status(201).json(item);
@@ -542,7 +543,7 @@ export const createSellableItem = async (req: Request, res: Response) => {
 export const updateSellableItem = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, description, amount, exchangeRateTypeId, category, active } = req.body;
+    const { name, description, amount, exchangeRateTypeId, category, active, icon } = req.body;
     const item = await SellableItem.findByPk(Number(id));
     if (!item) return res.status(404).json({ message: 'Item no encontrado' });
     await item.update({
@@ -551,6 +552,7 @@ export const updateSellableItem = async (req: Request, res: Response) => {
       amount: amount !== undefined ? Number(amount) : item.amount,
       exchangeRateTypeId: exchangeRateTypeId ?? item.exchangeRateTypeId,
       category: category ?? item.category,
+      icon: icon !== undefined ? (icon ? String(icon).slice(0, 60) : null) : item.icon,
       active: active ?? item.active,
     });
     return res.json(item);
@@ -571,6 +573,33 @@ export const deleteSellableItem = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[deleteSellableItem] Error:', error);
     return res.status(500).json({ message: 'Error al eliminar item' });
+  }
+};
+
+/** PUT /sellable-items/:id/icon — uploaded badge image (multipart `icon`). */
+export const uploadSellableItemIcon = async (req: Request, res: Response) => {
+  try {
+    const item = await SellableItem.findByPk(Number(req.params.id));
+    if (!item) return res.status(404).json({ message: 'Item no encontrado' });
+    if (!req.file) return res.status(400).json({ message: 'Se requiere una imagen' });
+    await item.update({ iconImage: `/uploads/items/${req.file.filename}` });
+    return res.json(item);
+  } catch (error) {
+    console.error('[uploadSellableItemIcon] Error:', error);
+    return res.status(500).json({ message: 'Error al subir el icono' });
+  }
+};
+
+/** DELETE /sellable-items/:id/icon — drop the uploaded image (keeps the Lucide icon). */
+export const clearSellableItemIcon = async (req: Request, res: Response) => {
+  try {
+    const item = await SellableItem.findByPk(Number(req.params.id));
+    if (!item) return res.status(404).json({ message: 'Item no encontrado' });
+    await item.update({ iconImage: null });
+    return res.json(item);
+  } catch (error) {
+    console.error('[clearSellableItemIcon] Error:', error);
+    return res.status(500).json({ message: 'Error al quitar el icono' });
   }
 };
 

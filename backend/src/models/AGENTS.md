@@ -44,6 +44,7 @@
 - `SubjectFinalGrade → inscriptionSubject`, `plantel`, `editAudits`.
 - `GradeEditPermission → granter`, `recipient`, `revoker`, `schoolPeriod`, `audits`.
 - `GradeEditAudit → subjectFinalGrade`, `permission`, `editor`.
+- `Charge → deliveries` (ChargeDelivery, entregas por unidad de items vendibles); `ChargeDelivery → charge`, `deliveredBy` (Person).
 
 ## Qué hacer si un controller no encuentra una asociación
 

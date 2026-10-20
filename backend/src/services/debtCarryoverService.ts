@@ -48,6 +48,7 @@ export async function carryOverDebts(
       amount: remaining,
       currency: charge.currency,
       amountVES: null,
+      quantity: charge.quantity ?? 1,
       dueDate: charge.dueDate,
       active: true,
       source: 'manual',

@@ -30,14 +30,49 @@ export type AllocationTarget =
 /** Charges outside the academic plan: purchasable items and extraordinary debts. */
 const EXTRA_TYPES = new Set(['item', 'otro']);
 
+/** Inside enrollment: matrícula first, then gastos administrativos, then the bundled entry-month mensualidad, then anything else. */
+const ENROLLMENT_RANK: Record<string, number> = { matricula: 0, gastos_administrativos: 1, mensualidad: 2 };
+
 /**
- * Debt order inside a period: enrollment-plan month-less debts first
- * (matrícula, gastos, entry mensualidad), then purchasable/extraordinary
- * debts (items, 'otro'), then monthly installments in calendar order.
+ * Debt order inside a period, per the school:
+ *   0. Inscripción — everything in the enrollment package (month-less academic debts):
+ *      matrícula > gastos administrativos > bundled entry-month mensualidad > other.
+ *   1. Sellable items and extraordinary debts ('otro'), by month.
+ *   2. Mensualidades not included in the enrollment package, in calendar order.
  * Debts of an earlier school period always come before any current debt.
  */
-const tierOf = (c: { month?: string | null; type?: string | null }) =>
-  !c.month ? (EXTRA_TYPES.has(c.type ?? '') ? 1 : 0) : 2;
+const tierOf = (c: { month?: string | null; type?: string | null }) => {
+  if (EXTRA_TYPES.has(c.type ?? '')) return 1;
+  return c.month ? 2 : 0;
+};
+
+type SortKey = [number, number, number, number, number];
+
+const cmpKey = (a: SortKey, b: SortKey) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2] || a[3] - b[3] || a[4] - b[4];
+
+/**
+ * Full debt-order key: [period startYear, tier, enrollment rank, month rank, charge id].
+ * Month-less charges rank first inside their tier (the entry-month mensualidad is the
+ * earliest installment); a month unknown to the billing calendar ranks last.
+ */
+const sortKeyOf = (
+  c: { schoolPeriodId: number; month?: string | null; type?: string | null; id?: number },
+  periodById: Map<number, SchoolPeriod>,
+): SortKey => {
+  let monthRank = -1;
+  if (c.month) {
+    const idx = (getBillingMonths(periodById.get(c.schoolPeriodId) ?? {}) as string[]).indexOf(c.month);
+    monthRank = idx === -1 ? 99 : idx;
+  }
+  return [
+    periodById.get(c.schoolPeriodId)?.startYear ?? 9999,
+    tierOf(c),
+    ENROLLMENT_RANK[c.type ?? ''] ?? 2,
+    monthRank,
+    c.id ?? 0,
+  ];
+};
+
 
 export interface AllocationPart {
   chargeId: number;
@@ -222,7 +257,7 @@ interface OrderedContext {
   remaining: Map<number, number>;
 }
 
-/** Debt order: earlier period first; inside a period — enrollment debts, then item/'otro' debts, then billing months. */
+/** Debt order: earlier period first; inside a period — enrollment (matrícula > gastos), then items/'otro', then mensualidades. */
 async function orderedContext(
   inscriptionId: number,
   excludePaymentId: number,
@@ -236,16 +271,7 @@ async function orderedContext(
   const resolver = makeRateResolver(transaction);
   const remaining = await remainingByCharge(inscriptionId, all, excludePaymentId, resolver, transaction);
 
-  const monthRank = (c: { schoolPeriodId: number; month: string | null }) => {
-    if (!c.month) return -1;
-    const idx = (getBillingMonths(periodById.get(c.schoolPeriodId) ?? {}) as string[]).indexOf(c.month);
-    return idx === -1 ? 99 : idx;
-  };
-  const ordered = [...all].sort((a, b) =>
-    (periodById.get(a.charge.schoolPeriodId)?.startYear ?? 9999) - (periodById.get(b.charge.schoolPeriodId)?.startYear ?? 9999)
-    || tierOf(a.charge) - tierOf(b.charge)
-    || monthRank(a.charge) - monthRank(b.charge)
-    || a.charge.id - b.charge.id);
+  const ordered = [...all].sort((a, b) => cmpKey(sortKeyOf(a.charge, periodById), sortKeyOf(b.charge, periodById)));
   return { ordered, periodById, remaining };
 }
 
@@ -275,20 +301,10 @@ export async function checkTargetOrder(
   if (!ctx) return { ok: true, blocking: [] };
   const { ordered, periodById, remaining } = ctx;
 
-  type Key = [number, number, number, number];
-  const sortKey = (c: { schoolPeriodId: number; month: string | null; type?: string | null; id?: number }): Key => {
-    const startYear = periodById.get(c.schoolPeriodId)?.startYear ?? 9999;
-    let rank = -1;
-    if (c.month) {
-      rank = (getBillingMonths(periodById.get(c.schoolPeriodId) ?? {}) as string[]).indexOf(c.month);
-      if (rank === -1) rank = 99;
-    }
-    return [startYear, tierOf(c), rank, c.id ?? 0];
-  };
-  const cmp = (a: Key, b: Key) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2] || a[3] - b[3];
+  const sortKey = (c: { schoolPeriodId: number; month?: string | null; type?: string | null; id?: number }) => sortKeyOf(c, periodById);
 
   // The target's position in the order (its earliest matching charge, or its sort key).
-  let targetKey: Key | null = null;
+  let targetKey: SortKey | null = null;
   if (target.kind === 'charge') {
     const hit = ordered.find(o => o.charge.id === target.chargeId);
     if (!hit) {
@@ -304,10 +320,10 @@ export async function checkTargetOrder(
     const startYear = period?.startYear ?? 9999;
     if (target.kind === 'oneTime') {
       const first = ordered.find(o => o.charge.schoolPeriodId === target.periodId && !o.charge.month);
-      targetKey = first ? sortKey(first.charge) : [startYear, 0, -1, 0];
+      targetKey = first ? sortKey(first.charge) : [startYear, 0, 0, -1, 0];
     } else {
       const rank = (getBillingMonths(period ?? {}) as string[]).indexOf(target.month);
-      targetKey = [startYear, 2, rank === -1 ? 99 : rank, 0];
+      targetKey = [startYear, 2, 0, rank === -1 ? 99 : rank, 0];
       const first = ordered.find(o => o.charge.schoolPeriodId === target.periodId && o.charge.month === target.month);
       if (first) targetKey = sortKey(first.charge);
     }
@@ -317,7 +333,7 @@ export async function checkTargetOrder(
   for (const { charge } of ordered) {
     const rem = remaining.get(charge.id) ?? 0;
     if (rem <= EPS) continue;
-    if (cmp(sortKey(charge), targetKey) < 0) {
+    if (cmpKey(sortKey(charge), targetKey) < 0) {
       blocking.push({ description: charge.description ?? charge.type, amount: round2(rem), currency: charge.currency });
       if (blocking.length >= 3) break;
     } else break; // reached the target's position — earlier ones were all settled
