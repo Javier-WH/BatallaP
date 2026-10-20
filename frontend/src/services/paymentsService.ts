@@ -300,6 +300,23 @@ export async function calculateEnrollmentPlan(id: number, date?: string): Promis
 
 // ── Ledger ──
 
+/** A guardian of a ledger student — contact data plus the other students they represent. */
+export interface LedgerGuardian {
+  /** All relationships this person holds with the student (e.g. ['father', 'representative']). */
+  relationships: ('mother' | 'father' | 'sibling' | 'grandparent' | 'uncle_aunt' | 'representative')[];
+  isRepresentative: boolean;
+  firstName: string;
+  lastName: string;
+  document: string | null;
+  documentType: string | null;
+  phone: string | null;
+  phone2: string | null;
+  whatsapp: string | null;
+  email: string | null;
+  /** Other students this guardian represents: name + where they study (grade/section/period). */
+  alsoRepresents: { personId: number; name: string; where: string }[];
+}
+
 export interface LedgerStudent {
   inscriptionId: number;
   personId: number;
@@ -307,6 +324,8 @@ export interface LedgerStudent {
   document: string;
   rosterNumber: number | null;
   entryMonth: string | null;
+  /** Real guardians only — placeholder profiles ("sin representante") are filtered server-side. */
+  guardians: LedgerGuardian[];
   gradeName: string;
   sectionName: string;
   months: Record<string, LedgerBucket>;

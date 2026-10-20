@@ -5,7 +5,7 @@ import {
   ChevronDown, Search, Banknote, Smartphone, Landmark, CreditCard, Hash,
   Plus, X, DollarSign, TrendingUp, AlertTriangle,
   ArrowDownAZ, ArrowUpAZ, ArrowUpDown, MoreHorizontal, CalendarClock, BadgePercent,
-  ArrowRightLeft, Trash2, UserX, Check, PackageCheck,
+  ArrowRightLeft, Trash2, UserX, Check, PackageCheck, Phone, Mail, Users,
 } from 'lucide-react';
 import { ItemGlyph } from './itemIcons';
 import PaymentCorrectionModal, { type CorrectionMode } from './components/PaymentCorrectionModal';
@@ -14,7 +14,7 @@ import {
   getLedgerSections, getLedgerBySection, searchWithdrawnStudents,
   createPayment, createCharge, updateEntryMonth, listSellableItems,
   deliverItemUnits, undoItemDelivery,
-  type LedgerStudent, type LedgerSection, type SellableItem, type LedgerPriorPeriod, type LedgerBucket,
+  type LedgerStudent, type LedgerSection, type SellableItem, type LedgerPriorPeriod, type LedgerBucket, type LedgerGuardian,
   type DuplicatePaymentInfo, type WithdrawnStudentResult,
 } from '@/services/paymentsService';
 import { listBanks, type Bank } from '@/services/bankService';
@@ -214,6 +214,76 @@ function TransactionRow({ txn, index, onCorrect }: { txn: any; index: number; on
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Guardian card in the expanded row's empty column ──
+
+const RELATIONSHIP_LABEL: Record<string, string> = {
+  mother: 'Madre', father: 'Padre', sibling: 'Hermano/a',
+  grandparent: 'Abuelo/a', uncle_aunt: 'Tío/a', representative: 'Representante',
+};
+
+/** Contact card of the student's guardians, shown under their name in the expanded detail row. */
+function GuardianPanel({ guardians }: { guardians: LedgerGuardian[] }) {
+  if (!guardians?.length) {
+    return <div className="px-3 pb-2 text-[10px] italic text-[#9CA3AF]">Sin representante registrado</div>;
+  }
+  const docPrefix = (g: LedgerGuardian) =>
+    g.documentType === 'Venezolano' ? 'V-' : g.documentType === 'Extranjero' ? 'E-' : g.documentType === 'Pasaporte' ? 'P-' : '';
+  const digits = (v?: string | null) => (v ?? '').replace(/\D/g, '');
+  // Phone lines: skip phone2/whatsapp repeats; a whatsapp matching a shown
+  // number flags that line as WhatsApp instead of printing it twice.
+  const phoneLines = (g: LedgerGuardian) => {
+    const byDigit = new Map<string, { value: string; whatsapp: boolean }>();
+    for (const [value, whatsapp] of [[g.phone, false], [g.phone2, false], [g.whatsapp, true]] as const) {
+      const d = digits(value);
+      if (!d) continue;
+      const hit = byDigit.get(d);
+      if (hit) hit.whatsapp ||= whatsapp;
+      else byDigit.set(d, { value: value as string, whatsapp });
+    }
+    return [...byDigit.values()];
+  };
+  return (
+    <div className="px-3 pb-3 space-y-3 min-w-0">
+      {guardians.map((g, i) => (
+        <div key={i} className="min-w-0">
+          <div className="text-[9px] font-semibold uppercase tracking-wide text-[#8B909A]">
+            {g.relationships.map(r => RELATIONSHIP_LABEL[r] ?? 'Representante').join(' · ')}
+          </div>
+          <div className="text-[12px] font-medium text-[#1F2937] leading-tight" title={`${g.firstName} ${g.lastName}`}>
+            {g.firstName} {g.lastName}
+          </div>
+          {g.document && <div className="text-[10px] text-[#6B7280] tabular-nums">{docPrefix(g)}{g.document}</div>}
+          {phoneLines(g).map((p, j) => (
+            <div key={j} className="flex items-center gap-1 text-[10px] text-[#4B5563] min-w-0">
+              {p.whatsapp
+                ? <Smartphone size={10} className="shrink-0 text-[#9CA3AF]" />
+                : <Phone size={10} className="shrink-0 text-[#9CA3AF]" />}
+              <span className="truncate">{p.value}{p.whatsapp ? ' · WhatsApp' : ''}</span>
+            </div>
+          ))}
+          {g.email && (
+            <div className="flex items-center gap-1 text-[10px] text-[#4B5563] min-w-0">
+              <Mail size={10} className="shrink-0 text-[#9CA3AF]" /><span className="truncate" title={g.email}>{g.email}</span>
+            </div>
+          )}
+          {g.alsoRepresents?.length > 0 && (
+            <div className="mt-1.5 border-t border-[#E4E6EB] pt-1.5 min-w-0">
+              <div className="flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wide text-[#9CA3AF]">
+                <Users size={10} className="shrink-0" /> También representa a
+              </div>
+              {g.alsoRepresents.map(s => (
+                <div key={s.personId} className="text-[10px] text-[#4B5563] leading-snug truncate" title={`${s.name}${s.where ? ` — ${s.where}` : ''}`}>
+                  {s.name}{s.where ? <span className="text-[#9CA3AF]"> — {s.where}</span> : ''}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
@@ -1512,6 +1582,7 @@ export default function PaymentLedger() {
       document: r.document,
       rosterNumber: null,
       entryMonth: null,
+      guardians: [],
       gradeName: r.gradeName,
       sectionName: 'Sin sección',
       months: {},
@@ -1804,8 +1875,11 @@ export default function PaymentLedger() {
                       {isOpen && openMonth && (
                         <div className="flex">
                           <div style={{ width: NAME_COL }}
-                            className="sticky left-0 z-10 bg-[#FAFBFC] border-r-2 border-[#B9BEC7] border-b-2 border-b-[#B9BEC7] flex items-start justify-end pt-2.5 pr-2">
-                            <ChevronDown size={13} className="text-[#2F5EA8]" />
+                            className="sticky left-0 z-10 bg-[#FAFBFC] border-r-2 border-[#B9BEC7] border-b-2 border-b-[#B9BEC7] flex flex-col pt-2.5 min-w-0">
+                            <div className="flex justify-end pr-2 shrink-0">
+                              <ChevronDown size={13} className="text-[#2F5EA8]" />
+                            </div>
+                            <GuardianPanel guardians={student.guardians ?? []} />
                           </div>
                           <div style={{ width: tableWidth - NAME_COL }}>
                             {openMonth === OTHER ? (

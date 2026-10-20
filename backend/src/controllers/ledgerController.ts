@@ -4,7 +4,7 @@ import { Op, Transaction, UniqueConstraintError } from 'sequelize';
 import {
   Inscription, Person, Grade, Section, SchoolPeriod,
   Payment, PaymentAllocation, PaymentAuditLog, Charge, ChargeDelivery, Fee, SellableItem, ExchangeRate, ExchangeRateType,
-  InscriptionDiscount, DiscountReason,
+  InscriptionDiscount, DiscountReason, StudentGuardian, GuardianProfile,
 } from '@/models/index';
 import { DISCOUNT_KINDS, DISCOUNT_SCOPES } from '@/models/InscriptionDiscount';
 import { appliesAtPar, buildDedupeKey, normalizePaymentFields } from '@/services/paymentRulesService';
@@ -17,6 +17,7 @@ import {
   clearPapersHoldIfSettled, inscriptionDebtSummary, loadDebtBuckets, makeRateResolver,
   orderBuckets, paymentBucketMonth, paymentDebtPeriodId, paymentInCurrency, paymentToVES,
 } from '@/services/debtBalanceService';
+import { isFakeGuardian } from '@/utils/fakeGuardian';
 
 // ── Ledger: list students by section with their charges & payments ──
 
@@ -101,6 +102,102 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
     }
 
     const inscriptionIds = inscriptions.map((i: any) => i.id);
+
+    // Guardians of the listed students (with contact data) plus the other
+    // students each guardian represents — rendered in the expanded row.
+    const personIds = inscriptions.map((i: any) => i.student?.id).filter(Boolean);
+    // Placeholder profiles ("PLACEHOLDER CAPTAIN") mean "no real representative":
+    // dropped here so they never render — and never pull their hundreds of
+    // linked students into the "also represents" list.
+    const guardianRows = (personIds.length
+      ? await StudentGuardian.findAll({
+          where: { studentId: { [Op.in]: personIds } },
+          include: [{ model: GuardianProfile, as: 'profile' }],
+          order: [['id', 'ASC']],
+        })
+      : []).filter((g: any) => !isFakeGuardian(g.profile));
+    const profileIds = [...new Set(guardianRows.map((g: any) => g.guardianId))];
+    // Every student linked to those guardians — the per-student "alsoRepresents"
+    // only excludes the student themselves, so siblings in this same section
+    // still show up on each other's card.
+    const assignments = profileIds.length
+      ? await StudentGuardian.findAll({
+          where: { guardianId: { [Op.in]: profileIds } },
+          include: [{ model: Person, as: 'student', attributes: ['id', 'firstName', 'lastName'] }],
+        })
+      : [];
+    // The year/section label of each other represented student: the viewed
+    // period when they are enrolled there, their latest inscription otherwise.
+    const otherIds = [...new Set(assignments.map((a: any) => a.studentId))];
+    const otherInscriptions = otherIds.length
+      ? await Inscription.findAll({
+          where: { personId: { [Op.in]: otherIds } },
+          include: [
+            { model: Grade, as: 'grade', attributes: ['name'] },
+            { model: Section, as: 'section', attributes: ['name'] },
+            { model: SchoolPeriod, as: 'period', attributes: ['id', 'period', 'startYear'] },
+          ],
+        })
+      : [];
+    const viewedPeriodId = Number(schoolPeriodId);
+    const otherInscByPerson = new Map<number, any>();
+    for (const oi of otherInscriptions as any[]) {
+      const cur = otherInscByPerson.get(oi.personId);
+      if (!cur || oi.schoolPeriodId === viewedPeriodId
+        || (cur.schoolPeriodId !== viewedPeriodId && oi.schoolPeriodId > cur.schoolPeriodId)) {
+        otherInscByPerson.set(oi.personId, oi);
+      }
+    }
+    // Display label ("Surname, Name — Grade Section") for every linked student.
+    const labelByStudent = new Map<number, any>();
+    for (const a of assignments as any[]) {
+      if (labelByStudent.has(a.studentId)) continue;
+      const ins = otherInscByPerson.get(a.studentId);
+      const where = ins
+        ? `${ins.grade?.name ?? ''}${ins.section?.name ? ` ${ins.section.name}` : ''}`
+          + (ins.schoolPeriodId !== viewedPeriodId ? ` (${ins.period?.period ?? `${ins.period?.startYear}-${(ins.period?.startYear ?? 0) + 1}`})` : '')
+        : '';
+      labelByStudent.set(a.studentId, {
+        personId: a.studentId,
+        name: `${a.student?.lastName ?? ''}, ${a.student?.firstName ?? ''}`.replace(/^, |, $/g, ''),
+        where,
+      });
+    }
+    // One card per guardian profile: a tutor can hold several relationships
+    // with the same student (e.g. father + representative) — merge them.
+    const guardiansByPerson = new Map<number, any[]>();
+    const guardianEntryByKey = new Map<string, any>();
+    for (const g of guardianRows as any[]) {
+      const p = g.profile;
+      if (!p) continue;
+      const key = `${g.studentId}:${g.guardianId}`;
+      let entry = guardianEntryByKey.get(key);
+      if (!entry) {
+        entry = {
+          relationships: [] as string[],
+          isRepresentative: false,
+          firstName: p.firstName,
+          lastName: p.lastName,
+          document: p.document ?? null,
+          documentType: p.documentType ?? null,
+          phone: p.phone ?? null,
+          phone2: p.phone2 ?? null,
+          whatsapp: p.whatsapp ?? null,
+          email: p.email ?? null,
+          alsoRepresents: [...new Set(
+            (assignments as any[])
+              .filter(a => a.guardianId === g.guardianId && a.studentId !== g.studentId)
+              .map(a => a.studentId),
+          )].map(id => labelByStudent.get(id)).filter(Boolean),
+        };
+        guardianEntryByKey.set(key, entry);
+        const list = guardiansByPerson.get(g.studentId) ?? [];
+        list.push(entry);
+        guardiansByPerson.set(g.studentId, list);
+      }
+      if (!entry.relationships.includes(g.relationship)) entry.relationships.push(g.relationship);
+      entry.isRepresentative ||= g.isRepresentative;
+    }
 
     // Get all charges for these inscriptions
     const charges = await Charge.findAll({
@@ -373,6 +470,7 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
         document: person?.document,
         rosterNumber: insc.rosterNumber ?? null,
         entryMonth: insc.entryMonth ?? null,
+        guardians: guardiansByPerson.get(person?.id) ?? [],
         gradeName: (insc.grade as any)?.name,
         sectionName: (insc.section as any)?.name,
         months: viewedGroup.months,
