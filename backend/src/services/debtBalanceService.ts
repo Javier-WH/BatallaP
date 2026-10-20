@@ -152,13 +152,15 @@ export async function loadNetCharges(inscriptionId: number, transaction?: Transa
   const periods = await SchoolPeriod.findAll({ where: { id: { [Op.in]: periodIds } }, transaction });
   const periodById = new Map(periods.map(p => [p.id, p]));
 
+  const inscription = await Inscription.findByPk(inscriptionId, { attributes: ['schoolPeriodId'], transaction });
   const discountOf = new Map<number, number>();
   for (const pid of periodIds) {
     const group = charges.filter(c => c.schoolPeriodId === pid);
     const { charges: annotated } = applyDiscountsToCharges(
-      group.map(c => ({ id: c.id, type: c.type, month: c.month ?? null, amount: Number(c.amount) })),
+      group.map(c => ({ id: c.id, type: c.type, month: c.month ?? null, amount: Number(c.amount), currency: c.currency, schoolPeriodId: c.schoolPeriodId })),
       rules,
       periodById.get(pid) ?? {},
+      { poolPeriodId: inscription?.schoolPeriodId },
     );
     for (const a of annotated) discountOf.set(a.id, a.discountAmount);
   }

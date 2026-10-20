@@ -426,6 +426,45 @@ export async function searchWithdrawnStudents(q: string): Promise<WithdrawnStude
   return data;
 }
 
+/** One row of the "Resumen de movimientos" sheet. */
+export interface PaymentReportRow {
+  id: number;
+  paymentDate: string;
+  createdAt: string;
+  student: string;
+  document: string | null;
+  gradeName: string | null;
+  sectionName: string | null;
+  method: string;
+  amount: number;
+  currency: string;
+  amountVES: number | null;
+  exchangeRate: number | null;
+  equivalent: number | null;
+  equivalentCurrency: string | null;
+  atPar: boolean;
+  reference: string | null;
+  bank: string | null;
+  account: string | null;
+  notes: string | null;
+  registeredById: number | null;
+  registeredBy: string | null;
+  allocations: { amount: number; currency: string | null; description: string | null; month: string | null }[];
+}
+
+export interface PaymentsReport {
+  rows: PaymentReportRow[];
+  registrants: { id: number; name: string }[];
+  /** True when the row cap was hit — narrow the date range. */
+  truncated: boolean;
+  limit: number;
+}
+
+export async function getPaymentsReport(params: { from?: string; to?: string; schoolPeriodId?: number }): Promise<PaymentsReport> {
+  const { data } = await api.get<PaymentsReport>('/ledger/payments/report', { params });
+  return data;
+}
+
 export interface PaymentPayload {
   inscriptionId: number;
   schoolPeriodId: number;

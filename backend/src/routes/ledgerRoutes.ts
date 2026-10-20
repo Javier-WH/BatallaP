@@ -8,6 +8,7 @@ import {
   deletePayment,
   movePayment,
   listPaymentAudit,
+  getPaymentsReport,
   deleteCharge,
   getSectionsForPeriod,
   searchWithdrawnStudents,
@@ -69,6 +70,9 @@ router.post('/payments/:id/move', movePayment);
 
 // GET corrections (deleted / moved payments) of a student
 router.get('/payments/audit', listPaymentAudit);
+
+// GET flat list of registered payments (movements summary sheet)
+router.get('/payments/report', getPaymentsReport);
 
 // DELETE a charge
 router.delete('/charges/:id', deleteCharge);

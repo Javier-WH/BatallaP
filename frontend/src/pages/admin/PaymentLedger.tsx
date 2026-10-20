@@ -5,9 +5,10 @@ import {
   ChevronDown, Search, Banknote, Smartphone, Landmark, CreditCard, Hash,
   Plus, X, DollarSign, TrendingUp, AlertTriangle,
   ArrowDownAZ, ArrowUpAZ, ArrowUpDown, MoreHorizontal, CalendarClock, BadgePercent,
-  ArrowRightLeft, Trash2, UserX, Check, PackageCheck, Phone, Mail, Users,
+  ArrowRightLeft, Trash2, UserX, Check, PackageCheck, Phone, Mail, Users, FileText,
 } from 'lucide-react';
 import { ItemGlyph } from './itemIcons';
+import PaymentsReportModal from './components/PaymentsReportModal';
 import PaymentCorrectionModal, { type CorrectionMode } from './components/PaymentCorrectionModal';
 import { useSchool } from '@/context/SchoolContext';
 import {
@@ -1346,6 +1347,7 @@ export default function PaymentLedger() {
   const [flash, setFlash] = useState<string | null>(null);
   // Withdrawn-debt flow: search modal + the picked student injected into AddChargeModal.
   const [withdrawnModal, setWithdrawnModal] = useState(false);
+  const [reportModal, setReportModal] = useState(false);
   const [extraChargeStudent, setExtraChargeStudent] = useState<LedgerStudent | null>(null);
 
   // Load sections when period changes
@@ -1657,6 +1659,13 @@ export default function PaymentLedger() {
                 title="Registrar una deuda a un estudiante retirado (incluidas deudas históricas)"
                 className="flex items-center gap-1.5 text-xs font-semibold text-[#2F5EA8] hover:text-[#1E4478]">
                 <UserX size={14} /> Deuda a retirado…
+              </button>
+            </div>
+            <div className="flex items-center px-3 py-2 border-l border-[#E4E6EB]">
+              <button type="button" onClick={() => setReportModal(true)}
+                title="Resumen de todos los pagos registrados: filtrar por fecha o usuario, totales e impresión"
+                className="flex items-center gap-1.5 text-xs font-semibold text-[#2F5EA8] hover:text-[#1E4478]">
+                <FileText size={14} /> Resumen de movimientos
               </button>
             </div>
             {selectedSection && (
@@ -2010,6 +2019,8 @@ export default function PaymentLedger() {
           onSubmit={handleAddCharge}
         />
       )}
+
+      {reportModal && <PaymentsReportModal onClose={() => setReportModal(false)} />}
 
       {withdrawnModal && (
         <WithdrawnDebtModal

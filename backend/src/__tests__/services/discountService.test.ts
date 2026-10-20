@@ -70,6 +70,56 @@ describe('discountForCharge', () => {
   });
 });
 
+describe("'Solo inscripción' covers the whole enrollment package", () => {
+  const pkg = () => [
+    { id: 1, type: 'mensualidad', month: null, amount: 55, currency: 'EUR', schoolPeriodId: 1 },
+    { id: 2, type: 'matricula', month: null, amount: 55, currency: 'EUR', schoolPeriodId: 1 },
+    { id: 3, type: 'gastos_administrativos', month: null, amount: 55, currency: 'EUR', schoolPeriodId: 1 },
+    { id: 4, type: 'mensualidad', month: 'Oct', amount: 55, currency: 'USD', schoolPeriodId: 1 },
+    { id: 5, type: 'item', month: null, amount: 20, currency: 'USD', schoolPeriodId: 1 },
+  ];
+  const byId = (res: ReturnType<typeof applyDiscountsToCharges>) => Object.fromEntries(res.charges.map(c => [c.id, c.discountAmount]));
+
+  it('a fixed amount is one total spread matrícula → gastos → entry mensualidad', () => {
+    const res = applyDiscountsToCharges(pkg(), [rule({ kind: 'fixed', value: 70, appliesTo: 'matricula' })], window);
+    expect(byId(res)).toEqual({ 1: 0, 2: 55, 3: 15, 4: 0, 5: 0 });
+    expect(res.totalDiscount).toBe(70);
+  });
+
+  it('a fixed amount larger than the package is capped at the package total', () => {
+    const res = applyDiscountsToCharges(pkg(), [rule({ kind: 'fixed', value: 500, appliesTo: 'matricula' })], window);
+    expect(res.totalDiscount).toBe(165);
+    expect(byId(res)[4]).toBe(0);
+  });
+
+  it('a percent applies to every package charge, not to monthly installments or items', () => {
+    const res = applyDiscountsToCharges(pkg(), [rule({ value: 10, appliesTo: 'matricula' })], window);
+    expect(byId(res)).toEqual({ 1: 5.5, 2: 5.5, 3: 5.5, 4: 0, 5: 0 });
+  });
+
+  it('only pools charges of the inscription period and of the first charge currency', () => {
+    const charges = [
+      ...pkg(),
+      { id: 6, type: 'matricula', month: null, amount: 55, currency: 'EUR', schoolPeriodId: 0 },
+      { id: 7, type: 'gastos_administrativos', month: null, amount: 30, currency: 'USD', schoolPeriodId: 1 },
+    ];
+    const res = applyDiscountsToCharges(charges, [rule({ kind: 'fixed', value: 200, appliesTo: 'matricula' })], window, { poolPeriodId: 1 });
+    const d = byId(res);
+    expect(d[6]).toBe(0); // other period untouched
+    expect(d[7]).toBe(0); // other currency untouched
+    expect(d[2] + d[3] + d[1]).toBe(165);
+  });
+
+  it('fills only the room left by other rules', () => {
+    const res = applyDiscountsToCharges(pkg(), [
+      rule({ id: 1, value: 100, appliesTo: 'matricula' }),
+      rule({ id: 2, kind: 'fixed', value: 60, appliesTo: 'matricula' }),
+    ], window);
+    // percent 100 already wipes every package charge — the pool finds no room
+    expect(res.totalDiscount).toBe(165);
+  });
+});
+
 describe('applyDiscountsToCharges', () => {
   it('annotates each charge with its discount and returns totals', () => {
     const charges = [monthly('Oct', 100), monthly('Nov', 100), enrollment(200)];

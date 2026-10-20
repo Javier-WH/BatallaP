@@ -10,7 +10,7 @@ import { MONTH_NAMES } from '@/utils/billingMonths';
 const SCOPE_LABEL: Record<string, string> = {
   todo: 'Mensualidad, inscripción y gastos',
   mensualidad: 'Solo mensualidades',
-  matricula: 'Solo inscripción',
+  matricula: 'Solo inscripción (matrícula, gastos y mensualidad incluida)',
 };
 
 const describeValue = (d: LedgerDiscount) =>

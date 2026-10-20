@@ -296,7 +296,8 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
       const { charges: discountedCharges } = applyDiscountsToCharges(
         studentCharges.map((c: any) => ({ ...c.toJSON(), amount: Number(c.amount) })),
         rules,
-        period ?? {}
+        period ?? {},
+        { poolPeriodId: insc.schoolPeriodId }
       );
 
       type Bucket = {
@@ -1294,6 +1295,100 @@ export const listPaymentAudit = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[listPaymentAudit] Error:', error);
     return res.status(500).json({ message: 'Error al obtener la auditoría de pagos' });
+  }
+};
+
+// ── Payments report (movements summary) ──
+
+const REPORT_ROW_LIMIT = 5000;
+
+/**
+ * Flat list of registered payments for the "Resumen de movimientos" sheet.
+ * Filters: `from`/`to` (YYYY-MM-DD, inclusive, on the payment date) and an
+ * optional `schoolPeriodId`. Filtering/sorting by user happens client-side on
+ * the returned rows (`registrants` feeds that dropdown).
+ */
+export const getPaymentsReport = async (req: Request, res: Response) => {
+  try {
+    const { from, to, schoolPeriodId } = req.query as Record<string, string | undefined>;
+    const isDay = (v?: string) => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
+    if ((from && !isDay(from)) || (to && !isDay(to))) {
+      return res.status(400).json({ message: 'Las fechas deben tener formato AAAA-MM-DD' });
+    }
+
+    const where: any = {};
+    if (from || to) {
+      where.paymentDate = {
+        ...(from ? { [Op.gte]: new Date(`${from}T00:00:00.000Z`) } : {}),
+        ...(to ? { [Op.lte]: new Date(`${to}T23:59:59.999Z`) } : {}),
+      };
+    }
+    if (schoolPeriodId) where.schoolPeriodId = Number(schoolPeriodId);
+
+    const payments = await Payment.findAll({
+      where,
+      include: [
+        { model: Person, as: 'registeredBy', attributes: ['id', 'firstName', 'lastName'] },
+        {
+          model: Inscription, as: 'inscription',
+          include: [
+            { model: Person, as: 'student', attributes: ['id', 'firstName', 'lastName', 'documentType', 'document'] },
+            { model: Grade, as: 'grade', attributes: ['id', 'name'] },
+            { model: Section, as: 'section', attributes: ['id', 'name'] },
+          ],
+        },
+        {
+          model: PaymentAllocation, as: 'allocations',
+          include: [{ model: Charge, as: 'charge', attributes: ['id', 'type', 'month', 'currency', 'description'] }],
+        },
+      ],
+      order: [['paymentDate', 'DESC'], ['id', 'DESC']],
+      limit: REPORT_ROW_LIMIT + 1,
+    });
+
+    const truncated = payments.length > REPORT_ROW_LIMIT;
+    const rows = payments.slice(0, REPORT_ROW_LIMIT).map((p: any) => {
+      const insc = p.inscription;
+      const student = insc?.student;
+      return {
+        id: p.id,
+        paymentDate: p.paymentDate,
+        createdAt: p.createdAt,
+        student: student ? `${student.lastName}, ${student.firstName}` : '—',
+        document: student?.document ?? null,
+        gradeName: insc?.grade?.name ?? null,
+        sectionName: insc?.section?.name ?? null,
+        method: p.method,
+        amount: Number(p.amount),
+        currency: p.currency,
+        amountVES: p.amountVES != null ? Number(p.amountVES) : null,
+        exchangeRate: p.exchangeRate != null ? Number(p.exchangeRate) : null,
+        equivalent: p.equivalent != null ? Number(p.equivalent) : null,
+        equivalentCurrency: p.equivalentCurrency ?? null,
+        atPar: !!p.atPar,
+        reference: p.reference,
+        bank: p.bank,
+        account: p.account,
+        notes: p.notes,
+        registeredById: p.registeredBy?.id ?? null,
+        registeredBy: p.registeredBy ? `${p.registeredBy.firstName} ${p.registeredBy.lastName}` : null,
+        allocations: (p.allocations ?? []).map((a: any) => ({
+          amount: Number(a.amount),
+          currency: a.charge?.currency ?? null,
+          description: a.charge?.description ?? a.charge?.type ?? null,
+          month: a.charge?.month ?? null,
+        })),
+      };
+    });
+
+    const registrants = [...new Map(
+      rows.filter(r => r.registeredById != null).map(r => [r.registeredById, { id: r.registeredById, name: r.registeredBy }]),
+    ).values()].sort((a, b) => String(a.name).localeCompare(String(b.name), 'es'));
+
+    return res.json({ rows, registrants, truncated, limit: REPORT_ROW_LIMIT });
+  } catch (error) {
+    console.error('[getPaymentsReport] Error:', error);
+    return res.status(500).json({ message: 'Error al generar el resumen de movimientos' });
   }
 };
 

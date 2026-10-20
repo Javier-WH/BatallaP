@@ -159,6 +159,30 @@ describe('Ledger reads netted amounts', () => {
     expect(nm.totalCharged).toBe(110);
     expect(nm.totalPaid).toBe(0);
   });
+
+  it("a fixed 'Solo inscripción' discount of 70 covers a 55 matrícula and spills into the next package charge", async () => {
+    const { agent } = await login();
+    const { insc, reason, period, grade, section } = await setup();
+    const mk = (type: string, description: string) => Charge.create({
+      inscriptionId: insc.id, schoolPeriodId: period.id, type, month: null, description, amount: 55, currency: 'EUR',
+    } as any);
+    const matricula = await mk('matricula', 'Matrícula');
+    const gastos = await mk('gastos_administrativos', 'Gastos Administrativos');
+    await monthlyCharge(insc.id, period.id, 'Oct', 55);
+    await InscriptionDiscount.create({
+      inscriptionId: insc.id, reasonId: reason.id, kind: 'fixed', value: 70, appliesTo: 'matricula',
+    } as any);
+
+    const res = await agent.get(`/api/ledger/${period.id}/${grade.id}/${section.id}`).expect(200);
+    const st = res.body.students.find((s: any) => s.inscriptionId === insc.id);
+    expect(st.enrollment.grossCharged).toBe(110);
+    expect(st.enrollment.totalDiscount).toBe(70);
+    expect(st.enrollment.totalCharged).toBe(40);
+    expect(st.months.Oct.totalDiscount).toBe(0); // monthly installments are outside the package
+    const net = (id: number) => st.enrollment.charges.find((c: any) => c.id === id);
+    expect(net(matricula.id).discountAmount).toBe(55);
+    expect(net(gastos.id).discountAmount).toBe(15);
+  });
 });
 
 describe('Payments without a month (enrollment and other one-time debts)', () => {
