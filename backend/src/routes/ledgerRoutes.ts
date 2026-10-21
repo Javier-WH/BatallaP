@@ -13,6 +13,8 @@ import {
   getSectionsForPeriod,
   searchWithdrawnStudents,
   updateEntryMonth,
+  getInscriptionPlan,
+  setInscriptionPlan,
   getInscriptionDebt,
   releasePapers,
   listInscriptionDiscounts,
@@ -49,6 +51,8 @@ router.delete('/discounts/:id', deleteInscriptionDiscount);
 
 // PUT change the entry month of an inscription (generates the debts it now owes)
 router.put('/inscriptions/:id/entry-month', updateEntryMonth);
+router.get('/inscriptions/:id/enrollment-plan', getInscriptionPlan);
+router.put('/inscriptions/:id/enrollment-plan', setInscriptionPlan);
 
 // GET ledger data for a grade+section in a period
 router.get('/:schoolPeriodId/:gradeId/:sectionId', getLedgerBySection);

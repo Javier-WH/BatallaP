@@ -490,7 +490,7 @@ export const applyChargeSync = async (req: Request, res: Response) => {
       return res.status(400).json({ message: target.error });
     }
     const plan = await planPeriodChargeSync(target.id!, t);
-    const result = await applyChargeSyncPlan(plan, t);
+    const result = await applyChargeSyncPlan(plan, t, { retireObsolete: req.body?.retireObsolete === true });
     await t.commit();
     return res.json({ schoolPeriodId: target.id, ...result, warnings: plan.warnings });
   } catch (error) {
@@ -740,7 +740,7 @@ export const getEnrollmentPlan = async (req: Request, res: Response) => {
 
 export const createEnrollmentPlan = async (req: Request, res: Response) => {
   try {
-    const { name, description, schoolPeriodId, targetExchangeRateTypeId, conversionMode, active, items, effectiveMonth } = req.body;
+    const { name, description, schoolPeriodId, targetExchangeRateTypeId, conversionMode, active, items, effectiveMonth, autoApply } = req.body;
     if (!name || !targetExchangeRateTypeId || !schoolPeriodId) {
       return res.status(400).json({ message: 'name, schoolPeriodId y targetExchangeRateTypeId son requeridos' });
     }
@@ -756,6 +756,7 @@ export const createEnrollmentPlan = async (req: Request, res: Response) => {
           targetExchangeRateTypeId: Number(targetExchangeRateTypeId),
           conversionMode: conversionMode ?? 'exchange_rate',
           active: active !== false,
+          autoApply: autoApply !== false,
           effectiveMonth: eff.month!,
         },
         { transaction: t }
@@ -786,7 +787,7 @@ export const createEnrollmentPlan = async (req: Request, res: Response) => {
 export const updateEnrollmentPlan = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, description, schoolPeriodId, targetExchangeRateTypeId, conversionMode, active, items, effectiveMonth } = req.body;
+    const { name, description, schoolPeriodId, targetExchangeRateTypeId, conversionMode, active, items, effectiveMonth, autoApply } = req.body;
     const plan = await EnrollmentPlan.findByPk(Number(id));
     if (!plan) return res.status(404).json({ message: 'Plan no encontrado' });
     const eff = await resolveEffectiveMonth(Number(schoolPeriodId ?? plan.schoolPeriodId), effectiveMonth ?? plan.effectiveMonth);
@@ -801,6 +802,7 @@ export const updateEnrollmentPlan = async (req: Request, res: Response) => {
         targetExchangeRateTypeId: targetExchangeRateTypeId ?? plan.targetExchangeRateTypeId,
         conversionMode: conversionMode ?? plan.conversionMode,
         active: active ?? plan.active,
+        autoApply: autoApply ?? plan.autoApply,
         effectiveMonth: eff.month!,
       }, { transaction: t });
 

@@ -4,14 +4,15 @@ import { Op, Transaction, UniqueConstraintError } from 'sequelize';
 import {
   Inscription, Person, Grade, Section, SchoolPeriod,
   Payment, PaymentAllocation, PaymentAuditLog, Charge, ChargeDelivery, Fee, SellableItem, ExchangeRate, ExchangeRateType,
-  InscriptionDiscount, DiscountReason, StudentGuardian, GuardianProfile,
+  InscriptionDiscount, DiscountReason, StudentGuardian, GuardianProfile, EnrollmentPlan, EnrollmentPlanItem,
 } from '@/models/index';
 import { DISCOUNT_KINDS, DISCOUNT_SCOPES } from '@/models/InscriptionDiscount';
 import { appliesAtPar, buildDedupeKey, normalizePaymentFields } from '@/services/paymentRulesService';
-import { distributePayment, checkTargetOrder, AllocationPart, AllocationTarget } from '@/services/paymentAllocationService';
+import { distributePayment, checkTargetOrder, pendingByCharge, AllocationPart, AllocationTarget } from '@/services/paymentAllocationService';
 import { applyDiscountsToCharges, DiscountRule } from '@/services/discountService';
-import { getBillingMonths, monthCodeFromDate } from '@/services/billingCalendarService';
-import { pickEffective } from '@/services/feeResolverService';
+import { getBillingMonths, monthCodeFromDate, resolveEntryMonth } from '@/services/billingCalendarService';
+import { pickEffective, resolveEnrollmentPlan } from '@/services/feeResolverService';
+import { planPeriodChargeSync, applyChargeSyncPlan, summarizeChargeSyncPlan } from '@/services/chargeSyncService';
 import { generateChargesForInscription } from '@/services/chargeScheduleService';
 import {
   clearPapersHoldIfSettled, inscriptionDebtSummary, loadDebtBuckets, makeRateResolver,
@@ -575,6 +576,87 @@ export const updateEntryMonth = async (req: Request, res: Response) => {
   }
 };
 
+// ── Enrollment plan chosen for one student ──
+
+/**
+ * GET /inscriptions/:id/enrollment-plan — the plans a student can take (the plan in force plus the
+ * optional ones of the period), which one they have, and what each includes.
+ */
+export const getInscriptionPlan = async (req: Request, res: Response) => {
+  try {
+    const inscription = await Inscription.findByPk(Number(req.params.id));
+    if (!inscription) return res.status(404).json({ message: 'Inscripción no encontrada' });
+    const period = await SchoolPeriod.findByPk(inscription.schoolPeriodId);
+    const inForce = period ? await resolveEnrollmentPlan(period.id, resolveEntryMonth(period, inscription.entryMonth)) : null;
+    const plans = await EnrollmentPlan.findAll({
+      where: { schoolPeriodId: inscription.schoolPeriodId, active: true },
+      include: [{ model: EnrollmentPlanItem, as: 'items', include: [{ model: Fee, as: 'fee' }, { model: SellableItem, as: 'sellableItem' }] }],
+      order: [['id', 'ASC']],
+    });
+    const assignedId = inscription.enrollmentPlanId && plans.some(p => p.id === inscription.enrollmentPlanId) ? inscription.enrollmentPlanId : null;
+    return res.json({
+      assignedPlanId: assignedId,
+      inForcePlanId: inForce?.id ?? null,
+      currentPlanId: assignedId ?? inForce?.id ?? null,
+      plans: plans.filter(p => !p.autoApply || p.id === inForce?.id || p.id === assignedId).map((p: any) => ({
+        id: p.id, name: p.name, description: p.description, autoApply: p.autoApply, inForce: p.id === inForce?.id,
+        items: (p.items ?? []).map((i: any) => ({
+          name: i.itemType === 'fee' ? i.fee?.name : i.sellableItem?.name, type: i.itemType, quantity: i.quantity,
+        })),
+      })),
+    });
+  } catch (error) {
+    console.error('[getInscriptionPlan] Error:', error);
+    return res.status(500).json({ message: 'Error al obtener el plan de inscripción' });
+  }
+};
+
+/**
+ * PUT /inscriptions/:id/enrollment-plan  body { enrollmentPlanId: number | null, retireObsolete?, dryRun? }
+ * Assigns the plan the student takes (null = the plan in force) and reconciles THEIR package debts:
+ * missing ones are created, changed ones updated, and — unless `retireObsolete === false` — the ones
+ * the new plan no longer includes are retired when they have no payments or deliveries. `dryRun`
+ * only reports what would change.
+ */
+export const setInscriptionPlan = async (req: Request, res: Response) => {
+  const t = await sequelize.transaction();
+  try {
+    const inscription = await Inscription.findByPk(Number(req.params.id), { transaction: t });
+    if (!inscription) {
+      await t.rollback();
+      return res.status(404).json({ message: 'Inscripción no encontrada' });
+    }
+    const planId = req.body?.enrollmentPlanId == null ? null : Number(req.body.enrollmentPlanId);
+    if (planId !== null) {
+      const plan = await EnrollmentPlan.findByPk(planId, { transaction: t });
+      if (!plan || !plan.active || plan.schoolPeriodId !== inscription.schoolPeriodId) {
+        await t.rollback();
+        return res.status(400).json({ message: 'El plan no existe o no pertenece al período del estudiante' });
+      }
+    }
+    await inscription.update({ enrollmentPlanId: planId }, { transaction: t });
+    const plan = await planPeriodChargeSync(inscription.schoolPeriodId, t, { inscriptionId: inscription.id });
+    const retireObsolete = req.body?.retireObsolete !== false;
+    const summary = summarizeChargeSyncPlan(plan);
+    const detail = {
+      create: plan.create.map(c => ({ description: c.entry.description, amount: c.entry.amount, currency: c.entry.currency })),
+      retire: plan.retire.map(r => ({ description: r.description, amount: r.amount, currency: r.currency })),
+      keptWithPayments: plan.keptObsolete,
+    };
+    if (req.body?.dryRun === true) {
+      await t.rollback();
+      return res.json({ dryRun: true, ...summary, ...detail });
+    }
+    const result = await applyChargeSyncPlan(plan, t, { retireObsolete });
+    await t.commit();
+    return res.json({ dryRun: false, enrollmentPlanId: planId, ...result, ...detail, retire: retireObsolete ? detail.retire : [] });
+  } catch (error) {
+    await t.rollback();
+    console.error('[setInscriptionPlan] Error:', error);
+    return res.status(500).json({ message: 'Error al cambiar el plan de inscripción' });
+  }
+};
+
 // ── Discounts / scholarships of an inscription ──
 
 const discountView = (d: any) => ({
@@ -779,9 +861,13 @@ export const createPayment = async (req: Request, res: Response) => {
       scope,
     });
     if (scope === 'item') {
+      // A chosen item is settled first; without one the payment spreads over every pending item.
       const itemCharge = chargeId ? await Charge.findByPk(Number(chargeId)) : null;
-      if (!itemCharge || itemCharge.inscriptionId !== Number(inscriptionId) || itemCharge.type !== 'item') {
-        return res.status(400).json({ message: 'Seleccione un item vendible pendiente del estudiante' });
+      if (chargeId && (!itemCharge || itemCharge.inscriptionId !== Number(inscriptionId) || itemCharge.type !== 'item')) {
+        return res.status(400).json({ message: 'El item seleccionado no es una deuda de item vendible del estudiante' });
+      }
+      if (!chargeId && !(await hasPendingItemCharge(Number(inscriptionId)))) {
+        return res.status(400).json({ message: 'El estudiante no tiene items vendibles pendientes' });
       }
     }
     const order = await checkTargetOrder(Number(inscriptionId), target);
@@ -976,6 +1062,12 @@ async function applyDistribution(payment: Payment, parts: AllocationPart[], tran
   }, { transaction });
 }
 
+/** Whether the inscription still owes at least one sellable-item charge. */
+async function hasPendingItemCharge(inscriptionId: number): Promise<boolean> {
+  const rows = await pendingByCharge(inscriptionId);
+  return rows.some(r => r.charge.type === 'item' && r.remaining > 0.005);
+}
+
 /** The debts a payment targets: a sellable item, academic debts only, an explicit
  * charge, a month's bucket, month-less debts, or every debt (auto). */
 function paymentTargetFor(args: {
@@ -1127,6 +1219,17 @@ export const bulkCreateCharges = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Algún período de la deuda no existe' });
     }
 
+    // Bolívar valuation of foreign-currency debts at today's rate (same rule as createCharge).
+    const vesRate = new Map<string, number | null>();
+    for (const cur of new Set(charges.filter(c => c.currency !== 'VES' && c.amountVES == null).map(c => String(c.currency)))) {
+      const rateType = await ExchangeRateType.findOne({ where: { currency: cur }, transaction: t });
+      const rate = rateType ? await ExchangeRate.findOne({
+        where: { exchangeRateTypeId: rateType.id, date: { [Op.lte]: new Date().toISOString().slice(0, 10) } },
+        order: [['date', 'DESC']], transaction: t,
+      }) : null;
+      vesRate.set(cur, rate ? Number(rate.rate) : null);
+    }
+
     const created = await Charge.bulkCreate(charges.map(c => ({
       inscriptionId: Number(c.inscriptionId),
       schoolPeriodId: Number(c.schoolPeriodId),
@@ -1137,7 +1240,7 @@ export const bulkCreateCharges = async (req: Request, res: Response) => {
       description: c.description,
       amount: Number(c.amount),
       currency: c.currency,
-      amountVES: c.amountVES ?? null,
+      amountVES: c.amountVES ?? (vesRate.get(String(c.currency)) != null ? Number(c.amount) * vesRate.get(String(c.currency))! : null),
       quantity: Math.max(1, Math.round(Number(c.quantity ?? 1)) || 1),
       dueDate: c.dueDate ? new Date(c.dueDate) : null,
       active: true,
@@ -1199,10 +1302,10 @@ export const deletePayment = async (req: Request, res: Response) => {
 };
 
 /**
- * POST /payments/:id/move  body { toInscriptionId, reason } — a payment charged to the wrong
- * student goes to the right one. The payment keeps its id, date, registrar and operation data;
- * it is re-allocated to the destination's oldest outstanding debt. Both students must belong
- * to the same school period.
+ * POST /payments/:id/move  body { toInscriptionId?, scope?, chargeId?, reason } — corrects where a
+ * payment went: to another student (same school period), to another destination (`scope`:
+ * 'auto' | 'tuition' | 'item', optionally a specific item `chargeId`), or both. The payment keeps
+ * its id, date, registrar and operation data; its allocations are rebuilt against the new target.
  */
 export const movePayment = async (req: Request, res: Response) => {
   const t = await sequelize.transaction();
@@ -1215,15 +1318,21 @@ export const movePayment = async (req: Request, res: Response) => {
     const reason = correctionReason(req.body?.reason);
     if (!reason) {
       await t.rollback();
-      return res.status(400).json({ message: 'Indique el motivo del cambio de estudiante' });
+      return res.status(400).json({ message: 'Indique el motivo de la corrección' });
     }
-    const toInscriptionId = Number(req.body?.toInscriptionId);
-    const target = toInscriptionId ? await Inscription.findByPk(toInscriptionId, { transaction: t }) : null;
+    const scope = req.body?.scope as string | undefined;
+    if (scope !== undefined && !['auto', 'tuition', 'item'].includes(scope)) {
+      await t.rollback();
+      return res.status(400).json({ message: 'Destino de pago inválido' });
+    }
+    const toInscriptionId = Number(req.body?.toInscriptionId) || payment.inscriptionId;
+    const target = await Inscription.findByPk(toInscriptionId, { transaction: t });
     if (!target) {
       await t.rollback();
       return res.status(400).json({ message: 'Seleccione el estudiante destino' });
     }
-    if (target.id === payment.inscriptionId) {
+    const sameStudent = target.id === payment.inscriptionId;
+    if (sameStudent && !scope) {
       await t.rollback();
       return res.status(400).json({ message: 'El pago ya pertenece a ese estudiante' });
     }
@@ -1231,16 +1340,30 @@ export const movePayment = async (req: Request, res: Response) => {
       await t.rollback();
       return res.status(400).json({ message: 'El estudiante destino debe ser del mismo período escolar' });
     }
+    const chargeId = scope === 'item' && req.body?.chargeId ? Number(req.body.chargeId) : null;
+    if (chargeId) {
+      const itemCharge = await Charge.findByPk(chargeId, { transaction: t });
+      if (!itemCharge || itemCharge.inscriptionId !== target.id || itemCharge.type !== 'item') {
+        await t.rollback();
+        return res.status(400).json({ message: 'El item seleccionado no es una deuda de item vendible del estudiante' });
+      }
+    }
 
     const fromInscriptionId = payment.inscriptionId;
     const snapshot = JSON.stringify(payment.toJSON());
 
-    // The old allocations belonged to the previous student's debts: clear them and distribute again.
+    // The old allocations belonged to the previous student's / destination's debts: clear them and distribute again.
     await payment.update({ inscriptionId: target.id, chargeId: null, month: null, debtPeriodId: null, equivalent: null, equivalentCurrency: null, atPar: false }, { transaction: t });
     await PaymentAllocation.destroy({ where: { paymentId: payment.id }, transaction: t });
-    const parts = await distributePayment(payment, { kind: 'auto' }, { transaction: t });
+    const allocTarget: AllocationTarget = scope === 'item' ? { kind: 'item', chargeId: chargeId ?? undefined }
+      : scope === 'tuition' ? { kind: 'tuition' } : { kind: 'auto' };
+    const parts = await distributePayment(payment, allocTarget, { transaction: t });
     if (parts.length) {
       await applyDistribution(payment, parts, t);
+    } else if (scope === 'item' || scope === 'tuition') {
+      throw Object.assign(new Error(scope === 'item'
+        ? 'El estudiante no tiene items vendibles pendientes'
+        : 'El estudiante no tiene inscripción ni mensualidades pendientes'), { status: 400 });
     } else {
       const alloc = await allocatePayment({
         inscriptionId: target.id,
@@ -1266,19 +1389,19 @@ export const movePayment = async (req: Request, res: Response) => {
       fromInscriptionId,
       toInscriptionId: target.id,
       performedByPersonId: (req.session as any)?.user?.personId ?? null,
-      reason,
+      reason: scope ? `[${scope === 'item' ? 'Destino: items vendibles' : scope === 'tuition' ? 'Destino: inscripción y mensualidades' : 'Destino: automático'}] ${reason}`.slice(0, 500) : reason,
       snapshot,
     }, { transaction: t });
     await t.commit();
 
     await clearPapersHoldIfSettled(target.id);
-    await clearPapersHoldIfSettled(fromInscriptionId);
+    if (!sameStudent) await clearPapersHoldIfSettled(fromInscriptionId);
     return res.json(payment);
   } catch (error: any) {
     await t.rollback();
     if (error?.status === 400) return res.status(400).json({ message: error.message });
     console.error('[movePayment] Error:', error);
-    return res.status(500).json({ message: 'Error al cambiar el pago de estudiante' });
+    return res.status(500).json({ message: 'Error al corregir el pago' });
   }
 };
 

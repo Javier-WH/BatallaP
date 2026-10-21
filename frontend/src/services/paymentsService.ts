@@ -69,6 +69,8 @@ export interface EnrollmentPlan {
   conversionMode: 'exchange_rate' | 'same_amount';
   active: boolean;
   effectiveMonth: string;
+  /** false = optional plan, only used when assigned to a student. */
+  autoApply?: boolean;
   targetExchangeRateType?: ExchangeRateType;
   schoolPeriod?: { id: number; period: string; name?: string };
   items?: EnrollmentPlanItem[];
@@ -202,6 +204,8 @@ export interface ChargeSyncSummary {
   schoolPeriodId: number;
   generate: { inscriptions: number; charges: number; amountByCurrency: Record<string, number> };
   sync: { charges: number; skippedPaid: number; deltaByCurrency: Record<string, number> };
+  /** Plan debts the plan in force no longer includes. */
+  retire: { charges: number; keptWithPayments: number; amountByCurrency: Record<string, number> };
   excludedMateriaPendiente: number;
   warnings: Array<{ message: string; count: number }>;
 }
@@ -211,8 +215,52 @@ export async function previewChargeSync(schoolPeriodId?: number): Promise<Charge
   return data;
 }
 
-export async function applyChargeSync(schoolPeriodId?: number): Promise<{ created: number; reactivated: number; updated: number; skippedPaid: number }> {
-  const { data } = await api.post('/payments/charges/apply', { schoolPeriodId });
+export async function applyChargeSync(
+  schoolPeriodId?: number,
+  options: { retireObsolete?: boolean } = {},
+): Promise<{ created: number; reactivated: number; updated: number; retired: number; skippedPaid: number }> {
+  const { data } = await api.post('/payments/charges/apply', { schoolPeriodId, ...options });
+  return data;
+}
+
+// ── Enrollment plan of one student ──
+
+export interface InscriptionPlanOption {
+  id: number;
+  name: string;
+  description: string | null;
+  autoApply: boolean;
+  inForce: boolean;
+  items: { name?: string; type: 'fee' | 'sellable_item'; quantity: number }[];
+}
+
+export interface InscriptionPlanInfo {
+  assignedPlanId: number | null;
+  inForcePlanId: number | null;
+  currentPlanId: number | null;
+  plans: InscriptionPlanOption[];
+}
+
+export interface InscriptionPlanChange {
+  dryRun: boolean;
+  create: { description: string | null; amount: number; currency: string }[];
+  retire: { description: string | null; amount: number; currency: string }[];
+  keptWithPayments: number;
+  created?: number;
+  retired?: number;
+}
+
+export async function getInscriptionPlan(inscriptionId: number): Promise<InscriptionPlanInfo> {
+  const { data } = await api.get<InscriptionPlanInfo>(`/ledger/inscriptions/${inscriptionId}/enrollment-plan`);
+  return data;
+}
+
+/** Assigns the plan a student takes (null = plan in force) and reconciles their package debts. */
+export async function setInscriptionPlan(
+  inscriptionId: number,
+  payload: { enrollmentPlanId: number | null; retireObsolete?: boolean; dryRun?: boolean },
+): Promise<InscriptionPlanChange> {
+  const { data } = await api.put<InscriptionPlanChange>(`/ledger/inscriptions/${inscriptionId}/enrollment-plan`, payload);
   return data;
 }
 
@@ -635,9 +683,18 @@ export async function deletePayment(id: number, reason: string): Promise<void> {
   await api.delete(`/ledger/payments/${id}`, { data: { reason } });
 }
 
-/** Moves a payment charged to the wrong student to the right one (same school period). */
-export async function movePayment(id: number, toInscriptionId: number, reason: string): Promise<any> {
-  const { data } = await api.post(`/ledger/payments/${id}/move`, { toInscriptionId, reason });
+export type PaymentDestination = 'auto' | 'tuition' | 'item';
+
+/**
+ * Corrects a payment: moves it to another student (same school period), to another destination
+ * (`scope`: automatic order, inscription and monthly fees, or sellable items), or both.
+ */
+export async function movePayment(
+  id: number,
+  target: { toInscriptionId?: number; scope?: PaymentDestination; chargeId?: number },
+  reason: string,
+): Promise<any> {
+  const { data } = await api.post(`/ledger/payments/${id}/move`, { ...target, reason });
   return data;
 }
 

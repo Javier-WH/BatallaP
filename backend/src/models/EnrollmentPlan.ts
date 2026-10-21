@@ -14,10 +14,11 @@ interface EnrollmentPlanAttributes {
   conversionMode: ConversionMode;   // how to compute the total
   active: boolean;
   effectiveMonth: string; // month code from which this plan version applies
+  autoApply: boolean;     // false = optional plan: never the default, only used when assigned to a student
 }
 
 interface EnrollmentPlanCreationAttributes
-  extends Optional<EnrollmentPlanAttributes, 'id' | 'description' | 'active' | 'conversionMode' | 'effectiveMonth'> {}
+  extends Optional<EnrollmentPlanAttributes, 'id' | 'description' | 'active' | 'conversionMode' | 'effectiveMonth' | 'autoApply'> {}
 
 class EnrollmentPlan extends Model<EnrollmentPlanAttributes, EnrollmentPlanCreationAttributes>
   implements EnrollmentPlanAttributes {
@@ -29,6 +30,7 @@ class EnrollmentPlan extends Model<EnrollmentPlanAttributes, EnrollmentPlanCreat
   public conversionMode!: ConversionMode;
   public active!: boolean;
   public effectiveMonth!: string;
+  public autoApply!: boolean;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -74,6 +76,11 @@ EnrollmentPlan.init(
       type: DataTypes.STRING(3),
       allowNull: false,
       defaultValue: 'Sep',
+    },
+    autoApply: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
     },
   },
   {

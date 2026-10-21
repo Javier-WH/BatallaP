@@ -5,15 +5,17 @@ import {
   ChevronDown, Search, Banknote, Smartphone, Landmark, CreditCard, Hash,
   Plus, X, DollarSign, TrendingUp, AlertTriangle,
   ArrowDownAZ, ArrowUpAZ, ArrowUpDown, MoreHorizontal, CalendarClock, BadgePercent,
-  ArrowRightLeft, Trash2, UserX, Check, PackageCheck, Phone, Mail, Users, FileText,
+  ArrowRightLeft, Shirt, Trash2, UserX, Check, PackageCheck, Phone, Mail, Users, FileText,
 } from 'lucide-react';
 import { ItemGlyph } from './itemIcons';
 import PaymentsReportModal from './components/PaymentsReportModal';
+import DmyDateInput from './components/DmyDateInput';
+import InscriptionPlanModal from './components/InscriptionPlanModal';
 import PaymentCorrectionModal, { type CorrectionMode } from './components/PaymentCorrectionModal';
 import { useSchool } from '@/context/SchoolContext';
 import {
   getLedgerSections, getLedgerBySection, searchWithdrawnStudents,
-  createPayment, createCharge, updateEntryMonth, listSellableItems,
+  createPayment, createCharge, bulkCreateCharges, updateEntryMonth, listSellableItems,
   deliverItemUnits, undoItemDelivery,
   type LedgerStudent, type LedgerSection, type SellableItem, type LedgerPriorPeriod, type LedgerBucket, type LedgerGuardian,
   type DuplicatePaymentInfo, type WithdrawnStudentResult,
@@ -39,6 +41,17 @@ const OTHER = '__other';
 function useDragScroll<T extends HTMLElement>() {
   const ref = useRef<T>(null);
   const [dragging, setDragging] = useState(false);
+  // Visible width of the scroll area (the detail panels are pinned inside it).
+  const [viewWidth, setViewWidth] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => setViewWidth(el.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const onMouseDown = useCallback((e: React.MouseEvent<T>) => {
     const el = ref.current;
     if (!el || e.button !== 0 || el.scrollWidth <= el.clientWidth) return;
@@ -65,7 +78,7 @@ function useDragScroll<T extends HTMLElement>() {
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
   }, []);
-  return { ref, onMouseDown, dragging };
+  return { ref, onMouseDown, dragging, viewWidth };
 }
 
 const NAME_COL = 468;
@@ -158,17 +171,17 @@ function MonthCell({ paid, charged, month, months, onClick, isOpen, forceStatus,
 function TransactionRow({ txn, index, onCorrect }: { txn: any; index: number; onCorrect?: (mode: CorrectionMode) => void }) {
   const Icon = METHOD_ICON[txn.method] || Hash;
   return (
-    <div className={`group flex items-stretch text-sm ${index % 2 === 1 ? 'bg-[#F4F5F8]' : 'bg-white'}`}>
+    <div className={`group flex flex-wrap items-stretch text-sm ${index % 2 === 1 ? 'bg-[#F4F5F8]' : 'bg-white'}`}>
       <div className="w-9 shrink-0 border-r border-[#E4E6EB] flex items-center justify-center py-2">
         <Icon size={13} className="text-[#5B6472]" />
       </div>
       <div className="w-24 shrink-0 border-r border-[#E4E6EB] flex items-center px-2.5 text-[#6B7280] tabular-nums text-xs py-2">
-        {txn.paymentDate ? new Date(txn.paymentDate).toLocaleDateString('es-VE') : '—'}
+        {txn.paymentDate ? new Date(txn.paymentDate).toLocaleDateString('en-GB') : '—'}
       </div>
-      <div className="w-32 shrink-0 border-r border-[#E4E6EB] flex items-center px-2.5 py-2 text-xs">
+      <div className="flex-1 @[800px]:flex-none min-w-0 @[800px]:w-32 @[800px]:shrink-0 border-r border-[#E4E6EB] flex items-center px-2.5 py-2 text-xs">
         {METHODS.find(m => m.value === txn.method)?.label ?? txn.method}
       </div>
-      <div className="w-36 shrink-0 border-r border-[#E4E6EB] flex flex-col justify-center px-2.5 py-2 tabular-nums font-medium text-[#0F7A45]">
+      <div className="order-5 @[800px]:order-none flex-1 basis-40 min-w-0 @[800px]:flex-none @[800px]:w-36 @[800px]:shrink-0 border-r border-[#E4E6EB] flex flex-col justify-center px-2.5 py-2 tabular-nums font-medium text-[#0F7A45]">
         {Number(txn.amount).toFixed(2)} {txn.currency}
         {txn.currency === 'VES' && txn.amountVES != null && (
           <span className="text-[10px] font-normal text-[#9CA3AF] tabular-nums">
@@ -195,26 +208,31 @@ function TransactionRow({ txn, index, onCorrect }: { txn: any; index: number; on
           </span>
         )}
       </div>
-      <div className="w-44 shrink-0 border-r border-[#E4E6EB] flex flex-col justify-center px-2.5 text-xs text-[#6B7280] py-2 min-w-0">
+      <div className={`order-7 @[800px]:order-none w-full @[800px]:w-44 shrink-0 border-r border-[#E4E6EB] ${txn.reference || txn.bank || txn.account ? 'flex' : 'hidden @[800px]:flex'} flex-col justify-center px-2.5 text-xs text-[#6B7280] py-2 min-w-0`}>
         <span className="font-mono truncate">{txn.reference || '—'}</span>
         {(txn.bank || txn.account) && <span className="text-[10px] truncate" title={txn.bank || txn.account}>{txn.bank || txn.account}</span>}
       </div>
-      <div className="w-44 shrink-0 border-r border-[#E4E6EB] flex items-center px-2.5 text-xs text-[#4B5563] py-2 min-w-0">
+      <div className="order-6 @[800px]:order-none w-36 @[800px]:w-44 shrink-0 border-r border-[#E4E6EB] flex items-center px-2.5 text-xs text-[#4B5563] py-2 min-w-0">
         <span className="truncate" title={txn.registeredBy ? 'Pago registrado por este administrador' : 'Sin registro de quién lo cargó'}>
           {txn.registeredBy ? `${txn.registeredBy.firstName} ${txn.registeredBy.lastName}` : '—'}
         </span>
       </div>
-      <div className="flex-1 flex items-center px-2.5 text-xs font-mono text-[#B7BBC3] py-2">#{txn.id}</div>
+      <div className="order-4 @[800px]:order-none @[800px]:flex-1 shrink-0 flex items-center justify-end @[800px]:justify-start gap-1 px-2.5 text-xs font-mono text-[#B7BBC3] py-2">
+      <span className="mr-auto">#{txn.id}</span>
       {onCorrect && (
-        <div className="flex items-center gap-1 pr-2 opacity-60 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
           <button onClick={() => onCorrect('move')} className="p-1 text-[#2F5EA8] hover:bg-[#DCE5F7]" title="Cambiar de estudiante (se cargó al estudiante equivocado)">
             <ArrowRightLeft size={14} />
+          </button>
+          <button onClick={() => onCorrect('destination')} className="p-1 text-[#8A5A00] hover:bg-[#F8EBCF]" title="Cambiar destino (p. ej. de mensualidades a uniformes)">
+            <Shirt size={14} />
           </button>
           <button onClick={() => onCorrect('delete')} className="p-1 text-[#C0453A] hover:bg-[#FBE3E0]" title="Eliminar pago">
             <Trash2 size={14} />
           </button>
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -359,16 +377,16 @@ function MonthDetail({ month, data, monthlyFee, onAddPayment, onCorrectPayment, 
             const pending = Math.max(net - paid, 0);
             return (
             <div key={c.id} className="px-3 py-1.5 text-xs border-b border-[#F0F1F4] last:border-b-0">
-              <div className="flex items-center gap-3">
-                <span className="flex-1 truncate">{c.description}</span>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                <span className="flex-1 basis-48 min-w-0 break-words">{c.description}</span>
                 <span className="tabular-nums text-[#6B7280]">
                   {c.discountAmount > 0 ? `${Number(c.amount).toFixed(2)} −${Number(c.discountAmount).toFixed(2)} = ` : ''}
                   <b className="font-semibold text-[#14181F]">{net.toFixed(2)} {c.currency}</b>
                 </span>
-                <span className="tabular-nums text-[#0F7A45] w-28 text-right">
+                <span className="tabular-nums text-[#0F7A45] min-w-24 text-right">
                   {paid > 0.005 ? `Pagado ${paid.toFixed(2)}` : ''}
                 </span>
-                <span className="tabular-nums text-[#8A5A00] w-28 text-right">
+                <span className="tabular-nums text-[#8A5A00] min-w-24 text-right">
                   {pending > 0.005 ? `Falta ${pending.toFixed(2)}` : ''}
                 </span>
               </div>
@@ -380,7 +398,7 @@ function MonthDetail({ month, data, monthlyFee, onAddPayment, onCorrectPayment, 
       ) : null}
       {data?.payments?.length ? (
         <div>
-          <div className="flex items-stretch text-[10px] font-semibold text-[#8B909A] uppercase tracking-wide bg-[#EDEEF1] border-b border-[#DBDEE4]">
+          <div className="hidden @[800px]:flex items-stretch text-[10px] font-semibold text-[#8B909A] uppercase tracking-wide bg-[#EDEEF1] border-b border-[#DBDEE4]">
             <div className="w-9 shrink-0 border-r border-[#DBDEE4] py-1.5" />
             <div className="w-24 shrink-0 border-r border-[#DBDEE4] px-2.5 py-1.5">Fecha</div>
             <div className="w-32 shrink-0 border-r border-[#DBDEE4] px-2.5 py-1.5">Método</div>
@@ -619,7 +637,7 @@ function ChargeDeliveries({ charge, onChanged }: { charge: any; onChanged: () =>
             {d.quantity} und. entregada{d.quantity > 1 ? 's' : ''}
             {d.size ? ` · talla ${d.size}` : ''}
             {d.deliveredBy ? ` por ${d.deliveredBy.firstName} ${d.deliveredBy.lastName}` : ''}
-            {' · '}{new Date(d.createdAt).toLocaleDateString('es-VE')}
+            {' · '}{new Date(d.createdAt).toLocaleDateString('en-GB')}
             {d.note ? ` · ${d.note}` : ''}
           </span>
           <button
@@ -728,16 +746,16 @@ function PriorPeriodDetail({ group, onAddPayment, onCorrectPayment, onChanged }:
                 const pending = Math.max(net - paid, 0);
                 return (
                 <div key={c.id} className="px-3 py-1 text-xs border-b border-[#F0F1F4] last:border-b-0">
-                  <div className="flex items-center gap-3">
-                    <span className="flex-1 truncate">{c.description}</span>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                    <span className="flex-1 basis-48 min-w-0 break-words">{c.description}</span>
                     <span className="tabular-nums text-[#6B7280]">
                       {c.discountAmount > 0 ? `${Number(c.amount).toFixed(2)} −${Number(c.discountAmount).toFixed(2)} = ` : ''}
                       <b className="font-semibold text-[#14181F]">{net.toFixed(2)} {c.currency}</b>
                     </span>
-                    <span className="tabular-nums text-[#0F7A45] w-28 text-right">
+                    <span className="tabular-nums text-[#0F7A45] min-w-24 text-right">
                       {paid > 0.005 ? `Pagado ${paid.toFixed(2)}` : ''}
                     </span>
-                    <span className="tabular-nums text-[#8A5A00] w-28 text-right">
+                    <span className="tabular-nums text-[#8A5A00] min-w-24 text-right">
                       {pending > 0.005 ? `Falta ${pending.toFixed(2)}` : ''}
                     </span>
                   </div>
@@ -870,7 +888,7 @@ function WithdrawnDebtModal({ onPick, onClose }: {
                   </div>
                 </div>
                 <span className="text-[10px] font-semibold uppercase tracking-wide text-[#B42318] shrink-0">
-                  Retirado{r.withdrawnAt ? ` ${new Date(r.withdrawnAt).toLocaleDateString('es-VE')}` : ''}
+                  Retirado{r.withdrawnAt ? ` ${new Date(r.withdrawnAt).toLocaleDateString('en-GB')}` : ''}
                 </span>
               </button>
             ))}
@@ -982,7 +1000,7 @@ function AddPaymentModal({ students, months, prefill, monthlyFee, usdAtPar, onCl
 
   const referenceOk = !def.referenceLast4 || /^\d{4}$/.test(form.reference);
   const complete = !!form.studentId && Number(form.amount) > 0 && !!form.paymentDate
-    && (form.scope !== 'item' || !!form.chargeId)
+    && (form.scope !== 'item' || pendingItems.length > 0)
     && (!def.bank || !!form.bank) && (!def.account || !!form.account.trim())
     && referenceOk && (!def.notesRequired || !!form.notes.trim());
 
@@ -1020,13 +1038,13 @@ function AddPaymentModal({ students, months, prefill, monthlyFee, usdAtPar, onCl
             <span className="text-[11px] text-[#8B909A]">
               {form.scope === 'auto' && 'Deudas anteriores primero, luego inscripción, items y mensualidades en orden.'}
               {form.scope === 'tuition' && 'Solo inscripción y mensualidades, en orden. Ignora items vendibles.'}
-              {form.scope === 'item' && 'Compra directa: va al item elegido aunque haya otras deudas pendientes.'}
+              {form.scope === 'item' && 'Compra directa: va al item elegido (o se reparte entre los items pendientes) aunque haya otras deudas pendientes.'}
             </span>
           </Field>
           {form.scope === 'item' && (
             <Field label="Item" className="col-span-2">
-              <select value={form.chargeId} onChange={set('chargeId')} required className={inputCls}>
-                <option value="" disabled>Seleccionar…</option>
+              <select value={form.chargeId} onChange={set('chargeId')} className={inputCls}>
+                <option value="">Automático (repartir entre todos los items pendientes)</option>
                 {pendingItems.map(i => (
                   <option key={i.id} value={i.id}>{i.description} — pendiente {i.remaining.toFixed(2)} {i.currency}</option>
                 ))}
@@ -1049,7 +1067,7 @@ function AddPaymentModal({ students, months, prefill, monthlyFee, usdAtPar, onCl
             </select>
           </Field>
           <Field label="Fecha del pago">
-            <input type="date" value={form.paymentDate} max={todayStr} onChange={set('paymentDate')} required className={inputCls} />
+            <DmyDateInput value={form.paymentDate} max={todayStr} onChange={v => setForm(f => ({ ...f, paymentDate: v }))} />
           </Field>
           <Field label={`Monto (${form.currency})`} className="col-span-2">
             <input type="number" step="0.01" min="0" value={form.amount} onChange={set('amount')} required
@@ -1130,12 +1148,12 @@ function AddChargeModal({ students, months, periods, currentPeriodId, feeByMonth
     periodId: currentPeriodId,
     month: (prefill as any).month || (months.includes(CURRENT_MONTH) ? CURRENT_MONTH : months[0]),
     type: 'mensualidad',
-    sellableItemId: '',
-    quantity: '1',
     description: 'Mensualidad',
     amount: String((feeByMonth[(prefill as any).month || CURRENT_MONTH] ?? monthlyFee)?.amount ?? ''),
     currency: (feeByMonth[(prefill as any).month || CURRENT_MONTH] ?? monthlyFee)?.currency || 'USD',
   });
+  // Sellable-item debts: one line per item (e.g. 1 shirt, 1 pants, 2 badges).
+  const [lines, setLines] = useState<{ sellableItemId: string; quantity: string }[]>([{ sellableItemId: '', quantity: '1' }]);
   const selectedPeriod = periods.find(p => p.id === Number(form.periodId));
   const isCurrentPeriod = Number(form.periodId) === currentPeriodId;
   // Months follow the billing calendar of the chosen debt period
@@ -1160,7 +1178,6 @@ function AddChargeModal({ students, months, periods, currentPeriodId, feeByMonth
       setForm(f => ({
         ...f,
         type: value,
-        sellableItemId: '',
         description: descMap[value] ?? '',
         // Only monthly fees belong to a month; everything else is a one-time debt
         month: value === 'mensualidad' ? (f.month || (periodMonths.includes(CURRENT_MONTH) ? CURRENT_MONTH : periodMonths[0])) : '',
@@ -1170,32 +1187,38 @@ function AddChargeModal({ students, months, periods, currentPeriodId, feeByMonth
     }
   };
 
-  const pickItem = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const item = sellableItems.find(i => i.id === Number(e.target.value));
-    setForm(f => ({
-      ...f,
-      sellableItemId: e.target.value,
-      ...(item ? {
-        description: item.name,
-        amount: String(Math.round(item.amount * (Number(f.quantity) || 1) * 100) / 100),
-        currency: item.exchangeRateType?.currency ?? f.currency,
-      } : {}),
-    }));
-  };
-
-  const changeQuantity = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const quantity = e.target.value;
-    const item = sellableItems.find(i => i.id === Number(form.sellableItemId));
-    setForm(f => ({
-      ...f,
-      quantity,
-      ...(item ? { amount: String(Math.round(item.amount * (Number(quantity) || 1) * 100) / 100) } : {}),
-    }));
-  };
+  const setLine = (i: number, patch: Partial<{ sellableItemId: string; quantity: string }>) =>
+    setLines(ls => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
+  const itemOf = (id: string) => sellableItems.find(i => i.id === Number(id));
+  const lineCost = (l: { sellableItemId: string; quantity: string }) =>
+    Math.round((itemOf(l.sellableItemId)?.amount ?? 0) * Math.max(1, Math.round(Number(l.quantity) || 1)) * 100) / 100;
+  const filledLines = lines.filter(l => itemOf(l.sellableItemId));
+  const itemTotals = filledLines.reduce<Record<string, number>>((acc, l) => {
+    const cur = itemOf(l.sellableItemId)?.exchangeRateType?.currency ?? '';
+    acc[cur] = Math.round(((acc[cur] ?? 0) + lineCost(l)) * 100) / 100;
+    return acc;
+  }, {});
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.studentId || !form.amount || !form.description) return;
+    if (!form.studentId) return;
+    if (form.type === 'item') {
+      if (filledLines.length === 0) return;
+      onSubmit({
+        ...form,
+        itemLines: filledLines.map(l => {
+          const item = itemOf(l.sellableItemId)!;
+          const quantity = Math.max(1, Math.round(Number(l.quantity) || 1));
+          return {
+            sellableItemId: item.id, description: item.name, quantity,
+            amount: Math.round(item.amount * quantity * 100) / 100,
+            currency: item.exchangeRateType?.currency ?? form.currency,
+          };
+        }),
+      });
+      return;
+    }
+    if (!form.amount || !form.description) return;
     onSubmit(form);
   };
 
@@ -1235,35 +1258,60 @@ function AddChargeModal({ students, months, periods, currentPeriodId, feeByMonth
               {periodMonths.map(m => <option key={m} value={m}>{MONTH_FULL[m]}</option>)}
             </select>
           </Field>
-          {form.type === 'item' && (
-            <Field label="Item vendible" className="col-span-2">
-              <select value={form.sellableItemId} onChange={pickItem} required className={inputCls}>
-                <option value="" disabled>Seleccionar…</option>
-                {sellableItems.map(i => (
-                  <option key={i.id} value={i.id}>{i.name} — {Number(i.amount).toFixed(2)} {i.exchangeRateType?.currency ?? ''}</option>
-                ))}
-              </select>
-            </Field>
+          {form.type === 'item' ? (
+            <div className="col-span-2 space-y-2">
+              <div className="text-xs font-semibold text-[#6B7280]">Items vendibles</div>
+              {lines.map((l, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <select value={l.sellableItemId} onChange={e => setLine(i, { sellableItemId: e.target.value })} required className={`${inputCls} flex-1 min-w-0`}>
+                    <option value="" disabled>Seleccionar…</option>
+                    {sellableItems.map(it => (
+                      <option key={it.id} value={it.id}>{it.name} — {Number(it.amount).toFixed(2)} {it.exchangeRateType?.currency ?? ''}</option>
+                    ))}
+                  </select>
+                  <div className="flex items-stretch shrink-0" title="Cantidad">
+                    <button type="button" tabIndex={-1} onClick={() => setLine(i, { quantity: String(Math.max(1, (Math.round(Number(l.quantity)) || 1) - 1)) })}
+                      className="w-7 border border-r-0 border-[#C5CAD2] text-[#14181F] hover:bg-[#F4F5F8] font-bold">−</button>
+                    <input type="number" min={1} step={1} value={l.quantity} onChange={e => setLine(i, { quantity: e.target.value })}
+                      required className={`${inputCls} !w-12 !px-1 text-center tabular-nums`} />
+                    <button type="button" tabIndex={-1} onClick={() => setLine(i, { quantity: String((Math.round(Number(l.quantity)) || 0) + 1) })}
+                      className="w-7 border border-l-0 border-[#C5CAD2] text-[#14181F] hover:bg-[#F4F5F8] font-bold">+</button>
+                  </div>
+                  <button type="button" disabled={lines.length === 1} title="Quitar item"
+                    onClick={() => setLines(ls => ls.filter((_, j) => j !== i))}
+                    className="p-1 text-[#C0453A] hover:bg-[#FBE3E0] disabled:opacity-30 disabled:hover:bg-transparent">
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+              <button type="button" onClick={() => setLines(ls => [...ls, { sellableItemId: '', quantity: '1' }])}
+                className="text-xs font-semibold text-[#2F5EA8] hover:underline">
+                + Agregar otro item
+              </button>
+              {filledLines.length > 0 && (
+                <div className="text-xs bg-[#F4F5F8] border border-[#E4E6EB] px-3 py-2">
+                  {filledLines.length} deuda(s) · Total: <b>{Object.entries(itemTotals).map(([c, v]) => `${v.toFixed(2)} ${c}`).join(' + ')}</b>
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              <Field label="Descripción" className="col-span-2">
+                <input type="text" value={form.description} onChange={set('description')} required className={inputCls} />
+              </Field>
+              <Field label={`Monto (${form.currency})`}>
+                <input type="number" step="0.01" min="0" value={form.amount} onChange={set('amount')} required
+                  placeholder="0.00" className={inputCls} />
+              </Field>
+              <Field label="Moneda">
+                <select value={form.currency} onChange={set('currency')} className={inputCls}>
+                  <option value="USD">USD</option>
+                  <option value="EUR">EUR</option>
+                  <option value="VES">VES (Bolívares)</option>
+                </select>
+              </Field>
+            </>
           )}
-          {form.type === 'item' && (
-            <Field label="Cantidad">
-              <input type="number" min={1} step={1} value={form.quantity} onChange={changeQuantity} required className={inputCls} />
-            </Field>
-          )}
-          <Field label="Descripción" className="col-span-2">
-            <input type="text" value={form.description} onChange={set('description')} required className={inputCls} />
-          </Field>
-          <Field label={`Monto (${form.currency})`}>
-            <input type="number" step="0.01" min="0" value={form.amount} onChange={set('amount')} required
-              placeholder="0.00" className={inputCls} />
-          </Field>
-          <Field label="Moneda">
-            <select value={form.currency} onChange={set('currency')} className={inputCls}>
-              <option value="USD">USD</option>
-              <option value="EUR">EUR</option>
-              <option value="VES">VES (Bolívares)</option>
-            </select>
-          </Field>
           <div className="col-span-2 flex items-center justify-end gap-2 pt-2 border-t border-[#E4E6EB] mt-1">
             <button type="button" onClick={onClose} className="text-sm font-semibold px-3 py-1.5 border border-[#C5CAD2] hover:bg-[#F4F5F8]">
               Cancelar
@@ -1357,6 +1405,7 @@ export default function PaymentLedger() {
   const [paymentModal, setPaymentModal] = useState<{ studentId?: number; month?: string } | null>(null);
   const [chargeModal, setChargeModal] = useState<{ studentId?: number; month?: string } | null>(null);
   const [entryModal, setEntryModal] = useState<LedgerStudent | null>(null);
+  const [planModal, setPlanModal] = useState<LedgerStudent | null>(null);
   const [discountStudentId, setDiscountStudentId] = useState<number | null>(null);
   const [sellableItems, setSellableItems] = useState<SellableItem[]>([]);
   const [flash, setFlash] = useState<string | null>(null);
@@ -1432,7 +1481,7 @@ export default function PaymentLedger() {
         schoolPeriodId,
         // Debts always settle in order; the scope just narrows the universe.
         scope: form.scope === 'auto' ? undefined : form.scope,
-        chargeId: form.scope === 'item' ? Number(form.chargeId) : undefined,
+        chargeId: form.scope === 'item' && form.chargeId ? Number(form.chargeId) : undefined,
         amount: parseFloat(form.amount),
         currency: form.currency,
         amountVES: form.currency === 'VES' ? parseFloat(form.amount) : null,
@@ -1474,8 +1523,8 @@ export default function PaymentLedger() {
               <ul className="list-disc pl-5">
                 <li>Estudiante: <b>{d.studentName}</b></li>
                 <li>Monto: <b>{Number(d.amount).toFixed(2)} {d.currency}</b>{d.reference ? ` · ref. ${d.reference}` : ''}</li>
-                <li>Fecha del pago: {new Date(d.paymentDate).toLocaleDateString('es-VE')}</li>
-                <li>Registrado por: <b>{d.registeredBy ?? 'sin registro'}</b> el {new Date(d.createdAt).toLocaleString('es-VE')}</li>
+                <li>Fecha del pago: {new Date(d.paymentDate).toLocaleDateString('en-GB')}</li>
+                <li>Registrado por: <b>{d.registeredBy ?? 'sin registro'}</b> el {new Date(d.createdAt).toLocaleString('en-GB')}</li>
               </ul>
               <p>Si es el mismo pago, cancele. Registre solo si es una operación distinta.</p>
             </div>
@@ -1533,12 +1582,14 @@ export default function PaymentLedger() {
       { key: 'charge', icon: <AlertTriangle size={14} />, label: 'Agregar deuda…' },
       { key: 'payment', icon: <DollarSign size={14} />, label: 'Registrar pago…' },
       { key: 'discount', icon: <BadgePercent size={14} />, label: 'Descuentos y becas…' },
+      { key: 'plan', icon: <Shirt size={14} />, label: 'Plan de inscripción…' },
       { key: 'entry', icon: <CalendarClock size={14} />, label: `Mes de ingreso (${MONTH_FULL[student.entryMonth ?? months[0]] ?? '—'})…` },
     ],
     onClick: ({ key }) => {
       if (key === 'charge') setChargeModal({ studentId: student.inscriptionId });
       else if (key === 'payment') setPaymentModal({ studentId: student.inscriptionId });
       else if (key === 'discount') setDiscountStudentId(student.inscriptionId);
+      else if (key === 'plan') setPlanModal(student);
       else if (key === 'entry') setEntryModal(student);
     },
   });
@@ -1546,20 +1597,27 @@ export default function PaymentLedger() {
   const handleAddCharge = async (form: any) => {
     if (!schoolPeriodId) return;
     try {
-      await createCharge({
+      const base = {
         inscriptionId: Number(form.studentId),
         schoolPeriodId: Number(form.periodId) || schoolPeriodId,
-        sellableItemId: form.sellableItemId ? Number(form.sellableItemId) : null,
-        type: form.type,
         month: form.month || null,
-        description: form.description,
-        amount: parseFloat(form.amount),
-        currency: form.currency,
-        quantity: form.type === 'item' ? Math.max(1, Math.round(Number(form.quantity) || 1)) : undefined,
-      });
+      };
+      if (form.type === 'item' && Array.isArray(form.itemLines)) {
+        // One debt per item line, created together.
+        await bulkCreateCharges(form.itemLines.map((l: any) => ({ ...base, type: 'item', ...l })));
+        setFlash(`${form.itemLines.length} deuda(s) de items registrada(s) · ${MONTH_FULL[form.month] || 'no mensual'}`);
+      } else {
+        await createCharge({
+          ...base,
+          type: form.type,
+          description: form.description,
+          amount: parseFloat(form.amount),
+          currency: form.currency,
+        });
+        setFlash(`Deuda de ${form.amount} ${form.currency} registrada · ${MONTH_FULL[form.month] || 'no mensual'}`);
+      }
       setChargeModal(null);
       setExtraChargeStudent(null);
-      setFlash(`Deuda de ${form.amount} ${form.currency} registrada · ${MONTH_FULL[form.month] || 'no mensual'}`);
       setTimeout(() => setFlash(null), 3500);
       loadLedger();
       // A debt on a withdrawn student can create a new "Sin sección" group.
@@ -1636,10 +1694,10 @@ export default function PaymentLedger() {
   const tableWidth = NAME_COL + (months.length + (hasOther ? 1 : 0)) * MONTH_COL;
 
   return (
-    <div className="min-h-screen bg-[#EDEEF1] font-sans text-[#14181F] p-6">
-      <div className="w-full">
+    <div className="h-full flex flex-col overflow-hidden bg-[#EDEEF1] font-sans text-[#14181F] px-6 pt-6 pb-1">
+      <div className="w-full flex-1 min-h-0 flex flex-col">
         {/* toolbar */}
-        <div className="flex items-stretch justify-between bg-white border border-[#C5CAD2] mb-px flex-wrap">
+        <div className="shrink-0 flex items-stretch justify-between bg-white border border-[#C5CAD2] mb-px flex-wrap">
           <div className="flex items-center gap-3 px-4 py-3 border-r border-[#E4E6EB]">
             <span className="text-[10px] font-semibold text-[#8B909A] uppercase tracking-wide">Sección</span>
             <select
@@ -1702,7 +1760,7 @@ export default function PaymentLedger() {
 
         {/* legend */}
         {selectedSection && (
-          <div className="flex items-center gap-4 px-4 py-2 bg-white border-x border-b border-[#C5CAD2] text-xs text-[#6B7280] flex-wrap">
+          <div className="shrink-0 flex items-center gap-4 px-4 py-2 bg-white border-x border-b border-[#C5CAD2] text-xs text-[#6B7280] flex-wrap">
             <LegendSwatch color={STATUS.paid.fill} label="Al día" />
             <LegendSwatch color={STATUS.partial.fill} label="Parcial" />
             <LegendSwatch color={STATUS.overdue.fill} label="Atrasado" />
@@ -1719,7 +1777,7 @@ export default function PaymentLedger() {
         )}
 
         {flash && (
-          <div className="px-4 py-2 bg-[#E9F7ED] border-x border-b border-[#B7EACB] text-sm text-[#1A4D2E] font-medium">
+          <div className="shrink-0 px-4 py-2 bg-[#E9F7ED] border-x border-b border-[#B7EACB] text-sm text-[#1A4D2E] font-medium">
             {flash}
           </div>
         )}
@@ -1738,14 +1796,14 @@ export default function PaymentLedger() {
           </div>
         ) : (
           /* table */
-          <div className="bg-white border-x border-b border-[#C5CAD2] overflow-hidden">
+          <div className="flex-1 min-h-0 flex flex-col bg-white border-x border-b border-[#C5CAD2] overflow-hidden">
             <div
               ref={dragScroll.ref}
               onMouseDown={dragScroll.onMouseDown}
-              className={`overflow-x-auto ${dragScroll.dragging ? 'cursor-grabbing select-none' : ''}`}
+              className={`flex-1 min-h-0 overflow-auto ${dragScroll.dragging ? 'cursor-grabbing select-none' : ''}`}
             >
               <div style={{ width: tableWidth }}>
-                <div className="flex bg-[#EDEEF1] border-b-2 border-[#B9BEC7]">
+                <div className="sticky top-0 z-30 flex bg-[#EDEEF1] border-b-2 border-[#B9BEC7]">
                   <button
                     type="button"
                     onClick={cycleNameSort}
@@ -1905,7 +1963,11 @@ export default function PaymentLedger() {
                             </div>
                             <GuardianPanel guardians={student.guardians ?? []} />
                           </div>
-                          <div style={{ width: tableWidth - NAME_COL }}>
+                          {/* Pinned next to the name column and capped to the visible width, so amounts and action buttons never leave the screen. */}
+                          <div className="sticky @container" style={{
+                            left: NAME_COL,
+                            width: Math.min(tableWidth - NAME_COL, Math.max(dragScroll.viewWidth - NAME_COL, 360)),
+                          }}>
                             {openMonth === OTHER ? (
                               <MonthDetail
                                 label="Otras deudas"
@@ -1969,14 +2031,6 @@ export default function PaymentLedger() {
             </div>
           </div>
         )}
-
-        {selectedSection && students.length > 0 && (
-          <p className="text-xs text-[#8B909A] mt-3">
-            Cuota mensual: {monthlyFee ? `${monthlyFee.amount.toFixed(2)} ${monthlyFee.currency}` : 'no configurada'} ·
-            los pagos parciales se acumulan dentro del mes.
-            Clic en una celda para ver el detalle y agregar pagos.
-          </p>
-        )}
       </div>
 
       {paymentModal !== null && (
@@ -2011,6 +2065,14 @@ export default function PaymentLedger() {
         />
       )}
 
+      {planModal && (
+        <InscriptionPlanModal
+          inscriptionId={planModal.inscriptionId}
+          studentName={planModal.name}
+          onClose={() => setPlanModal(null)}
+          onDone={(msg) => { setPlanModal(null); setFlash(msg); setTimeout(() => setFlash(null), 4000); loadLedger(); }}
+        />
+      )}
       {entryModal && (
         <EntryMonthModal
           student={entryModal}

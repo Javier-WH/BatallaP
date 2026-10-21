@@ -102,6 +102,35 @@ describe('Period charge sync (preview / apply)', () => {
     expect(Number((await Charge.findByPk(manual.id))!.amount)).toBe(10);
   });
 
+  it('retires plan debts the plan in force no longer includes — only on request and never ones with payments', async () => {
+    const gastos = await Fee.create({ ...ctx.base, key: 'gastos_administrativos', name: 'Gastos', amount: 30, effectiveMonth: 'Sep' } as any);
+    await EnrollmentPlanItem.create({ enrollmentPlanId: ctx.plan.id, itemType: 'fee', feeId: gastos.id, quantity: 1 } as any);
+    const unpaid = await student({ entryMonth: 'Sep' });
+    const paid = await student({ entryMonth: 'Sep' });
+    await generateChargesForInscription(unpaid.id);
+    await generateChargesForInscription(paid.id);
+    const paidGastos = (await chargesOf(paid.id)).find(c => c.type === 'gastos_administrativos')!;
+    await Payment.create({ inscriptionId: paid.id, schoolPeriodId: ctx.period.id, chargeId: paidGastos.id, amount: 10, currency: 'USD', method: 'efectivo', paymentDate: new Date() } as any);
+
+    // Another plan version (from Sep) that no longer includes Gastos Administrativos.
+    await EnrollmentPlanItem.destroy({ where: { enrollmentPlanId: ctx.plan.id, feeId: gastos.id } });
+
+    const preview = await agent.post('/api/payments/charges/preview').send({}).expect(200);
+    expect(preview.body.retire.charges).toBe(1);
+    expect(preview.body.retire.keptWithPayments).toBe(1);
+    expect(preview.body.retire.amountByCurrency.USD).toBe(30);
+
+    // Without the flag nothing is retired.
+    const plain = await agent.post('/api/payments/charges/apply').send({}).expect(200);
+    expect(plain.body.retired).toBe(0);
+    expect((await chargesOf(unpaid.id)).find(c => c.type === 'gastos_administrativos')!.active).toBe(true);
+
+    const applied = await agent.post('/api/payments/charges/apply').send({ retireObsolete: true }).expect(200);
+    expect(applied.body.retired).toBe(1);
+    expect((await chargesOf(unpaid.id)).find(c => c.type === 'gastos_administrativos')!.active).toBe(false);
+    expect((await chargesOf(paid.id)).find(c => c.type === 'gastos_administrativos')!.active).toBe(true);
+  });
+
   it('skips Materia Pendiente and withdrawn inscriptions and reports the exclusions', async () => {
     const mp = await createTestSection({ name: 'MATERIA PENDIENTE', isMateriaPendiente: true });
     const mpInsc = await student({ entryMonth: 'Sep' }, mp.id);

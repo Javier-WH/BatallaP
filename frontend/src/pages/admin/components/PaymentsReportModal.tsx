@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { X, Printer, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { getPaymentsReport, type PaymentReportRow, type PaymentsReport } from '@/services/paymentsService';
+import DmyDateInput from './DmyDateInput';
 import { PAYMENT_METHODS, PAYMENT_CURRENCIES, formatTotals } from '../paymentMethods';
 
 type SortKey = 'date' | 'student' | 'user' | 'method' | 'amount';
 
 const money = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const fmtDate = (d: string) => new Date(d).toLocaleDateString('es-VE');
+const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-GB');
 const methodLabel = (v: string) => PAYMENT_METHODS.find(m => m.value === v)?.label ?? v;
 const esc = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const inputCls = 'border border-[#C5CAD2] px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2F5EA8] focus:border-[#2F5EA8] bg-white';
@@ -77,7 +78,7 @@ function printSheet(rows: PaymentReportRow[], filtersLabel: string) {
       tr { page-break-inside: avoid; } h2 { font-size: 13px; margin: 14px 0 4px; } .totals { width: auto; min-width: 50%; }
     </style></head><body>
     <h1>Resumen de movimientos</h1>
-    <div class="meta">${esc(filtersLabel)} · ${rows.length} pago(s) · Impreso ${esc(new Date().toLocaleString('es-VE'))}</div>
+    <div class="meta">${esc(filtersLabel)} · ${rows.length} pago(s) · Impreso ${esc(new Date().toLocaleString('en-GB'))}</div>
     <table><thead><tr><th>Fecha</th><th>Estudiante</th><th>Método</th><th>Monto</th><th>Referencia / Banco / Cuenta</th><th>Aplicado a</th><th>Registró</th><th>Notas</th></tr></thead>
     <tbody>${body}</tbody></table>
     <h2>Totales</h2>
@@ -185,11 +186,11 @@ export default function PaymentsReportModal({ onClose }: { onClose: () => void }
         <div className="flex flex-wrap items-end gap-3 px-4 py-3 border-b border-[#E4E6EB] shrink-0">
           <label className="text-[10px] font-bold uppercase tracking-wide text-[#5B6472] flex flex-col gap-1">
             Desde
-            <input type="date" value={from} max={to || undefined} onChange={e => setFrom(e.target.value)} className={inputCls} />
+            <DmyDateInput value={from} max={to || undefined} onChange={setFrom} allowClear />
           </label>
           <label className="text-[10px] font-bold uppercase tracking-wide text-[#5B6472] flex flex-col gap-1">
             Hasta
-            <input type="date" value={to} min={from || undefined} onChange={e => setTo(e.target.value)} className={inputCls} />
+            <DmyDateInput value={to} min={from || undefined} onChange={setTo} allowClear />
           </label>
           <label className="text-[10px] font-bold uppercase tracking-wide text-[#5B6472] flex flex-col gap-1">
             Registrado por

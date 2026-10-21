@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Input, Modal, Select } from 'antd';
 import api from '@/services/api';
-import { deletePayment, movePayment } from '@/services/paymentsService';
+import { deletePayment, movePayment, type PaymentDestination } from '@/services/paymentsService';
 import { methodDef } from '../paymentMethods';
 
-export type CorrectionMode = 'delete' | 'move';
+export type CorrectionMode = 'delete' | 'move' | 'destination';
 
 interface StudentOption {
   inscriptionId: number;
@@ -25,6 +25,12 @@ interface Props {
   onDone: (message: string) => void;
 }
 
+const DESTINATION_LABEL: Record<PaymentDestination, string> = {
+  auto: 'Automático (en orden de deudas)',
+  tuition: 'Inscripción y mensualidades',
+  item: 'Items vendibles (uniformes, etc.)',
+};
+
 const optionLabel = (s: StudentOption) =>
   `${s.lastName}, ${s.firstName} · ${s.document} · ${s.gradeName} ${s.sectionName}`;
 
@@ -35,6 +41,7 @@ const optionLabel = (s: StudentOption) =>
 export default function PaymentCorrectionModal({ txn, mode, studentName, schoolPeriodId, onClose, onDone }: Props) {
   const [reason, setReason] = useState('');
   const [target, setTarget] = useState<StudentOption | null>(null);
+  const [scope, setScope] = useState<PaymentDestination>('item');
   const [options, setOptions] = useState<StudentOption[]>([]);
   const [searching, setSearching] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -60,6 +67,7 @@ export default function PaymentCorrectionModal({ txn, mode, studentName, schoolP
   };
 
   const isMove = mode === 'move';
+  const isDestination = mode === 'destination';
   const canSubmit = reason.trim().length >= 3 && (!isMove || !!target) && !submitting;
 
   const submit = async () => {
@@ -68,8 +76,11 @@ export default function PaymentCorrectionModal({ txn, mode, studentName, schoolP
     setError(null);
     try {
       if (isMove) {
-        await movePayment(txn.id, target!.inscriptionId, reason.trim());
+        await movePayment(txn.id, { toInscriptionId: target!.inscriptionId }, reason.trim());
         onDone(`Pago #${txn.id} movido a ${target!.lastName}, ${target!.firstName}`);
+      } else if (isDestination) {
+        await movePayment(txn.id, { scope }, reason.trim());
+        onDone(`Pago #${txn.id} reasignado a: ${DESTINATION_LABEL[scope]}`);
       } else {
         await deletePayment(txn.id, reason.trim());
         onDone(`Pago #${txn.id} eliminado`);
@@ -83,10 +94,10 @@ export default function PaymentCorrectionModal({ txn, mode, studentName, schoolP
   return (
     <Modal
       open
-      title={isMove ? 'Cambiar pago de estudiante' : 'Eliminar pago'}
-      okText={isMove ? 'Mover pago' : 'Eliminar pago'}
+      title={isMove ? 'Cambiar pago de estudiante' : isDestination ? 'Cambiar destino del pago' : 'Eliminar pago'}
+      okText={isMove ? 'Mover pago' : isDestination ? 'Cambiar destino' : 'Eliminar pago'}
       cancelText="Cancelar"
-      okButtonProps={{ danger: !isMove, disabled: !canSubmit, loading: submitting }}
+      okButtonProps={{ danger: !isMove && !isDestination, disabled: !canSubmit, loading: submitting }}
       onOk={submit}
       onCancel={onClose}
       width={500}
@@ -120,6 +131,19 @@ export default function PaymentCorrectionModal({ txn, mode, studentName, schoolP
               El pago conserva su fecha, método y quién lo registró, y se aplica a la deuda más antigua del estudiante destino.
             </p>
           </div>
+        ) : isDestination ? (
+          <div>
+            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Nuevo destino</div>
+            <Select
+              style={{ width: '100%' }}
+              value={scope}
+              onChange={setScope}
+              options={(Object.keys(DESTINATION_LABEL) as PaymentDestination[]).map(k => ({ value: k, label: DESTINATION_LABEL[k] }))}
+            />
+            <p className="text-xs text-slate-400 mt-1">
+              El pago se vuelve a repartir entre las deudas del destino elegido (en orden, la más antigua primero) y deja de aplicarse a las que tenía. Conserva su fecha, método y quién lo registró.
+            </p>
+          </div>
         ) : (
           <Alert type="warning" showIcon message="El pago se elimina del ledger y la deuda del estudiante vuelve a quedar pendiente. Queda un registro de la eliminación." />
         )}
@@ -131,7 +155,7 @@ export default function PaymentCorrectionModal({ txn, mode, studentName, schoolP
             maxLength={500}
             value={reason}
             onChange={e => setReason(e.target.value)}
-            placeholder={isMove ? 'Ej.: se cargó al hermano por error' : 'Ej.: pago registrado dos veces'}
+            placeholder={isMove ? 'Ej.: se cargó al hermano por error' : isDestination ? 'Ej.: era para el uniforme, no la mensualidad' : 'Ej.: pago registrado dos veces'}
           />
         </div>
 

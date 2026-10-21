@@ -1298,7 +1298,8 @@ function SelectedStudentEditor({
   useStepTouchScroll(panelRef, onBackgroundScroll, onBackgroundScrollEnd, true, 'button, input, textarea');
 
   const isOtherReason = reasonValue === 'Otro' || reasonValue.startsWith('Otro:');
-  const otherReason = reasonValue.startsWith('Otro:') ? reasonValue.slice(5).trimStart() : '';
+  // Taken from the untrimmed draft: trimming here would swallow every space typed at the end of the text.
+  const otherReason = reasonDraft.trimStart().startsWith('Otro:') ? reasonDraft.trimStart().slice(5).trimStart() : '';
   const hasReason = normalizeAttendanceReason(reasonDraft) !== null;
 
   const handlePanelWheel = (event: React.WheelEvent<HTMLElement>) => {

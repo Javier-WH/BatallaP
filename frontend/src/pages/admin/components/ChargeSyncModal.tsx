@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, Alert, Statistic, Row, Col, Spin, message, Typography } from 'antd';
+import { Modal, Alert, Statistic, Row, Col, Spin, message, Typography, Checkbox } from 'antd';
 import {
   previewChargeSync, applyChargeSync, type ChargeSyncSummary,
 } from '@/services/paymentsService';
@@ -22,6 +22,7 @@ const ChargeSyncModal: React.FC<Props> = ({ open, onClose, periodLabel }) => {
   const [loading, setLoading] = useState(false);
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [retireObsolete, setRetireObsolete] = useState(false);
 
   const loadPreview = async () => {
     setLoading(true);
@@ -37,16 +38,16 @@ const ChargeSyncModal: React.FC<Props> = ({ open, onClose, periodLabel }) => {
   };
 
   useEffect(() => {
-    if (open) loadPreview();
+    if (open) { setRetireObsolete(false); loadPreview(); }
   }, [open]);
 
-  const nothingToDo = !!summary && summary.generate.charges === 0 && summary.sync.charges === 0;
+  const nothingToDo = !!summary && summary.generate.charges === 0 && summary.sync.charges === 0 && (!retireObsolete || summary.retire.charges === 0);
 
   const handleApply = async () => {
     setApplying(true);
     try {
-      const res = await applyChargeSync(summary?.schoolPeriodId);
-      message.success(`Deudas generadas: ${res.created + res.reactivated} · actualizadas: ${res.updated}`);
+      const res = await applyChargeSync(summary?.schoolPeriodId, { retireObsolete });
+      message.success(`Deudas generadas: ${res.created + res.reactivated} · actualizadas: ${res.updated}${res.retired ? ` · retiradas: ${res.retired}` : ''}`);
       onClose();
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Error al generar las deudas');
@@ -68,7 +69,7 @@ const ChargeSyncModal: React.FC<Props> = ({ open, onClose, periodLabel }) => {
     >
       <Text type="secondary">
         Crea las deudas (inscripción y mensualidades) de los estudiantes del período presente que aún no las tienen
-        y ajusta las que cambiaron por una nueva vigencia de costos. Las deudas manuales no se modifican.
+        y ajusta las que cambiaron por una nueva vigencia de costos o por un plan de inscripción distinto. Las deudas manuales no se modifican.
       </Text>
       <div style={{ marginTop: 16 }}>
         {loading && <div style={{ textAlign: 'center', padding: 24 }}><Spin /></div>}
@@ -90,6 +91,29 @@ const ChargeSyncModal: React.FC<Props> = ({ open, onClose, periodLabel }) => {
                 <Statistic title="Ya pagadas (no se tocan)" value={summary.sync.skippedPaid} />
               </Col>
             </Row>
+            {(summary.retire.charges > 0 || summary.retire.keptWithPayments > 0) && (
+              <Alert
+                style={{ marginTop: 16 }}
+                type="warning"
+                showIcon
+                message={`Plan de inscripción: ${summary.retire.charges} deuda(s) ya no están en el plan vigente`}
+                description={
+                  <>
+                    <div>
+                      Ocurre cuando otro plan (u otra versión) incluye cosas distintas a las ya generadas. Las deudas nuevas del plan se crean
+                      siempre; las que sobran se retiran solo si lo marcas.
+                      {summary.retire.charges > 0 && <> Valor a retirar: <b>{money(summary.retire.amountByCurrency)}</b>.</>}
+                      {summary.retire.keptWithPayments > 0 && <> {summary.retire.keptWithPayments} con pagos o entregas se conservan.</>}
+                    </div>
+                    {summary.retire.charges > 0 && (
+                      <Checkbox style={{ marginTop: 8 }} checked={retireObsolete} onChange={e => setRetireObsolete(e.target.checked)}>
+                        Retirar las deudas del plan que ya no corresponden (sin pagos)
+                      </Checkbox>
+                    )}
+                  </>
+                }
+              />
+            )}
             {summary.excludedMateriaPendiente > 0 && (
               <Alert
                 style={{ marginTop: 16 }}

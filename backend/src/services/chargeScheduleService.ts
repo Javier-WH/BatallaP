@@ -16,7 +16,7 @@
  */
 import { Op, Transaction } from 'sequelize';
 import {
-  Charge, EnrollmentPlanItem, ExchangeRateType, Fee, Inscription, SchoolPeriod, Section, SellableItem,
+  Charge, EnrollmentPlan, EnrollmentPlanItem, ExchangeRateType, Fee, Inscription, SchoolPeriod, Section, SellableItem,
 } from '@/models/index';
 import type { ChargeType } from '@/models/Charge';
 import {
@@ -66,7 +66,8 @@ const FEE_KEY_TO_TYPE: Record<Fee['key'], ChargeType> = {
 export async function buildPeriodSchedule(
   period: SchoolPeriod,
   entry: MonthCode,
-  transaction?: Transaction
+  transaction?: Transaction,
+  planOverride?: EnrollmentPlan | null
 ): Promise<{ entries: ScheduledChargeEntry[]; warnings: string[] }> {
   const result = { entries: [] as ScheduledChargeEntry[], warnings: [] as string[] };
   const periodId = period.id;
@@ -76,7 +77,7 @@ export async function buildPeriodSchedule(
   const round2 = (n: number) => Math.round(n * 100) / 100;
 
   // ── Enrollment: the plan in force at the entry month ──
-  const plan = await resolveEnrollmentPlan(periodId, entry, transaction);
+  const plan = planOverride ?? await resolveEnrollmentPlan(periodId, entry, transaction);
   if (!plan) {
     result.warnings.push(`No hay plan de inscripción vigente para ${entry}`);
   } else {
@@ -170,6 +171,13 @@ export async function buildPeriodSchedule(
   return result;
 }
 
+/** The plan explicitly assigned to a student (same period, active), or null to use the plan in force. */
+export async function studentPlanOf(inscription: Inscription, transaction?: Transaction): Promise<EnrollmentPlan | null> {
+  if (!inscription.enrollmentPlanId) return null;
+  const plan = await EnrollmentPlan.findByPk(inscription.enrollmentPlanId, { transaction });
+  return plan && plan.active && plan.schoolPeriodId === inscription.schoolPeriodId ? plan : null;
+}
+
 /** Computes the debts an inscription should have, without writing anything. */
 export async function buildChargeSchedule(inscription: Inscription, transaction?: Transaction): Promise<ChargeSchedule> {
   const result: ChargeSchedule = { entries: [], warnings: [], excludedMateriaPendiente: false, withdrawn: false };
@@ -191,7 +199,8 @@ export async function buildChargeSchedule(inscription: Inscription, transaction?
     result.warnings.push('Período escolar no encontrado');
     return result;
   }
-  const { entries, warnings } = await buildPeriodSchedule(period, resolveEntryMonth(period, inscription.entryMonth), transaction);
+  const planOverride = await studentPlanOf(inscription, transaction);
+  const { entries, warnings } = await buildPeriodSchedule(period, resolveEntryMonth(period, inscription.entryMonth), transaction, planOverride);
   result.entries = entries;
   result.warnings = warnings;
   return result;

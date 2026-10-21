@@ -18,13 +18,14 @@ interface InscriptionAttributes {
   withdrawnAt?: Date | null;
   rosterNumber?: number | null;
   entryMonth?: string | null;
+  enrollmentPlanId?: number | null;
   papersHold?: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 interface InscriptionCreationAttributes
-  extends Optional<InscriptionAttributes, 'id' | 'sectionId' | 'originPeriodId' | 'isRepeater' | 'withdrawnAt' | 'rosterNumber' | 'entryMonth' | 'papersHold'> { }
+  extends Optional<InscriptionAttributes, 'id' | 'sectionId' | 'originPeriodId' | 'isRepeater' | 'withdrawnAt' | 'rosterNumber' | 'entryMonth' | 'enrollmentPlanId' | 'papersHold'> { }
 
 class Inscription extends Model<InscriptionAttributes, InscriptionCreationAttributes> implements InscriptionAttributes {
   public id!: number;
@@ -38,6 +39,7 @@ class Inscription extends Model<InscriptionAttributes, InscriptionCreationAttrib
   public withdrawnAt!: Date | null;
   public rosterNumber!: number | null;
   public entryMonth!: string | null;
+  public enrollmentPlanId!: number | null;
   public papersHold!: boolean;
 
   public readonly subjects?: import('./Subject').default[];
@@ -112,6 +114,12 @@ Inscription.init(
      */
     entryMonth: {
       type: DataTypes.STRING(3),
+      allowNull: true,
+      defaultValue: null
+    },
+    /** Enrollment plan chosen for this student; NULL = the plan in force for their entry month. */
+    enrollmentPlanId: {
+      type: DataTypes.INTEGER,
       allowNull: true,
       defaultValue: null
     },

@@ -60,7 +60,7 @@ export async function resolveEnrollmentPlan(
 ): Promise<EnrollmentPlan | null> {
   const [window, plans] = await Promise.all([
     getWindow(schoolPeriodId, transaction),
-    EnrollmentPlan.findAll({ where: { schoolPeriodId, active: true }, transaction }),
+    EnrollmentPlan.findAll({ where: { schoolPeriodId, active: true, autoApply: true }, transaction }),
   ]);
   return pickEffective(plans as (EnrollmentPlan & Versioned)[], month, window);
 }

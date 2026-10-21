@@ -310,6 +310,7 @@ const PaymentsConfig: React.FC = () => {
         targetExchangeRateTypeId: rateTypes.find(t => t.isDefault)?.id ?? rateTypes[0]?.id,
         conversionMode: 'exchange_rate',
         active: true,
+        autoApply: true,
       });
       setPlanItems([]);
     }
@@ -471,6 +472,7 @@ const PaymentsConfig: React.FC = () => {
     { title: 'Nombre', dataIndex: 'name', key: 'name' },
     { title: 'Período', key: 'schoolPeriod', render: (_: any, p: EnrollmentPlan) => p.schoolPeriod?.period ?? '—' },
     { title: 'Vigente desde', dataIndex: 'effectiveMonth', key: 'effectiveMonth', render: (m: string) => MONTH_NAMES[m] ?? m },
+    { title: 'Aplicación', key: 'autoApply', render: (_: any, p: EnrollmentPlan) => (p.autoApply === false ? <Tag color="purple">Opcional (por estudiante)</Tag> : <Tag color="blue">Por defecto</Tag>) },
     { title: 'Descripción', dataIndex: 'description', key: 'description', ellipsis: true },
     { title: 'Moneda destino', key: 'target', render: (_: any, p: EnrollmentPlan) => p.targetExchangeRateType?.name ?? '—' },
     { title: 'Items', key: 'items', render: (_: any, p: EnrollmentPlan) => p.items?.length ?? 0 },
@@ -981,6 +983,9 @@ const PaymentsConfig: React.FC = () => {
               placeholder="Desde el inicio del período"
               options={billingMonthOptions(periodById(planSelectedPeriodId))}
             />
+          </Form.Item>
+          <Form.Item name="autoApply" label="Se aplica por defecto" valuePropName="checked" tooltip="Apagado = plan opcional (p. ej. «Paquete completo con uniforme»): nadie lo recibe por defecto; se asigna a cada estudiante desde el ledger (menú ⋯ → Plan de inscripción).">
+            <Switch />
           </Form.Item>
           <Form.Item name="description" label="Descripción">
             <Input.TextArea rows={2} />
