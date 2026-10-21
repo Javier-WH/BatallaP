@@ -5,13 +5,14 @@ import {
 } from 'antd';
 import {
   DollarOutlined, PlusOutlined, EditOutlined, DeleteOutlined,
-  CalculatorOutlined, ShoppingOutlined, BankOutlined, ReloadOutlined, CalendarOutlined, SyncOutlined, PercentageOutlined,
+  CalculatorOutlined, ShoppingOutlined, InboxOutlined, BankOutlined, ReloadOutlined, CalendarOutlined, SyncOutlined, PercentageOutlined,
 } from '@ant-design/icons';
 import { useSchool } from '@/context/SchoolContext';
 import BillingCalendarCard from './components/BillingCalendarCard';
 import ParSettlementCard from './components/ParSettlementCard';
 import BanksCard from './components/BanksCard';
 import ChargeSyncModal from './components/ChargeSyncModal';
+import ItemInventoryModal from './components/ItemInventoryModal';
 import DiscountReasonsCard from './components/DiscountReasonsCard';
 import { billingMonthOptions, MONTH_NAMES } from '@/utils/billingMonths';
 import type {
@@ -62,6 +63,7 @@ const PaymentsConfig: React.FC = () => {
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemModalOpen, setItemModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<SellableItem | null>(null);
+  const [inventoryItem, setInventoryItem] = useState<SellableItem | null>(null);
   const [itemForm] = Form.useForm();
   // Badge icon of the item being edited: Lucide name, uploaded file, clear flag.
   const [itemIconSel, setItemIconSel] = useState<string | null>(null);
@@ -281,7 +283,10 @@ const PaymentsConfig: React.FC = () => {
       else if (itemIconCleared) await clearSellableItemIcon(saved.id);
       setItemModalOpen(false);
       loadItems();
-    } catch { /* validation error */ }
+    } catch (err: any) {
+      // Validation errors have no response; API errors (e.g. removing a size in use) are shown.
+      if (err?.response?.data?.message) message.error(err.response.data.message);
+    }
   };
 
   const handleDeleteItem = async (id: number) => {
@@ -442,6 +447,7 @@ const PaymentsConfig: React.FC = () => {
     },
     { title: 'Nombre', dataIndex: 'name', key: 'name' },
     { title: 'Categoría', dataIndex: 'category', key: 'category', render: (c: string | null) => c ? <Tag>{c}</Tag> : null },
+    { title: 'Tallas', dataIndex: 'sizes', key: 'sizes', render: (sz: string[] | null) => sz?.length ? sz.join(', ') : '—' },
     { title: 'Monto', dataIndex: 'amount', key: 'amount', render: (v: number) => v.toLocaleString('es-VE', { minimumFractionDigits: 2 }) },
     { title: 'Moneda', key: 'currency', render: (_: any, i: SellableItem) => i.exchangeRateType?.name ?? '—' },
     { title: 'Activo', dataIndex: 'active', key: 'active', render: (v: boolean) => <Tag color={v ? 'green' : 'red'}>{v ? 'Sí' : 'No'}</Tag> },
@@ -450,6 +456,9 @@ const PaymentsConfig: React.FC = () => {
       render: (_: any, record: SellableItem) => (
         <Space>
           <Button size="small" icon={<EditOutlined />} onClick={() => openItemModal(record)} />
+          <Tooltip title="Inventario por talla, ventas y entregas">
+            <Button size="small" icon={<InboxOutlined />} onClick={() => setInventoryItem(record)} />
+          </Tooltip>
           <Popconfirm title="¿Desactivar?" onConfirm={() => handleDeleteItem(record.id)}>
             <Button size="small" danger icon={<DeleteOutlined />} />
           </Popconfirm>
@@ -867,6 +876,23 @@ const PaymentsConfig: React.FC = () => {
           <Form.Item name="category" label="Categoría">
             <Input placeholder="Uniforme, Distintivo, etc." />
           </Form.Item>
+          <Form.Item
+            name="sizes"
+            label="Tallas (opcional)"
+            tooltip="Si el item usa tallas, al entregarlo se elige cuál. Déjalo vacío para items sin talla (distintivos, etc.)."
+          >
+            <Select mode="tags" tokenSeparators={[',', ' ']} placeholder="Escribe una talla y presiona Enter" maxTagCount="responsive" />
+          </Form.Item>
+          <div className="flex flex-wrap gap-1 -mt-3 mb-4">
+            {[
+              { label: 'S – XL', sizes: ['S', 'M', 'L', 'XL'] },
+              { label: 'XS – XXL', sizes: ['XS', 'S', 'M', 'L', 'XL', 'XXL'] },
+              { label: '4 – 16 (niños)', sizes: ['4', '6', '8', '10', '12', '14', '16'] },
+              { label: '28 – 38', sizes: ['28', '30', '32', '34', '36', '38'] },
+            ].map(p => (
+              <Button key={p.label} size="small" onClick={() => itemForm.setFieldsValue({ sizes: p.sizes })}>{p.label}</Button>
+            ))}
+          </div>
           <Form.Item label="Icono del badge (se muestra en la celda del ledger)">
             <div className="flex flex-wrap gap-1 mb-2">
               {Object.entries(ITEM_ICONS).map(([name, Icon]) => (
@@ -923,6 +949,12 @@ const PaymentsConfig: React.FC = () => {
           </Form.Item>
         </Form>
       </Modal>
+
+      <ItemInventoryModal
+        item={inventoryItem}
+        periods={allPeriods.map((p: any) => ({ id: p.id, period: p.period }))}
+        onClose={() => setInventoryItem(null)}
+      />
 
       {/* ── Enrollment Plan Modal ── */}
       <Modal

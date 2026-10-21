@@ -10,11 +10,12 @@ interface SellableItemAttributes {
   category: string | null;
   icon: string | null;        // Lucide icon name for the ledger badge
   iconImage: string | null;   // uploaded image path; takes precedence over `icon`
+  sizes: string[] | null;     // optional size list (null/empty = the item has no sizes)
   active: boolean;
 }
 
 interface SellableItemCreationAttributes
-  extends Optional<SellableItemAttributes, 'id' | 'description' | 'category' | 'icon' | 'iconImage' | 'active'> {}
+  extends Optional<SellableItemAttributes, 'id' | 'description' | 'category' | 'icon' | 'iconImage' | 'sizes' | 'active'> {}
 
 class SellableItem extends Model<SellableItemAttributes, SellableItemCreationAttributes>
   implements SellableItemAttributes {
@@ -26,6 +27,7 @@ class SellableItem extends Model<SellableItemAttributes, SellableItemCreationAtt
   public category!: string | null;
   public icon!: string | null;
   public iconImage!: string | null;
+  public sizes!: string[] | null;
   public active!: boolean;
 
   public readonly createdAt!: Date;
@@ -66,6 +68,10 @@ SellableItem.init(
     },
     iconImage: {
       type: DataTypes.STRING(255),
+      allowNull: true,
+    },
+    sizes: {
+      type: DataTypes.JSON,
       allowNull: true,
     },
     active: {

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Table, Tag, Segmented, Button, Spin, message } from 'antd';
-import { UserOutlined } from '@ant-design/icons';
+import { UserOutlined, PrinterOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '@/services/api';
 import type { AbsenceCategory, AbsenceDetailReport, AbsenceDetailRow } from './types';
@@ -25,6 +25,68 @@ const FILTER_MATCH: Record<DetailFilter, (c: AbsenceCategory) => boolean> = {
 };
 
 const WEEKDAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+
+const FILTER_LABEL: Record<DetailFilter, string> = {
+  unjustified: 'Inasistencias injustificadas',
+  justified: 'Inasistencias justificadas',
+  late: 'Retardos',
+  kicked: 'Retirado de clase',
+  all: 'Todos los registros',
+};
+
+const esc = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/** Opens a clean, printable (landscape) data sheet of the listed rows in a new window. */
+function printDetail(data: AbsenceDetailReport, rows: AbsenceDetailRow[], filter: DetailFilter) {
+  const { student: s, counts: c } = data;
+  const range = `${data.termName ?? 'Todo el año'}${data.dateFrom && data.dateTo ? ` (${dayjs(data.dateFrom).format('DD/MM/YYYY')} – ${dayjs(data.dateTo).format('DD/MM/YYYY')})` : ''}`;
+  const body = rows.map((r, i) => `<tr>
+    <td class="n">${i + 1}</td>
+    <td>${esc(`${WEEKDAYS[dayjs(r.date).day()]} ${dayjs(r.date).format('DD/MM/YYYY')}`)}</td>
+    <td>${esc(r.start && r.end ? `${r.start} – ${r.end}` : r.periodId)}</td>
+    <td>${esc(r.subjectName ?? '—')}</td>
+    <td>${esc(r.teacherName ?? '—')}</td>
+    <td>${esc(CATEGORY_META[r.category].label)}</td>
+    <td>${esc(r.reason || '—')}</td>
+  </tr>`).join('');
+  const stat = (label: string, value: number, sub: string) =>
+    `<td><b>${value}</b> <small>${esc(sub)}</small><br><small>${esc(label)}</small></td>`;
+  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Detalle de asistencia — ${esc(s.lastName)}, ${esc(s.firstName)}</title>
+    <style>
+      @page { size: landscape; margin: 12mm; }
+      body { font-family: Arial, sans-serif; font-size: 11px; color: #111; }
+      h1 { font-size: 16px; margin: 0 0 2px; } .meta { color: #444; margin-bottom: 8px; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; } th, td { border: 1px solid #999; padding: 3px 5px; vertical-align: top; text-align: left; }
+      th { background: #eee; } td.n { width: 28px; text-align: right; color: #555; } small { color: #555; }
+      tr { page-break-inside: avoid; } thead { display: table-header-group; }
+      table.stats { width: auto; margin-bottom: 10px; } table.stats td { text-align: center; padding: 4px 12px; }
+      h2 { font-size: 13px; margin: 10px 0 4px; }
+    </style></head><body>
+    <h1>${esc(s.lastName)}, ${esc(s.firstName)}</h1>
+    <div class="meta">
+      C.I. ${esc(s.document)} · ${esc(s.gradeName)} ${esc(s.sectionName)}${s.withdrawn ? ' · Retirado' : ''}<br>
+      ${esc(range)}
+    </div>
+    <table class="stats"><tr>
+      ${stat('Inasistencias (horas)', c.absentBlocks, pct(c.absentBlocks, c.totalBlocks))}
+      ${stat('Días con inasistencia', c.absentDays, pct(c.absentDays, c.totalDays))}
+      ${stat('Justificadas (horas)', c.justifiedBlocks, pct(c.justifiedBlocks, c.totalBlocks))}
+      ${stat('Retardos (horas)', c.lateBlocks, pct(c.lateBlocks, c.totalBlocks))}
+      ${stat('Retirado de clase (horas)', c.kickedBlocks, pct(c.kickedBlocks, c.totalBlocks))}
+      ${stat('Asistencia (horas)', c.attendedBlocks, pct(c.attendedBlocks, c.totalBlocks))}
+    </tr></table>
+    <h2>${esc(FILTER_LABEL[filter])} — ${rows.length} registro(s)</h2>
+    <table><thead><tr><th>#</th><th>Fecha</th><th>Hora</th><th>Materia</th><th>Profesor</th><th>Tipo</th><th>Motivo</th></tr></thead>
+    <tbody>${body || '<tr><td colspan="7">Sin registros en esta categoría</td></tr>'}</tbody></table>
+    <div class="meta" style="margin-top:8px"><small>Impreso el ${esc(dayjs().format('DD/MM/YYYY HH:mm'))}</small></div>
+  </body></html>`;
+  const w = window.open('', '_blank', 'width=1100,height=800');
+  if (!w) { message.error('El navegador bloqueó la ventana de impresión'); return; }
+  w.document.write(html);
+  w.document.close();
+  w.focus();
+  setTimeout(() => { try { w.print(); } catch { /* window already closed */ } }, 300);
+}
 
 interface Props {
   open: boolean;
@@ -71,6 +133,9 @@ const AbsenceDetailModal: React.FC<Props> = ({ open, inscriptionId, termId, init
       destroyOnClose
       title={s ? `${s.lastName}, ${s.firstName}` : 'Detalle de asistencia'}
       footer={[
+        <Button key="print" icon={<PrinterOutlined />} disabled={!data} onClick={() => data && printDetail(data, rows, filter)}>
+          Imprimir
+        </Button>,
         <Button key="student" icon={<UserOutlined />} disabled={!data} onClick={() => data && onOpenStudent(data)}>
           Ver en "Por Estudiante"
         </Button>,

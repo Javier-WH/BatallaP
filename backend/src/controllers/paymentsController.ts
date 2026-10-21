@@ -10,7 +10,11 @@ import {
   EnrollmentPlanItem,
   SchoolPeriod,
   DiscountReason,
+  ItemInventoryMovement,
+  Person,
 } from '@/models/index';
+import { INVENTORY_MOVEMENT_TYPES } from '@/models/ItemInventoryMovement';
+import { getItemInventory, listMovements, normalizeSizes, sizesInUseRemoved } from '@/services/itemInventoryService';
 import { scrapeBcvRates } from '@/services/bcvScraperService';
 import { getBillingMonths, compareBillingMonths } from '@/services/billingCalendarService';
 import { resolveFee } from '@/services/feeResolverService';
@@ -520,7 +524,7 @@ export const listSellableItems = async (req: Request, res: Response) => {
 
 export const createSellableItem = async (req: Request, res: Response) => {
   try {
-    const { name, description, amount, exchangeRateTypeId, category, active, icon } = req.body;
+    const { name, description, amount, exchangeRateTypeId, category, active, icon, sizes } = req.body;
     if (!name || amount === undefined || !exchangeRateTypeId) {
       return res.status(400).json({ message: 'name, amount y exchangeRateTypeId son requeridos' });
     }
@@ -531,6 +535,7 @@ export const createSellableItem = async (req: Request, res: Response) => {
       exchangeRateTypeId: Number(exchangeRateTypeId),
       category: category ?? null,
       icon: icon ? String(icon).slice(0, 60) : null,
+      sizes: normalizeSizes(sizes),
       active: active !== false,
     });
     return res.status(201).json(item);
@@ -543,10 +548,19 @@ export const createSellableItem = async (req: Request, res: Response) => {
 export const updateSellableItem = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, description, amount, exchangeRateTypeId, category, active, icon } = req.body;
+    const { name, description, amount, exchangeRateTypeId, category, active, icon, sizes } = req.body;
     const item = await SellableItem.findByPk(Number(id));
     if (!item) return res.status(404).json({ message: 'Item no encontrado' });
+    let nextSizes = item.sizes;
+    if (sizes !== undefined) {
+      nextSizes = normalizeSizes(sizes);
+      const blocked = await sizesInUseRemoved(item.id, item.sizes ?? [], nextSizes ?? []);
+      if (blocked.length) {
+        return res.status(400).json({ message: `No se pueden quitar tallas con inventario o entregas registradas: ${blocked.join(', ')}` });
+      }
+    }
     await item.update({
+      sizes: nextSizes,
       name: name ?? item.name,
       description: description ?? item.description,
       amount: amount !== undefined ? Number(amount) : item.amount,
@@ -573,6 +587,77 @@ export const deleteSellableItem = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[deleteSellableItem] Error:', error);
     return res.status(500).json({ message: 'Error al eliminar item' });
+  }
+};
+
+/** GET /sellable-items/:id/inventory?schoolPeriodId= — stock per size, sold/delivered counts and movement history. */
+export const getSellableItemInventory = async (req: Request, res: Response) => {
+  try {
+    const item = await SellableItem.findByPk(Number(req.params.id));
+    if (!item) return res.status(404).json({ message: 'Item no encontrado' });
+    const schoolPeriodId = req.query.schoolPeriodId ? Number(req.query.schoolPeriodId) : undefined;
+    const [inventory, movements] = await Promise.all([getItemInventory(item, schoolPeriodId), listMovements(item.id)]);
+    return res.json({ ...inventory, movements });
+  } catch (error) {
+    console.error('[getSellableItemInventory] Error:', error);
+    return res.status(500).json({ message: 'Error al obtener el inventario' });
+  }
+};
+
+/** POST /sellable-items/:id/inventory-movements — audited stock in (ingreso) or correction (ajuste). */
+export const createInventoryMovement = async (req: Request, res: Response) => {
+  try {
+    const item = await SellableItem.findByPk(Number(req.params.id));
+    if (!item) return res.status(404).json({ message: 'Item no encontrado' });
+    const type = String(req.body.type ?? '');
+    if (!(INVENTORY_MOVEMENT_TYPES as string[]).includes(type)) {
+      return res.status(400).json({ message: 'El tipo debe ser ingreso o ajuste' });
+    }
+    const quantity = Math.round(Number(req.body.quantity));
+    if (!Number.isFinite(quantity) || quantity === 0) {
+      return res.status(400).json({ message: 'La cantidad debe ser un entero distinto de cero' });
+    }
+    if (type === 'ingreso' && quantity < 0) {
+      return res.status(400).json({ message: 'Un ingreso debe ser una cantidad positiva' });
+    }
+    const note = String(req.body.note ?? '').trim().slice(0, 500) || null;
+    if (type === 'ajuste' && !note) {
+      return res.status(400).json({ message: 'El ajuste requiere una nota que lo explique' });
+    }
+    const listed = item.sizes ?? [];
+    let size: string | null = null;
+    if (listed.length) {
+      size = String(req.body.size ?? '').trim();
+      if (!listed.includes(size)) return res.status(400).json({ message: 'Debes elegir una talla válida del item' });
+    }
+    const movement = await ItemInventoryMovement.create({
+      sellableItemId: item.id, size, quantity, type: type as 'ingreso' | 'ajuste', note,
+      createdByPersonId: (req.session as any)?.user?.personId ?? null,
+    });
+    const created = await ItemInventoryMovement.findByPk(movement.id, {
+      include: [{ model: Person, as: 'createdBy', attributes: ['id', 'firstName', 'lastName'] }],
+    });
+    return res.status(201).json(created);
+  } catch (error) {
+    console.error('[createInventoryMovement] Error:', error);
+    return res.status(500).json({ message: 'Error al registrar el movimiento de inventario' });
+  }
+};
+
+/** GET /inventory-summary?schoolPeriodId= — sold / delivered / stock per item and size, for the whole catalog. */
+export const getInventorySummary = async (req: Request, res: Response) => {
+  try {
+    const schoolPeriodId = req.query.schoolPeriodId ? Number(req.query.schoolPeriodId) : undefined;
+    const items = await SellableItem.findAll({ where: { active: true }, order: [['category', 'ASC'], ['name', 'ASC']] });
+    const out = [];
+    for (const item of items) {
+      const inv = await getItemInventory(item, schoolPeriodId);
+      out.push({ name: item.name, category: item.category, ...inv });
+    }
+    return res.json(out);
+  } catch (error) {
+    console.error('[getInventorySummary] Error:', error);
+    return res.status(500).json({ message: 'Error al obtener el resumen de inventario' });
   }
 };
 

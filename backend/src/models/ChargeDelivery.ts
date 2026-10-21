@@ -5,18 +5,20 @@ interface ChargeDeliveryAttributes {
   id: number;
   chargeId: number;
   quantity: number;               // units handed over in this event
+  size: string | null;            // size handed over (items with sizes)
   note: string | null;
   deliveredByPersonId: number | null; // staff member who delivered
 }
 
 interface ChargeDeliveryCreationAttributes
-  extends Optional<ChargeDeliveryAttributes, 'id' | 'note' | 'deliveredByPersonId'> {}
+  extends Optional<ChargeDeliveryAttributes, 'id' | 'size' | 'note' | 'deliveredByPersonId'> {}
 
 class ChargeDelivery extends Model<ChargeDeliveryAttributes, ChargeDeliveryCreationAttributes>
   implements ChargeDeliveryAttributes {
   public id!: number;
   public chargeId!: number;
   public quantity!: number;
+  public size!: string | null;
   public note!: string | null;
   public deliveredByPersonId!: number | null;
 
@@ -40,6 +42,10 @@ ChargeDelivery.init(
     quantity: {
       type: DataTypes.INTEGER,
       allowNull: false,
+    },
+    size: {
+      type: DataTypes.STRING(30),
+      allowNull: true,
     },
     note: {
       type: DataTypes.STRING(500),

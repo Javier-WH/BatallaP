@@ -43,6 +43,8 @@ export interface SellableItem {
   category: string | null;
   icon: string | null;        // Lucide icon name of the ledger badge
   iconImage: string | null;   // uploaded badge image; takes precedence over `icon`
+  /** Optional size list; empty/null = the item has no sizes. */
+  sizes: string[] | null;
   active: boolean;
   exchangeRateType?: ExchangeRateType;
 }
@@ -606,15 +608,20 @@ export interface ChargeDelivery {
   id: number;
   chargeId: number;
   quantity: number;
+  /** Size handed over (items with sizes). */
+  size: string | null;
   note: string | null;
   deliveredByPersonId: number | null;
   deliveredBy?: { id: number; firstName: string; lastName: string } | null;
   createdAt: string;
 }
 
-/** Record that `quantity` units of an item charge were handed over. */
-export async function deliverItemUnits(chargeId: number, payload: { quantity?: number; note?: string }): Promise<ChargeDelivery> {
-  const { data } = await api.post<ChargeDelivery>(`/ledger/charges/${chargeId}/deliveries`, payload);
+/** Record that `quantity` units of an item charge were handed over. `stockWarning` is set when the inventory went negative (the delivery is registered anyway). */
+export async function deliverItemUnits(
+  chargeId: number,
+  payload: { quantity?: number; size?: string; note?: string },
+): Promise<ChargeDelivery & { stockWarning: string | null }> {
+  const { data } = await api.post<ChargeDelivery & { stockWarning: string | null }>(`/ledger/charges/${chargeId}/deliveries`, payload);
   return data;
 }
 
@@ -687,5 +694,55 @@ export async function getInscriptionDebt(inscriptionId: number): Promise<Inscrip
 
 export async function releasePapers(inscriptionId: number): Promise<{ papersHold: boolean }> {
   const { data } = await api.post(`/ledger/inscriptions/${inscriptionId}/release-papers`);
+  return data;
+}
+
+// ── Inventory by size ──
+
+export interface InventorySizeRow {
+  /** null = units without a size. */
+  size: string | null;
+  /** Stock on hand; null while the item has no inventory configured. */
+  stock: number | null;
+  delivered: number;
+  received: number;
+  /** Size removed from the item's list but still used by movements/deliveries. */
+  retired: boolean;
+}
+
+export interface InventoryMovement {
+  id: number;
+  size: string | null;
+  quantity: number;
+  type: 'ingreso' | 'ajuste';
+  note: string | null;
+  createdAt: string;
+  createdBy?: { id: number; firstName: string; lastName: string } | null;
+}
+
+export interface ItemInventory {
+  itemId: number;
+  sizes: string[];
+  configured: boolean;
+  sold: number;
+  delivered: number;
+  pendingDelivery: number;
+  rows: InventorySizeRow[];
+}
+
+export interface ItemInventoryDetail extends ItemInventory {
+  movements: InventoryMovement[];
+}
+
+export async function getItemInventory(itemId: number, schoolPeriodId?: number): Promise<ItemInventoryDetail> {
+  const { data } = await api.get<ItemInventoryDetail>(`/payments/sellable-items/${itemId}/inventory`, { params: { schoolPeriodId } });
+  return data;
+}
+
+export async function createInventoryMovement(
+  itemId: number,
+  payload: { type: 'ingreso' | 'ajuste'; size?: string | null; quantity: number; note?: string },
+): Promise<InventoryMovement> {
+  const { data } = await api.post<InventoryMovement>(`/payments/sellable-items/${itemId}/inventory-movements`, payload);
   return data;
 }

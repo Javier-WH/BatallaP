@@ -18,6 +18,7 @@ import {
   orderBuckets, paymentBucketMonth, paymentDebtPeriodId, paymentInCurrency, paymentToVES,
 } from '@/services/debtBalanceService';
 import { isFakeGuardian } from '@/utils/fakeGuardian';
+import { getStock } from '@/services/itemInventoryService';
 
 // ── Ledger: list students by section with their charges & payments ──
 
@@ -204,7 +205,7 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
       where: { inscriptionId: { [Op.in]: inscriptionIds }, active: true },
       include: [
         { model: Fee, as: 'fee', attributes: ['id', 'name', 'amount', 'key'] },
-        { model: SellableItem, as: 'sellableItem', attributes: ['id', 'name', 'amount', 'icon', 'iconImage'] },
+        { model: SellableItem, as: 'sellableItem', attributes: ['id', 'name', 'amount', 'icon', 'iconImage', 'sizes'] },
         {
           model: ChargeDelivery, as: 'deliveries',
           include: [{ model: Person, as: 'deliveredBy', attributes: ['id', 'firstName', 'lastName'] }],
@@ -1577,7 +1578,7 @@ const deliveredUnits = async (chargeId: number, excludeId?: number): Promise<num
 export const deliverItemUnits = async (req: Request, res: Response) => {
   try {
     const charge = await Charge.findByPk(Number(req.params.id), {
-      include: [{ model: SellableItem, as: 'sellableItem', attributes: ['id', 'name'] }],
+      include: [{ model: SellableItem, as: 'sellableItem', attributes: ['id', 'name', 'sizes'] }],
     });
     if (!charge) return res.status(404).json({ message: 'Deuda no encontrada' });
     if (charge.type !== 'item') {
@@ -1591,16 +1592,33 @@ export const deliverItemUnits = async (req: Request, res: Response) => {
     if (quantity > pending) {
       return res.status(400).json({ message: `Solo quedan ${pending} unidad(es) por entregar` });
     }
+    // Items with sizes: the size handed over is mandatory and must be one of the item's sizes.
+    const item = (charge as any).sellableItem as SellableItem | null;
+    const listed = item?.sizes ?? [];
+    let size: string | null = null;
+    if (listed.length) {
+      size = String(req.body.size ?? '').trim();
+      if (!listed.includes(size)) return res.status(400).json({ message: 'Debes elegir la talla entregada' });
+    }
     const delivery = await ChargeDelivery.create({
       chargeId: charge.id,
       quantity,
+      size,
       note: String(req.body.note ?? '').trim().slice(0, 500) || null,
       deliveredByPersonId: (req.session as any)?.user?.personId ?? null,
     });
     const created = await ChargeDelivery.findByPk(delivery.id, {
       include: [{ model: Person, as: 'deliveredBy', attributes: ['id', 'firstName', 'lastName'] }],
     });
-    return res.status(201).json(created);
+    // Inventory is informative: a negative stock warns but never blocks the hand-over.
+    let stockWarning: string | null = null;
+    if (item) {
+      const stock = await getStock(item, size);
+      if (stock != null && stock < 0) {
+        stockWarning = `El inventario de ${item.name}${size ? ` talla ${size}` : ''} quedó en ${stock}: se entregó más de lo registrado como ingresado.`;
+      }
+    }
+    return res.status(201).json({ ...created!.toJSON(), stockWarning });
   } catch (error) {
     console.error('[deliverItemUnits] Error:', error);
     return res.status(500).json({ message: 'Error al registrar la entrega' });

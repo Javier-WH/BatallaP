@@ -155,6 +155,7 @@ import PaymentAuditLog from './PaymentAuditLog';
 import PaymentAllocation from './PaymentAllocation';
 import Charge from './Charge';
 import ChargeDelivery from './ChargeDelivery';
+import ItemInventoryMovement from './ItemInventoryMovement';
 import DiscountReason from './DiscountReason';
 import InscriptionDiscount from './InscriptionDiscount';
 import Bank from './Bank';
@@ -641,6 +642,11 @@ Charge.hasMany(ChargeDelivery, { foreignKey: 'chargeId', as: 'deliveries', onDel
 ChargeDelivery.belongsTo(Charge, { foreignKey: 'chargeId', as: 'charge' });
 ChargeDelivery.belongsTo(Person, { foreignKey: 'deliveredByPersonId', as: 'deliveredBy' });
 
+// SellableItem <-> ItemInventoryMovement (audited stock ledger per size)
+SellableItem.hasMany(ItemInventoryMovement, { foreignKey: 'sellableItemId', as: 'inventoryMovements', onDelete: 'CASCADE' });
+ItemInventoryMovement.belongsTo(SellableItem, { foreignKey: 'sellableItemId', as: 'sellableItem' });
+ItemInventoryMovement.belongsTo(Person, { foreignKey: 'createdByPersonId', as: 'createdBy' });
+
 // ── Ledger: discounts / scholarships ──
 
 // Inscription <-> InscriptionDiscount (rules applied when the ledger is read)
@@ -780,6 +786,7 @@ export {
   PaymentAllocation,
   Charge,
   ChargeDelivery,
+  ItemInventoryMovement,
   DiscountReason,
   InscriptionDiscount,
   Bank,

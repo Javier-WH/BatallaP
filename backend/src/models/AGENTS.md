@@ -44,7 +44,7 @@
 - `SubjectFinalGrade → inscriptionSubject`, `plantel`, `editAudits`.
 - `GradeEditPermission → granter`, `recipient`, `revoker`, `schoolPeriod`, `audits`.
 - `GradeEditAudit → subjectFinalGrade`, `permission`, `editor`.
-- `Charge → deliveries` (ChargeDelivery, entregas por unidad de items vendibles); `ChargeDelivery → charge`, `deliveredBy` (Person).
+- `Charge → deliveries` (ChargeDelivery, entregas por unidad de items vendibles); `ChargeDelivery → charge`, `deliveredBy` (Person); `SellableItem → inventoryMovements` (ItemInventoryMovement, stock por talla con auditoría); `ItemInventoryMovement → sellableItem`, `createdBy` (Person).
 
 ## Qué hacer si un controller no encuentra una asociación
 

@@ -575,8 +575,10 @@ function itemChargesOf(...buckets: (LedgerBucket | undefined | null)[]): any[] {
 function ChargeDeliveries({ charge, onChanged }: { charge: any; onChanged: () => void }) {
   const [open, setOpen] = useState(false);
   const [qty, setQty] = useState('');
+  const [size, setSize] = useState('');
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
+  const sizes: string[] = charge.sellableItem?.sizes ?? [];
   const qtyTotal = Math.max(1, Number(charge.quantity ?? 1));
   const delivered = deliveredOf(charge);
   const pending = qtyTotal - delivered;
@@ -584,10 +586,12 @@ function ChargeDeliveries({ charge, onChanged }: { charge: any; onChanged: () =>
   const submit = async () => {
     const q = Math.round(Number(qty || pending));
     if (!q || q < 1) return;
+    if (sizes.length && !size) { alert('Elige la talla entregada'); return; }
     setSaving(true);
     try {
-      await deliverItemUnits(charge.id, { quantity: q, note: note.trim() || undefined });
-      setOpen(false); setQty(''); setNote('');
+      const res = await deliverItemUnits(charge.id, { quantity: q, size: size || undefined, note: note.trim() || undefined });
+      setOpen(false); setQty(''); setSize(''); setNote('');
+      if (res.stockWarning) alert(res.stockWarning);
       onChanged();
     } catch (err: any) {
       alert(err?.response?.data?.message ?? 'Error al registrar la entrega');
@@ -613,6 +617,7 @@ function ChargeDeliveries({ charge, onChanged }: { charge: any; onChanged: () =>
           <PackageCheck size={11} />
           <span>
             {d.quantity} und. entregada{d.quantity > 1 ? 's' : ''}
+            {d.size ? ` · talla ${d.size}` : ''}
             {d.deliveredBy ? ` por ${d.deliveredBy.firstName} ${d.deliveredBy.lastName}` : ''}
             {' · '}{new Date(d.createdAt).toLocaleDateString('es-VE')}
             {d.note ? ` · ${d.note}` : ''}
@@ -640,6 +645,16 @@ function ChargeDeliveries({ charge, onChanged }: { charge: any; onChanged: () =>
             type="number" min={1} max={pending} value={qty} onChange={e => setQty(e.target.value)}
             className="w-14 border border-[#C5CAD2] px-1 py-0.5 text-[11px] tabular-nums"
           />
+          {sizes.length > 0 && (
+            <select
+              value={size} onChange={e => setSize(e.target.value)}
+              className="border border-[#C5CAD2] px-1 py-0.5 text-[11px] bg-white"
+              title="Talla entregada"
+            >
+              <option value="">Talla…</option>
+              {sizes.map(sz => <option key={sz} value={sz}>{sz}</option>)}
+            </select>
+          )}
           <input
             type="text" value={note} onChange={e => setNote(e.target.value)} placeholder="Nota (opcional)"
             className="flex-1 border border-[#C5CAD2] px-1.5 py-0.5 text-[11px]"

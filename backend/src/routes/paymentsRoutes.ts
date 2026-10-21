@@ -31,6 +31,9 @@ import {
   deleteSellableItem,
   uploadSellableItemIcon,
   clearSellableItemIcon,
+  getInventorySummary,
+  getSellableItemInventory,
+  createInventoryMovement,
   // Enrollment plans
   listEnrollmentPlans,
   getEnrollmentPlan,
@@ -86,6 +89,10 @@ router.put('/sellable-items/:id', updateSellableItem);
 router.put('/sellable-items/:id/icon', itemIconUpload.single('icon'), uploadSellableItemIcon);
 router.delete('/sellable-items/:id/icon', clearSellableItemIcon);
 router.delete('/sellable-items/:id', deleteSellableItem);
+// Sizes stock: summary, per-item detail and audited movements
+router.get('/inventory-summary', getInventorySummary);
+router.get('/sellable-items/:id/inventory', getSellableItemInventory);
+router.post('/sellable-items/:id/inventory-movements', createInventoryMovement);
 
 // ── Enrollment Plans ──
 router.get('/enrollment-plans', listEnrollmentPlans);
