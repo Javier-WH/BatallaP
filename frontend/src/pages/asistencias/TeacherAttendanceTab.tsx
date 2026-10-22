@@ -809,7 +809,7 @@ function RosterScreen({
   const activeReasonDraft = selectedStudent
     ? reasonDraft?.inscriptionId === selectedStudent.inscriptionId ? reasonDraft.value : selectedStudent.reason ?? ''
     : '';
-  const selectedEditorHeight = selectedStudent?.priorBlock
+  const selectedEditorHeight = selectedStudent && activeBlock(selectedStudent)
     ? BLOCKED_SELECTED_EDITOR_HEIGHT
     : isOtherReasonChoice(activeReasonDraft) ? OTHER_SELECTED_EDITOR_HEIGHT : BASE_SELECTED_EDITOR_HEIGHT;
 
@@ -1113,6 +1113,30 @@ function RosterScreen({
   );
 }
 
+/**
+ * The block that currently restricts a student. A justified-absence block is soft:
+ * once the student has any mark it no longer applies.
+ */
+const activeBlock = (student: RosterEntry) => {
+  const prior = student.priorBlock;
+  if (!prior) return null;
+  return prior.kind === 'excused' && student.status !== null ? null : prior;
+};
+
+const BLOCK_LABELS = { retired: 'Jubilado', absent: 'Inasistente', excused: 'Justificado', kicked: 'Bloqueado' } as const;
+
+/** Badge of an active block; justified absences are blue so they never look like the amber blocks. */
+function BlockBadge({ block }: { block: NonNullable<RosterEntry['priorBlock']> }) {
+  const tone = block.kind === 'excused'
+    ? 'border-blue-200 bg-blue-50 text-blue-800'
+    : 'border-amber-200 bg-amber-50 text-amber-800';
+  return (
+    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium ${tone}`}>
+      {BLOCK_LABELS[block.kind] ?? 'Bloqueado'}
+    </span>
+  );
+}
+
 /** The P / A / E circles (plus T / J when the mark is Tarde / Justificado), the active one filled. */
 function StatusBadges({ student }: { student: RosterEntry }) {
   const badges: { code: string; label: string; status: AttendanceStatus; color: 'emerald' | 'rose' | 'slate' | 'amber' | 'blue' }[] = [
@@ -1167,7 +1191,7 @@ function RosterOverview({ roster, title, subtitle, onClose, onPick }: {
   }, [onClose]);
 
   const countOf = (status: AttendanceStatus) => roster.filter(r => r.status === status).length;
-  const unmarked = roster.filter(r => r.status === null && r.priorBlock == null).length;
+  const unmarked = roster.filter(r => r.status === null && activeBlock(r) == null).length;
   const summary: { label: string; value: number; tone: string }[] = [
     { label: 'presentes', value: countOf('present'), tone: 'text-emerald-700' },
     { label: 'ausentes', value: countOf('absent'), tone: 'text-rose-700' },
@@ -1207,8 +1231,8 @@ function RosterOverview({ roster, title, subtitle, onClose, onPick }: {
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className="mx-auto w-full max-w-xl px-3">
           {roster.map((student, index) => {
-            const blocked = student.priorBlock != null;
-            const pending = student.status === null && !blocked;
+            const block = activeBlock(student);
+            const pending = student.status === null && !block;
             return (
               <button
                 key={student.inscriptionId}
@@ -1222,13 +1246,7 @@ function RosterOverview({ roster, title, subtitle, onClose, onPick }: {
                   {student.fullName}
                   {student.sectionLabel && <span className="block text-[10px] font-normal text-slate-400">{student.sectionLabel}</span>}
                 </span>
-                {blocked ? (
-                  <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800">
-                    {student.priorBlock?.kind === 'retired' ? 'Jubilado' : student.priorBlock?.kind === 'absent' ? 'Inasistente' : 'Bloqueado'}
-                  </span>
-                ) : (
-                  <StatusBadges student={student} />
-                )}
+                {block ? <BlockBadge block={block} /> : <StatusBadges student={student} />}
               </button>
             );
           })}
@@ -1244,7 +1262,7 @@ function StudentListRow({ student, index, onClick }: {
   index: number;
   onClick: () => void;
 }) {
-  const blocked = student.priorBlock != null;
+  const block = activeBlock(student);
 
   return (
     <button
@@ -1263,13 +1281,7 @@ function StudentListRow({ student, index, onClick }: {
       {student.sectionLabel && (
         <span className="shrink-0 text-[10px] text-slate-400 att-font-body">{student.sectionLabel}</span>
       )}
-      {blocked ? (
-        <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800">
-          {student.priorBlock?.kind === 'retired' ? 'Jubilado' : student.priorBlock?.kind === 'absent' ? 'Inasistente' : 'Bloqueado'}
-        </span>
-      ) : (
-        <StatusBadges student={student} />
-      )}
+      {block ? <BlockBadge block={block} /> : <StatusBadges student={student} />}
     </button>
   );
 }
@@ -1291,7 +1303,7 @@ function SelectedStudentEditor({
   onClear: (code: string, note: string) => Promise<boolean>;
 }) {
   const [clearing, setClearing] = useState(false);
-  const prior = student.priorBlock;
+  const prior = activeBlock(student);
   const reasonValue = reasonDraft.trim();
   const panelRef = useRef<HTMLElement>(null);
   const wheelDistance = useRef(0);
@@ -1341,7 +1353,21 @@ function SelectedStudentEditor({
         <h2 className="att-font-head text-xl leading-tight text-slate-900 m-0 line-clamp-2 min-h-12">{student.fullName}</h2>
       </div>
 
-      {prior ? (
+      {prior?.kind === 'excused' ? (
+        <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
+          <p className="m-0 flex items-start gap-2 text-xs leading-relaxed text-blue-800">
+            <StopOutlined className="mt-0.5 shrink-0" />
+            Ausente de manera justificada en {prior.subjectName || 'la clase anterior'}, {prior.periodId.toUpperCase()}. Sigue justificado el resto del turno; puede avanzar sin marcarlo.
+          </p>
+          <button
+            type="button"
+            onClick={() => onSetStatus('present', '')}
+            className="mt-3 w-full rounded-lg border border-blue-300 bg-blue-100 py-2 text-xs font-medium text-blue-900"
+          >
+            Está presente
+          </button>
+        </div>
+      ) : prior ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
           <p className="m-0 flex items-start gap-2 text-xs leading-relaxed text-amber-800">
             <StopOutlined className="mt-0.5 shrink-0" />

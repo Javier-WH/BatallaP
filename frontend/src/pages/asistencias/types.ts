@@ -60,10 +60,12 @@ export interface RosterEntry {
    * Active block: 'retired' = left school early in the previous shift with
    * records (jubilado), 'kicked' = expelled earlier this same shift,
    * 'absent' = unjustified absence in an earlier block of this same shift
-   * (inasistente). sessionDate/shift locate the trigger's shift.
+   * (inasistente), 'excused' = justified absence earlier in this shift (soft
+   * block: no mark needed, "está presente" lifts it). sessionDate/shift locate
+   * the trigger's shift.
    */
   priorBlock: {
-    kind: 'retired' | 'kicked' | 'absent';
+    kind: 'retired' | 'kicked' | 'absent' | 'excused';
     subjectName: string | null;
     periodId: string;
     status: 'absent' | 'kicked';

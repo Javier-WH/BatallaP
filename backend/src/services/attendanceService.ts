@@ -397,9 +397,13 @@ function sortBlocksByPeriod<T extends { periodId: string }>(blocks: T[]): T[] {
  *    the same day and shift. Blocks the rest of that shift.
  *  - 'absent' (inasistente): an un-cleared unjustified absence in an earlier
  *    class block of the same day and shift. Blocks the rest of that shift.
+ *  - 'excused' (justificado): a justified absence in an earlier class block of
+ *    the same day and shift. A SOFT block: the student stays out for the rest
+ *    of the shift without any mark, and any later non-absent mark ("está
+ *    presente") lifts it. It never rejects writes.
  */
 export interface PriorBlock {
-  kind: 'retired' | 'kicked' | 'absent';
+  kind: 'retired' | 'kicked' | 'absent' | 'excused';
   subjectName: string | null;
   /** Period id of the class where the block was triggered. */
   periodId: string;
@@ -720,7 +724,8 @@ export async function saveSessionRecords(
     // CHANGE the record — re-saving an identical value stays a harmless no-op.
     const blockedIds = records
       .filter(input => {
-        if (!blockMap.has(input.inscriptionId) || input.status === 'absent') return false;
+        const live = blockMap.get(input.inscriptionId);
+        if (!live || live.kind === 'excused' || input.status === 'absent') return false;
         const current = byInscription.get(input.inscriptionId);
         const same = current && current.status === input.status
           && (current.reason ?? null) === (input.reason?.trim() || null);
@@ -745,7 +750,7 @@ export async function saveSessionRecords(
       const current = byInscription.get(input.inscriptionId) || null;
 
       if (!current) {
-        const blocked = blockMap.has(input.inscriptionId);
+        const blocked = !!blockMap.get(input.inscriptionId) && blockMap.get(input.inscriptionId)!.kind !== 'excused';
         const record = await AttendanceRecord.create({
           sessionId,
           inscriptionId: input.inscriptionId,
@@ -789,7 +794,7 @@ export async function saveSessionRecords(
             teacherId: performedByPersonId,
             markedAt: new Date(),
             // Keep the flag honest: cleared/lifted blocks must not linger.
-            blocked: blockMap.has(input.inscriptionId),
+            blocked: !!blockMap.get(input.inscriptionId) && blockMap.get(input.inscriptionId)!.kind !== 'excused',
           }, { transaction: t });
 
           const newValue: Record<string, unknown> = { status: input.status };
@@ -956,7 +961,8 @@ export async function saveOfflineRecords(
     }
     // A live block (appeared while the phone was offline) rejects non-absent
     // writes; 'absent' and no-op rewrites still go through.
-    if (blockMap.has(input.inscriptionId) && input.status !== 'absent' && !alreadyApplied) {
+    if (blockMap.has(input.inscriptionId) && blockMap.get(input.inscriptionId)!.kind !== 'excused'
+      && input.status !== 'absent' && !alreadyApplied) {
       blockedStudents.push({
         inscriptionId: current.inscriptionId,
         listNumber: current.rosterNumber ?? idx + 1,
@@ -1001,6 +1007,8 @@ const PRESENCE_STATUSES: AttendanceStatus[] = ['present', 'late', 'kicked'];
 const JUSTIFYING_ABSENT_REASONS = new Set(['justificado', 'enfermo']);
 const isUnjustifiedAbsence = (status: AttendanceStatus, reason: string | null) =>
   status === 'absent' && !JUSTIFYING_ABSENT_REASONS.has((reason ?? '').trim().toLowerCase());
+const isJustifiedAbsence = (status: AttendanceStatus, reason: string | null) =>
+  status === 'excused' || (status === 'absent' && JUSTIFYING_ABSENT_REASONS.has((reason ?? '').trim().toLowerCase()));
 
 /** Add days to a YYYY-MM-DD string (noon UTC keeps the day stable). */
 const shiftDays = (dateStr: string, days: number): string =>
@@ -1034,7 +1042,7 @@ interface DayRecord {
  *    student was not in school for that class. When that absence was preceded
  *    by a same-shift presence it is reported as 'retired' instead (the
  *    student came and left early). Justified absences (Justificado/Enfermo)
- *    never block. When both in-shift rules fire, the most recent event wins.
+ *    only soft-block ('excused'). When both in-shift rules fire, the most recent event wins.
  *    A clearance frees the shift until a NEW event re-blocks the student.
  *  - 'retired' (jubilado): in the student's most recent earlier shift WITH
  *    records — afternoon of the same day, or a previous day's shift — a
@@ -1109,6 +1117,21 @@ async function computeSessionBlocks(
         && d.clearedAt === null && !freedAfter(d.key))
       .sort((a, b) => b.key - a.key)[0];
     const inShift = kick && away ? (kick.key >= away.key ? kick : away) : (kick ?? away);
+    // Justified absence: soft block, lifted by any later non-absent mark of the
+    // same shift (in an earlier/this class block, or elsewhere in this block).
+    const presenceAfter = (key: number) => recs.some(d => d.date === sessionDate
+      && d.shift === currentShift && d.status !== 'absent' && d.status !== 'excused'
+      && d.key > key && (d.key <= blockStartKey || d.inCluster));
+    const excusedAbs = recs
+      .filter(d => inSameShift(d) && isJustifiedAbsence(d.status, d.reason) && !presenceAfter(d.key))
+      .sort((a, b) => b.key - a.key)[0];
+    if (excusedAbs && (!inShift || excusedAbs.key > inShift.key)) {
+      result.set(inscriptionId, {
+        kind: 'excused', subjectName: excusedAbs.subjectName, periodId: excusedAbs.periodId,
+        status: 'absent', sessionDate: excusedAbs.date, shift: excusedAbs.shift,
+      });
+      continue;
+    }
     if (inShift) {
       // An in-shift absence after an earlier same-shift presence is a
       // retirement (the student was there and left); otherwise inasistente.

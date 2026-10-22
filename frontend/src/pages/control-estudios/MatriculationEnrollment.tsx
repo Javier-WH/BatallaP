@@ -273,7 +273,7 @@ const MatriculationEnrollment: React.FC = () => {
   // retirar/reactivar, which stay restricted to Admin/Master.
   const canUnmatriculate = !!user?.roles.some(r => r === 'Administrador' || r === 'Master' || r === 'Control de Estudios');
   const [activePeriod, setActivePeriod] = useState<SchoolPeriod | null>(null);
-  const [viewStatus, setViewStatus] = useState<'pending' | 'completed'>('pending');
+  const [viewStatus, setViewStatus] = useState<'pending' | 'completed'>('completed');
   const [matriculations, setMatriculations] = useState<MatriculationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [structure, setStructure] = useState<EnrollStructureEntry[]>([]);
@@ -318,41 +318,36 @@ const MatriculationEnrollment: React.FC = () => {
   // menu onClick can use them even after the grid clears the selection.
   const visibilityCapturedIds = useRef<number[]>([]);
   const preserveVisibilitySelectionRef = useRef(false);
-  // Helper function to load filters from localStorage
-  const loadSavedFilters = () => {
+  // Only the column selection survives navigation — the data filters always
+  // start clean so returning to this page never shows a silently filtered list.
+  const savedColumnKeys: string[] | undefined = (() => {
     try {
-      const savedFilters = localStorage.getItem('matriculation-filters');
-      if (savedFilters) {
-        return JSON.parse(savedFilters);
-      }
-    } catch (e) {
-      console.error('Error loading filters from localStorage:', e);
+      return JSON.parse(localStorage.getItem('matriculation-filters') || '{}').visibleColumnKeys;
+    } catch {
+      return undefined;
     }
-    return {};
-  };
+  })();
 
-  const savedFilters = loadSavedFilters();
-
-  const [searchValue, setSearchValue] = useState(savedFilters.searchValue || '');
+  const [searchValue, setSearchValue] = useState('');
   const [questions, setQuestions] = useState<EnrollmentQuestionResponse[]>([]);
   const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[]>(() => {
     const base = AG_BASE_COLUMN_OPTIONS.map((option: { key: string }) => option.key);
-    const saved = savedFilters.visibleColumnKeys;
+    const saved = savedColumnKeys;
     // Columns added after a filter set was saved (e.g. rosterNumber) must still
     // appear — merge missing base keys into the saved selection.
     return saved ? [...saved, ...base.filter(k => !saved.includes(k))] : base;
   });
   const [columnPopoverOpen, setColumnPopoverOpen] = useState(false);
-  const [filterGrade, setFilterGrade] = useState<number | null>(savedFilters.filterGrade ?? null);
-  const [filterSection, setFilterSection] = useState<number | null>(savedFilters.filterSection ?? null);
-  const [filterGender, setFilterGender] = useState<string | null>(savedFilters.filterGender ?? null);
-  const [filterEscolaridad, setFilterEscolaridad] = useState<'regular' | 'repitiente' | 'materia_pendiente' | null>(savedFilters.filterEscolaridad ?? null);
-  const [filterSchoolPeriod, setFilterSchoolPeriod] = useState<number | null>(savedFilters.filterSchoolPeriod ?? null);
+  const [filterGrade, setFilterGrade] = useState<number | null>(null);
+  const [filterSection, setFilterSection] = useState<number | null>(null);
+  const [filterGender, setFilterGender] = useState<string | null>(null);
+  const [filterEscolaridad, setFilterEscolaridad] = useState<'regular' | 'repitiente' | 'materia_pendiente' | null>(null);
+  const [filterSchoolPeriod, setFilterSchoolPeriod] = useState<number | null>(null);
   const [allPeriods, setAllPeriods] = useState<SchoolPeriod[]>([]);
   const [groupTerms, setGroupTerms] = useState<{ id: number; name: string; order: number; isActive: boolean }[]>([]);
   const [groupChangeFromTermId, setGroupChangeFromTermId] = useState<number | null>(null);
-  const [filterMissing, setFilterMissing] = useState<string | null>(savedFilters.filterMissing ?? null);
-  const [filterInscription, setFilterInscription] = useState<'inscrito' | 'no_inscrito' | 'retirado' | null>(savedFilters.filterInscription ?? null);
+  const [filterMissing, setFilterMissing] = useState<string | null>(null);
+  const [filterInscription, setFilterInscription] = useState<'inscrito' | 'no_inscrito' | 'retirado' | null>(null);
   const [nominaModalOpen, setNominaModalOpen] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [reportUuid, setReportUuid] = useState<string | null>(null);
@@ -364,21 +359,10 @@ const MatriculationEnrollment: React.FC = () => {
   const gridWrapperRef = useRef<HTMLDivElement>(null);
   const bulkActionRef = useRef<HTMLDivElement>(null);
 
-  // Save filters to localStorage whenever they change
+  // Persist the column selection only — filters intentionally reset on mount.
   useEffect(() => {
-    const filters = {
-      searchValue,
-      visibleColumnKeys,
-      filterGrade,
-      filterSection,
-      filterGender,
-      filterEscolaridad,
-      filterSchoolPeriod,
-      filterMissing,
-      filterInscription
-    };
-    localStorage.setItem('matriculation-filters', JSON.stringify(filters));
-  }, [searchValue, visibleColumnKeys, filterGrade, filterSection, filterGender, filterEscolaridad, filterSchoolPeriod, filterMissing, filterInscription]);
+    localStorage.setItem('matriculation-filters', JSON.stringify({ visibleColumnKeys }));
+  }, [visibleColumnKeys]);
 
   useEffect(() => {
     const updateScrollY = () => {
@@ -438,17 +422,6 @@ const MatriculationEnrollment: React.FC = () => {
         else message.warning('No hay un período académico activo configurado.');
         if (allPeriodsRes.data) {
           setAllPeriods(allPeriodsRes.data);
-
-          // Only preseleccionar el período activo if no saved filter exists
-          const savedFilters = localStorage.getItem('matriculation-filters');
-          const hasSavedPeriodFilter = savedFilters ? JSON.parse(savedFilters).filterSchoolPeriod !== undefined : false;
-
-          if (!hasSavedPeriodFilter) {
-            const activePeriod = allPeriodsRes.data.find((p: any) => p.status === 'activo');
-            if (activePeriod) {
-              setFilterSchoolPeriod(activePeriod.id);
-            }
-          }
         }
         if (questionsRes.data) setQuestions(questionsRes.data);
       } catch (error) {

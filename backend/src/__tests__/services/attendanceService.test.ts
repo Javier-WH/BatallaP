@@ -522,25 +522,34 @@ describe('attendanceService', () => {
       expect(entry!.priorBlock).toBeNull();
     });
 
-    it('una ausencia justificada en clase anterior no bloquea el resto del turno', async () => {
+    it('una ausencia justificada en clase anterior es un bloqueo suave "excused" que no rechaza escrituras', async () => {
       const { structure, person, schedule } = await setupTeacherWithSchedule('Lunes', 'm1');
       const { inscription } = await setupStudent(structure, 'A');
-      await ScheduleEntry.create({
-        scheduleId: schedule.id,
-        day: 'Lunes',
-        periodId: 'm2',
-        subjectId: null,
-        teacherId: person.id,
-        isGroupSubject: false,
-      });
+      for (const periodId of ['m2', 'm4']) {
+        await ScheduleEntry.create({
+          scheduleId: schedule.id, day: 'Lunes', periodId,
+          subjectId: null, teacherId: person.id, isGroupSubject: false,
+        });
+      }
 
-      const [s1, s2] = await getTeacherSessionsForDate(person.id, MONDAY);
+      const [s1, s2, s3] = await getTeacherSessionsForDate(person.id, MONDAY);
       await saveSessionRecords(s1.id, [
         { inscriptionId: inscription.id, status: 'absent', reason: 'Enfermo' },
       ], person.id);
 
-      const detail = await getSessionDetail(s2.id);
-      expect(detail.roster.find(r => r.inscriptionId === inscription.id)!.priorBlock).toBeNull();
+      const find = async (id: number) =>
+        (await getSessionDetail(id)).roster.find(r => r.inscriptionId === inscription.id)!;
+      expect((await find(s2.id)).priorBlock?.kind).toBe('excused');
+
+      // Advancing without a mark keeps the student excused in the next class.
+      expect((await find(s3.id)).priorBlock?.kind).toBe('excused');
+
+      // "Está presente" is a plain present mark: allowed, and it frees the shift.
+      await saveSessionRecords(s2.id, [{ inscriptionId: inscription.id, status: 'present' }], person.id);
+      const afterPresent = await find(s2.id);
+      expect(afterPresent.status).toBe('present');
+      expect(afterPresent.blocked).toBe(false);
+      expect((await find(s3.id)).priorBlock).toBeNull();
     });
 
     it('el bloqueo por inasistencia se libra con un desbloqueo en la sesión', async () => {

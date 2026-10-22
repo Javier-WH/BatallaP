@@ -277,7 +277,7 @@ const SessionRosterModal: React.FC<SessionRosterModalProps> = ({
           </div>
         </div>
 
-        {roster.some(r => r.blocked || r.priorBlock) && (
+        {roster.some(r => r.blocked || (r.priorBlock && r.priorBlock.kind !== 'excused')) && (
           <Alert
             type="warning"
             showIcon
@@ -376,7 +376,15 @@ const SessionRosterModal: React.FC<SessionRosterModalProps> = ({
                     ) : null}
                   </div>
                   <div style={{ width: 130, flexShrink: 0, paddingRight: 12 }}>
-                    {(r.blocked || r.priorBlock) && (
+                    {r.priorBlock?.kind === 'excused' && r.status === null && (
+                      <span style={{
+                        display: 'inline-block', padding: '2px 8px', borderRadius: 6,
+                        background: '#d1e9ff', color: '#175cd3', fontSize: 12, fontWeight: 600,
+                      }}>
+                        Justificado
+                      </span>
+                    )}
+                    {(r.blocked || (r.priorBlock && r.priorBlock.kind !== 'excused')) && (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         <span style={{
                           display: 'inline-block', padding: '2px 8px', borderRadius: 6,
