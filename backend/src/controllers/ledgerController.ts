@@ -8,7 +8,8 @@ import {
 } from '@/models/index';
 import { DISCOUNT_KINDS, DISCOUNT_SCOPES } from '@/models/InscriptionDiscount';
 import { appliesAtPar, buildDedupeKey, normalizePaymentFields } from '@/services/paymentRulesService';
-import { distributePayment, checkTargetOrder, pendingByCharge, AllocationPart, AllocationTarget } from '@/services/paymentAllocationService';
+import { distributePayment, checkTargetOrder, pendingByCharge, planSharedPayment, AllocationPart, AllocationTarget } from '@/services/paymentAllocationService';
+import { randomUUID } from 'crypto';
 import { applyDiscountsToCharges, DiscountRule } from '@/services/discountService';
 import { getBillingMonths, monthCodeFromDate, resolveEntryMonth } from '@/services/billingCalendarService';
 import { pickEffective, resolveEnrollmentPlan } from '@/services/feeResolverService';
@@ -165,6 +166,17 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
         where,
       });
     }
+    // What each of those students still owes (every period, per currency), so a
+    // guardian card can show the representative's grand total.
+    const pendingByStudent = new Map<number, Record<string, number>>();
+    for (const [personId, ins] of otherInscByPerson) {
+      const pending: Record<string, number> = {};
+      for (const row of await pendingByCharge(ins.id)) {
+        if (row.remaining > 0.005) pending[row.charge.currency] = Math.round(((pending[row.charge.currency] ?? 0) + row.remaining) * 100) / 100;
+      }
+      pendingByStudent.set(personId, pending);
+    }
+    for (const [personId, label] of labelByStudent) label.pending = pendingByStudent.get(personId) ?? {};
     // One card per guardian profile: a tutor can hold several relationships
     // with the same student (e.g. father + representative) — merge them.
     const guardiansByPerson = new Map<number, any[]>();
@@ -267,7 +279,21 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
       if (!chargesByInscription[key]) chargesByInscription[key] = [];
       chargesByInscription[key].push(c);
     }
+    // Payments shared between students: tell each row who else received a share.
+    const groupIds = [...new Set(payments.map(p => p.paymentGroupId).filter((g): g is string => !!g))];
+    const groupRows = groupIds.length
+      ? await Payment.findAll({
+          where: { paymentGroupId: { [Op.in]: groupIds } },
+          attributes: ['id', 'inscriptionId', 'paymentGroupId', 'amount', 'currency'],
+          include: [{ model: Inscription, as: 'inscription', attributes: ['id'], include: [{ model: Person, as: 'student', attributes: ['firstName', 'lastName'] }] }],
+        })
+      : [];
     for (const p of payments) {
+      if (p.paymentGroupId) {
+        (p as any).setDataValue('sharedWith', (groupRows as any[])
+          .filter(r => r.paymentGroupId === p.paymentGroupId && r.id !== p.id)
+          .map(r => ({ paymentId: r.id, name: studentLabel(r.inscription), amount: Number(r.amount), currency: r.currency })));
+      }
       const key = p.inscriptionId;
       if (!paymentsByInscription[key]) paymentsByInscription[key] = [];
       paymentsByInscription[key].push(p);
@@ -953,6 +979,260 @@ export const createPayment = async (req: Request, res: Response) => {
   }
 };
 
+// ── Shared payment: one transfer for several students of the same representative ──
+
+const SHARED_SCOPES = ['auto', 'tuition', 'item'];
+
+const parsePayDate = (paymentDate: unknown): Date | null => {
+  const isPlain = typeof paymentDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(paymentDate);
+  const d = isPlain ? new Date(`${paymentDate}T12:00:00Z`) : paymentDate ? new Date(paymentDate as string) : new Date();
+  return isNaN(d.getTime()) ? null : d;
+};
+
+const sharedTarget = (scope?: string): AllocationTarget =>
+  scope === 'item' ? { kind: 'item' } : scope === 'tuition' ? { kind: 'tuition' } : { kind: 'auto' };
+
+/** "Surname, Name" of the student of an inscription loaded with its `student`. */
+const studentLabel = (ins: any) => {
+  const st = ins?.student;
+  return st ? `${st.lastName}, ${st.firstName}`.replace(/^, |, $/g, '') : '—';
+};
+
+/**
+ * GET /inscriptions/:id/shared-students?schoolPeriodId= — the other students who
+ * share a representative with this inscription (they need not be siblings), each
+ * with the inscription to charge (the viewed period's, else the latest) and what
+ * they still owe per currency. Placeholder guardians are ignored.
+ */
+export const getSharedStudents = async (req: Request, res: Response) => {
+  try {
+    const inscription = await Inscription.findByPk(Number(req.params.id));
+    if (!inscription) return res.status(404).json({ message: 'Inscripción no encontrada' });
+    const viewedPeriodId = Number(req.query.schoolPeriodId) || inscription.schoolPeriodId;
+
+    const own = await StudentGuardian.findAll({
+      where: { studentId: inscription.personId },
+      include: [{ model: GuardianProfile, as: 'profile' }],
+    });
+    const guardianIds = [...new Set(own.filter((g: any) => !isFakeGuardian(g.profile)).map((g: any) => g.guardianId))];
+    if (guardianIds.length === 0) return res.json([]);
+
+    const links = await StudentGuardian.findAll({ where: { guardianId: { [Op.in]: guardianIds } } });
+    const personIds = [...new Set(links.map((l: any) => l.studentId))].filter(id => id !== inscription.personId);
+    if (personIds.length === 0) return res.json([]);
+
+    const inscriptions = await Inscription.findAll({
+      where: { personId: { [Op.in]: personIds } },
+      include: [
+        { model: Person, as: 'student', attributes: ['id', 'firstName', 'lastName'] },
+        { model: Grade, as: 'grade', attributes: ['name'] },
+        { model: Section, as: 'section', attributes: ['name'] },
+        { model: SchoolPeriod, as: 'period', attributes: ['id', 'period', 'startYear'] },
+      ],
+    });
+    const chosen = new Map<number, any>();
+    for (const ins of inscriptions as any[]) {
+      const cur = chosen.get(ins.personId);
+      if (!cur || ins.schoolPeriodId === viewedPeriodId
+        || (cur.schoolPeriodId !== viewedPeriodId && ins.schoolPeriodId > cur.schoolPeriodId)) chosen.set(ins.personId, ins);
+    }
+
+    const out = [];
+    for (const ins of chosen.values()) {
+      const pending: Record<string, number> = {};
+      for (const row of await pendingByCharge(ins.id)) {
+        if (row.remaining > 0.005) pending[row.charge.currency] = Math.round(((pending[row.charge.currency] ?? 0) + row.remaining) * 100) / 100;
+      }
+      const hasDebt = Object.keys(pending).length > 0;
+      if (ins.withdrawnAt && !hasDebt) continue;
+      out.push({
+        inscriptionId: ins.id,
+        personId: ins.personId,
+        name: studentLabel(ins),
+        where: `${ins.grade?.name ?? ''}${ins.section?.name ? ` ${ins.section.name}` : ''}`
+          + (ins.schoolPeriodId !== viewedPeriodId ? ` (${ins.period?.period ?? ins.period?.startYear})` : ''),
+        withdrawn: !!ins.withdrawnAt,
+        pending,
+        hasDebt,
+      });
+    }
+    out.sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    return res.json(out);
+  } catch (error) {
+    console.error('[getSharedStudents] Error:', error);
+    return res.status(500).json({ message: 'Error al buscar los representados' });
+  }
+};
+
+/** POST /payments/shared/preview — how a shared payment would be split (nothing is stored). */
+export const previewSharedPayment = async (req: Request, res: Response) => {
+  try {
+    const { inscriptionIds, amount, currency, paymentDate, scope } = req.body;
+    const ids = Array.isArray(inscriptionIds) ? [...new Set(inscriptionIds.map(Number).filter(Boolean))] : [];
+    if (ids.length === 0 || !(Number(amount) > 0) || !currency) {
+      return res.status(400).json({ message: 'inscriptionIds, amount y currency son requeridos' });
+    }
+    if (scope !== undefined && !SHARED_SCOPES.includes(scope)) return res.status(400).json({ message: 'Destino de pago inválido' });
+    const payDate = parsePayDate(paymentDate);
+    if (!payDate) return res.status(400).json({ message: 'Fecha de pago inválida' });
+    const portions = await planSharedPayment({ inscriptionIds: ids, currency, amount: Number(amount), payDate, scope });
+    const inscriptions = await Inscription.findAll({
+      where: { id: { [Op.in]: ids } },
+      include: [{ model: Person, as: 'student', attributes: ['firstName', 'lastName'] }],
+    });
+    const nameById = new Map(inscriptions.map((i: any) => [i.id, studentLabel(i)]));
+    return res.json({ portions: portions.map(p => ({ ...p, name: nameById.get(p.inscriptionId) ?? '—' })) });
+  } catch (error) {
+    console.error('[previewSharedPayment] Error:', error);
+    return res.status(500).json({ message: 'Error al calcular el reparto del pago' });
+  }
+};
+
+/**
+ * POST /payments/shared — registers ONE physical payment for several students of the
+ * same representative. One Payment row per student (tied by `paymentGroupId`) sharing
+ * method / reference / date / currency, each carrying its own share of the amount.
+ * Shares come from `portions` or, by default, from the priority plan
+ * (`planSharedPayment`). Everything is atomic; only the first row carries the
+ * duplicate fingerprint and idempotency key, so retrying the same payment is still caught.
+ */
+export const createSharedPayment = async (req: Request, res: Response) => {
+  try {
+    const {
+      inscriptionIds, schoolPeriodId, amount, currency, method, reference, bank, account,
+      paymentDate, notes, clientRequestId, allowDuplicate, scope, portions: manualPortions,
+    } = req.body;
+    const ids: number[] = Array.isArray(inscriptionIds) ? [...new Set<number>(inscriptionIds.map(Number).filter(Boolean))] : [];
+    if (ids.length < 2 || !schoolPeriodId || !(Number(amount) > 0) || !currency) {
+      return res.status(400).json({ message: 'Se requieren al menos dos estudiantes, schoolPeriodId, amount y currency' });
+    }
+    if (scope !== undefined && !SHARED_SCOPES.includes(scope)) return res.status(400).json({ message: 'Destino de pago inválido' });
+
+    if (clientRequestId) {
+      const existing = await Payment.findOne({ where: { clientRequestId: String(clientRequestId) } });
+      if (existing) {
+        const rows = existing.paymentGroupId ? await Payment.findAll({ where: { paymentGroupId: existing.paymentGroupId } }) : [existing];
+        return res.status(200).json({ groupId: existing.paymentGroupId, payments: rows });
+      }
+    }
+
+    const total = Math.round(Number(amount) * 100) / 100;
+    const fields = normalizePaymentFields({ method, currency, amount: total, bank, account, reference, notes });
+    const payDate = parsePayDate(paymentDate);
+    if (!payDate) return res.status(400).json({ message: 'Fecha de pago inválida' });
+    const dayStr = payDate.toISOString().slice(0, 10);
+    const tomorrow = new Date(Date.now() + 36 * 3600 * 1000).toISOString().slice(0, 10);
+    if (dayStr > tomorrow) return res.status(400).json({ message: 'La fecha del pago no puede ser futura' });
+
+    const found = await Inscription.count({ where: { id: { [Op.in]: ids } } });
+    if (found !== ids.length) return res.status(400).json({ message: 'Alguna inscripción no existe' });
+
+    const dedupeKey = allowDuplicate ? null : buildDedupeKey(fields, currency, total, dayStr);
+    if (!allowDuplicate) {
+      const duplicate = await findDuplicatePayment({
+        dedupeKey, inscriptionId: ids[0], method: fields.method, currency, amount: total, payDate,
+      });
+      if (duplicate) return res.status(409).json(duplicateResponse(duplicate));
+    }
+
+    // Shares: the client's (possibly edited) ones, validated, or the priority plan.
+    let shares: { inscriptionId: number; amount: number }[];
+    if (Array.isArray(manualPortions) && manualPortions.length) {
+      shares = manualPortions.map((p: any) => ({ inscriptionId: Number(p.inscriptionId), amount: Math.round(Number(p.amount) * 100) / 100 }));
+      if (shares.some(s => !ids.includes(s.inscriptionId) || !(s.amount >= 0))) {
+        return res.status(400).json({ message: 'Los montos por estudiante son inválidos' });
+      }
+      if (Math.abs(shares.reduce((s, p) => s + p.amount, 0) - total) >= 0.005) {
+        return res.status(400).json({ message: 'La suma de los montos por estudiante debe ser igual al monto total del pago' });
+      }
+    } else {
+      shares = await planSharedPayment({ inscriptionIds: ids, currency, amount: total, payDate, scope });
+    }
+    shares = shares.filter(s => s.amount > 0);
+    if (shares.length === 0) return res.status(400).json({ message: 'Ningún estudiante tiene deuda pendiente para aplicar el pago' });
+
+    const resolver = makeRateResolver();
+    const rate = currency === 'VES' ? 1 : await resolver.vesPerUnit(currency, payDate);
+    const groupId = shares.length > 1 ? randomUUID() : null;
+    const registeredBy = (req.session as any)?.user?.personId ?? null;
+    const target = sharedTarget(scope);
+
+    const created: { payment: Payment; parts: AllocationPart[] }[] = [];
+    const t = await sequelize.transaction();
+    try {
+      for (let i = 0; i < shares.length; i++) {
+        const { inscriptionId, amount: share } = shares[i];
+        const shareVES = rate != null ? Math.round(share * rate * 100) / 100 : null;
+        const assignment = await allocatePayment({
+          inscriptionId, schoolPeriodId: Number(schoolPeriodId), currency, amount: share,
+          amountVES: shareVES, payDate, resolver,
+        });
+        const payment = await Payment.create({
+          inscriptionId,
+          schoolPeriodId: Number(schoolPeriodId),
+          month: assignment.finalMonth,
+          debtPeriodId: assignment.finalDebtPeriod,
+          amount: share,
+          currency,
+          amountVES: shareVES,
+          exchangeRate: rate,
+          equivalent: assignment.equivalent,
+          equivalentCurrency: assignment.equivalentCurrency,
+          atPar: assignment.atPar,
+          method: fields.method,
+          reference: fields.reference,
+          bank: fields.bank,
+          account: fields.account,
+          registeredByPersonId: registeredBy,
+          clientRequestId: i === 0 && clientRequestId ? String(clientRequestId) : null,
+          dedupeKey: i === 0 ? dedupeKey : null,
+          paymentGroupId: groupId,
+          paymentDate: payDate,
+          notes: fields.notes,
+        }, { transaction: t });
+        const parts = await distributePayment(payment, target, { transaction: t });
+        if (parts.length) await applyDistribution(payment, parts, t);
+        else if (scope === 'item' || scope === 'tuition') {
+          throw Object.assign(new Error(scope === 'item'
+            ? 'Un estudiante no tiene items vendibles pendientes'
+            : 'Un estudiante no tiene inscripción ni mensualidades pendientes'), { status: 400 });
+        }
+        created.push({ payment, parts });
+      }
+      await t.commit();
+    } catch (e) {
+      await t.rollback();
+      throw e;
+    }
+
+    for (const { payment } of created) await clearPapersHoldIfSettled(payment.inscriptionId);
+
+    const chargeIds = [...new Set(created.flatMap(c => c.parts.map(p => p.chargeId)))];
+    const charges = chargeIds.length
+      ? await Charge.findAll({ where: { id: { [Op.in]: chargeIds } }, attributes: ['id', 'description', 'type', 'month'] })
+      : [];
+    const chargeById = new Map(charges.map(c => [c.id, c]));
+    return res.status(201).json({
+      groupId,
+      payments: created.map(({ payment, parts }) => ({
+        ...payment.toJSON(),
+        allocations: parts.map(x => ({
+          chargeId: x.chargeId, amount: x.amount, currency: x.currency, month: x.month, periodId: x.periodId, atPar: x.atPar,
+          description: chargeById.get(x.chargeId)?.description ?? null,
+          type: chargeById.get(x.chargeId)?.type ?? null,
+        })),
+      })),
+    });
+  } catch (error: any) {
+    if (error instanceof UniqueConstraintError) {
+      return res.status(409).json({ code: 'DUPLICATE_PAYMENT', message: 'Este pago ya fue registrado' });
+    }
+    if (error?.status === 400) return res.status(400).json({ message: error.message });
+    console.error('[createSharedPayment] Error:', error);
+    return res.status(500).json({ message: 'Error al registrar el pago compartido' });
+  }
+};
+
 // ── Payment allocation ──
 
 export interface PaymentAssignment {
@@ -1263,7 +1543,26 @@ const correctionReason = (value: unknown): string | null => {
 };
 
 /**
- * DELETE /payments/:id  body { reason } — removes a payment entered by mistake.
+ * A payment shared by several students must be corrected knowingly: `applyTo`
+ * 'single' touches only this row, 'group' every row of the shared payment. Without
+ * it, a grouped payment yields `{ conflict }` (the other rows) so the caller can ask.
+ */
+async function resolveSharedScope(
+  payment: Payment, applyTo: unknown, transaction: Transaction,
+): Promise<{ rows: Payment[]; group: boolean } | { conflict: Payment[] }> {
+  if (!payment.paymentGroupId) return { rows: [payment], group: false };
+  const others = await Payment.findAll({
+    where: { paymentGroupId: payment.paymentGroupId, id: { [Op.ne]: payment.id } },
+    transaction,
+  });
+  if (others.length === 0 || applyTo === 'single') return { rows: [payment], group: false };
+  if (applyTo === 'group') return { rows: [payment, ...others], group: true };
+  return { conflict: others };
+}
+
+/**
+ * DELETE /payments/:id  body { reason, applyTo? } — removes a payment entered by mistake.
+ * `applyTo` ('single' | 'group') is required for payments shared between students.
  * The reason is mandatory and the payment is kept as a snapshot in the audit trail.
  */
 export const deletePayment = async (req: Request, res: Response) => {
@@ -1279,21 +1578,32 @@ export const deletePayment = async (req: Request, res: Response) => {
       await t.rollback();
       return res.status(400).json({ message: 'Indique el motivo de la eliminación' });
     }
-    const inscriptionId = payment.inscriptionId;
-    await PaymentAuditLog.create({
-      paymentId: payment.id,
-      action: 'deleted',
-      fromInscriptionId: inscriptionId,
-      performedByPersonId: (req.session as any)?.user?.personId ?? null,
-      reason,
-      snapshot: JSON.stringify(payment.toJSON()),
-    }, { transaction: t });
-    await PaymentAllocation.destroy({ where: { paymentId: payment.id }, transaction: t });
-    await payment.destroy({ transaction: t });
+    const resolved = await resolveSharedScope(payment, req.body?.applyTo, t);
+    if ('conflict' in resolved) {
+      await t.rollback();
+      return res.status(409).json({
+        code: 'SHARED_PAYMENT',
+        message: 'Este pago se registró de forma compartida con otros estudiantes',
+        others: await Promise.all(resolved.conflict.map(describeDuplicate)),
+      });
+    }
+    const performer = (req.session as any)?.user?.personId ?? null;
+    for (const row of resolved.rows) {
+      await PaymentAuditLog.create({
+        paymentId: row.id,
+        action: 'deleted',
+        fromInscriptionId: row.inscriptionId,
+        performedByPersonId: performer,
+        reason: resolved.rows.length > 1 ? `[Pago compartido completo] ${reason}`.slice(0, 500) : reason,
+        snapshot: JSON.stringify(row.toJSON()),
+      }, { transaction: t });
+      await PaymentAllocation.destroy({ where: { paymentId: row.id }, transaction: t });
+      await row.destroy({ transaction: t });
+    }
     await t.commit();
     // Deleting a payment may reopen a debt — the hold only lifts automatically.
-    await clearPapersHoldIfSettled(inscriptionId);
-    return res.json({ message: 'Pago eliminado' });
+    for (const row of resolved.rows) await clearPapersHoldIfSettled(row.inscriptionId);
+    return res.json({ message: resolved.rows.length > 1 ? 'Pago compartido eliminado' : 'Pago eliminado' });
   } catch (error) {
     await t.rollback();
     console.error('[deletePayment] Error:', error);
@@ -1302,10 +1612,11 @@ export const deletePayment = async (req: Request, res: Response) => {
 };
 
 /**
- * POST /payments/:id/move  body { toInscriptionId?, scope?, chargeId?, reason } — corrects where a
+ * POST /payments/:id/move  body { toInscriptionId?, scope?, chargeId?, reason, applyTo? } — corrects where a
  * payment went: to another student (same school period), to another destination (`scope`:
  * 'auto' | 'tuition' | 'item', optionally a specific item `chargeId`), or both. The payment keeps
  * its id, date, registrar and operation data; its allocations are rebuilt against the new target.
+ * Shared payments need `applyTo`: 'single' (this row) or 'group' (destination change on every row).
  */
 export const movePayment = async (req: Request, res: Response) => {
   const t = await sequelize.transaction();
@@ -1325,77 +1636,86 @@ export const movePayment = async (req: Request, res: Response) => {
       await t.rollback();
       return res.status(400).json({ message: 'Destino de pago inválido' });
     }
-    const toInscriptionId = Number(req.body?.toInscriptionId) || payment.inscriptionId;
-    const target = await Inscription.findByPk(toInscriptionId, { transaction: t });
-    if (!target) {
+    const resolved = await resolveSharedScope(payment, req.body?.applyTo, t);
+    if ('conflict' in resolved) {
       await t.rollback();
-      return res.status(400).json({ message: 'Seleccione el estudiante destino' });
-    }
-    const sameStudent = target.id === payment.inscriptionId;
-    if (sameStudent && !scope) {
-      await t.rollback();
-      return res.status(400).json({ message: 'El pago ya pertenece a ese estudiante' });
-    }
-    if (target.schoolPeriodId !== payment.schoolPeriodId) {
-      await t.rollback();
-      return res.status(400).json({ message: 'El estudiante destino debe ser del mismo período escolar' });
-    }
-    const chargeId = scope === 'item' && req.body?.chargeId ? Number(req.body.chargeId) : null;
-    if (chargeId) {
-      const itemCharge = await Charge.findByPk(chargeId, { transaction: t });
-      if (!itemCharge || itemCharge.inscriptionId !== target.id || itemCharge.type !== 'item') {
-        await t.rollback();
-        return res.status(400).json({ message: 'El item seleccionado no es una deuda de item vendible del estudiante' });
-      }
-    }
-
-    const fromInscriptionId = payment.inscriptionId;
-    const snapshot = JSON.stringify(payment.toJSON());
-
-    // The old allocations belonged to the previous student's / destination's debts: clear them and distribute again.
-    await payment.update({ inscriptionId: target.id, chargeId: null, month: null, debtPeriodId: null, equivalent: null, equivalentCurrency: null, atPar: false }, { transaction: t });
-    await PaymentAllocation.destroy({ where: { paymentId: payment.id }, transaction: t });
-    const allocTarget: AllocationTarget = scope === 'item' ? { kind: 'item', chargeId: chargeId ?? undefined }
-      : scope === 'tuition' ? { kind: 'tuition' } : { kind: 'auto' };
-    const parts = await distributePayment(payment, allocTarget, { transaction: t });
-    if (parts.length) {
-      await applyDistribution(payment, parts, t);
-    } else if (scope === 'item' || scope === 'tuition') {
-      throw Object.assign(new Error(scope === 'item'
-        ? 'El estudiante no tiene items vendibles pendientes'
-        : 'El estudiante no tiene inscripción ni mensualidades pendientes'), { status: 400 });
-    } else {
-      const alloc = await allocatePayment({
-        inscriptionId: target.id,
-        schoolPeriodId: payment.schoolPeriodId,
-        currency: payment.currency,
-        amount: Number(payment.amount),
-        amountVES: payment.amountVES != null ? Number(payment.amountVES) : null,
-        payDate: payment.paymentDate,
-        resolver: makeRateResolver(t),
+      return res.status(409).json({
+        code: 'SHARED_PAYMENT',
+        message: 'Este pago se registró de forma compartida con otros estudiantes',
+        others: await Promise.all(resolved.conflict.map(describeDuplicate)),
       });
-      await payment.update({
-        month: alloc.finalMonth,
-        debtPeriodId: alloc.finalDebtPeriod,
-        equivalent: alloc.equivalent,
-        equivalentCurrency: alloc.equivalentCurrency,
-        atPar: alloc.atPar,
-      }, { transaction: t });
     }
+    const fail = (message: string) => Object.assign(new Error(message), { status: 400 });
+    if (resolved.group && (req.body?.toInscriptionId || req.body?.chargeId || !scope)) {
+      throw fail('Un pago compartido completo solo permite cambiar su destino, no el estudiante ni un item concreto');
+    }
+    const requestedTo = Number(req.body?.toInscriptionId) || null;
+    const performer = (req.session as any)?.user?.personId ?? null;
+    const touched = new Set<number>();
 
-    await PaymentAuditLog.create({
-      paymentId: payment.id,
-      action: 'moved',
-      fromInscriptionId,
-      toInscriptionId: target.id,
-      performedByPersonId: (req.session as any)?.user?.personId ?? null,
-      reason: scope ? `[${scope === 'item' ? 'Destino: items vendibles' : scope === 'tuition' ? 'Destino: inscripción y mensualidades' : 'Destino: automático'}] ${reason}`.slice(0, 500) : reason,
-      snapshot,
-    }, { transaction: t });
+    for (const row of resolved.rows) {
+      const target = await Inscription.findByPk(requestedTo ?? row.inscriptionId, { transaction: t });
+      if (!target) throw fail('Seleccione el estudiante destino');
+      const sameStudent = target.id === row.inscriptionId;
+      if (sameStudent && !scope) throw fail('El pago ya pertenece a ese estudiante');
+      if (target.schoolPeriodId !== row.schoolPeriodId) throw fail('El estudiante destino debe ser del mismo período escolar');
+      const chargeId = scope === 'item' && req.body?.chargeId ? Number(req.body.chargeId) : null;
+      if (chargeId) {
+        const itemCharge = await Charge.findByPk(chargeId, { transaction: t });
+        if (!itemCharge || itemCharge.inscriptionId !== target.id || itemCharge.type !== 'item') {
+          throw fail('El item seleccionado no es una deuda de item vendible del estudiante');
+        }
+      }
+
+      const fromInscriptionId = row.inscriptionId;
+      const snapshot = JSON.stringify(row.toJSON());
+
+      // The old allocations belonged to the previous student's / destination's debts: clear them and distribute again.
+      await row.update({ inscriptionId: target.id, chargeId: null, month: null, debtPeriodId: null, equivalent: null, equivalentCurrency: null, atPar: false }, { transaction: t });
+      await PaymentAllocation.destroy({ where: { paymentId: row.id }, transaction: t });
+      const allocTarget: AllocationTarget = scope === 'item' ? { kind: 'item', chargeId: chargeId ?? undefined }
+        : scope === 'tuition' ? { kind: 'tuition' } : { kind: 'auto' };
+      const parts = await distributePayment(row, allocTarget, { transaction: t });
+      if (parts.length) {
+        await applyDistribution(row, parts, t);
+      } else if (scope === 'item' || scope === 'tuition') {
+        throw fail(scope === 'item'
+          ? 'El estudiante no tiene items vendibles pendientes'
+          : 'El estudiante no tiene inscripción ni mensualidades pendientes');
+      } else {
+        const alloc = await allocatePayment({
+          inscriptionId: target.id,
+          schoolPeriodId: row.schoolPeriodId,
+          currency: row.currency,
+          amount: Number(row.amount),
+          amountVES: row.amountVES != null ? Number(row.amountVES) : null,
+          payDate: row.paymentDate,
+          resolver: makeRateResolver(t),
+        });
+        await row.update({
+          month: alloc.finalMonth,
+          debtPeriodId: alloc.finalDebtPeriod,
+          equivalent: alloc.equivalent,
+          equivalentCurrency: alloc.equivalentCurrency,
+          atPar: alloc.atPar,
+        }, { transaction: t });
+      }
+
+      await PaymentAuditLog.create({
+        paymentId: row.id,
+        action: 'moved',
+        fromInscriptionId,
+        toInscriptionId: target.id,
+        performedByPersonId: performer,
+        reason: scope ? `[${scope === 'item' ? 'Destino: items vendibles' : scope === 'tuition' ? 'Destino: inscripción y mensualidades' : 'Destino: automático'}] ${reason}`.slice(0, 500) : reason,
+        snapshot,
+      }, { transaction: t });
+      touched.add(target.id);
+      touched.add(fromInscriptionId);
+    }
     await t.commit();
 
-    await clearPapersHoldIfSettled(target.id);
-    if (!sameStudent) await clearPapersHoldIfSettled(fromInscriptionId);
+    for (const id of touched) await clearPapersHoldIfSettled(id);
     return res.json(payment);
   } catch (error: any) {
     await t.rollback();
@@ -1494,6 +1814,7 @@ export const getPaymentsReport = async (req: Request, res: Response) => {
         bank: p.bank,
         account: p.account,
         notes: p.notes,
+        paymentGroupId: p.paymentGroupId ?? null,
         registeredById: p.registeredBy?.id ?? null,
         registeredBy: p.registeredBy ? `${p.registeredBy.firstName} ${p.registeredBy.lastName}` : null,
         allocations: (p.allocations ?? []).map((a: any) => ({
@@ -1523,6 +1844,19 @@ export const deleteCharge = async (req: Request, res: Response) => {
     const { id } = req.params;
     const charge = await Charge.findByPk(Number(id));
     if (!charge) return res.status(404).json({ message: 'Deuda no encontrada' });
+    // Refuse to orphan records: a paid charge would leave the payment's
+    // allocations pointing nowhere, and a delivered item would lose its
+    // hand-over history (both cascade on delete).
+    const [allocations, deliveries] = await Promise.all([
+      PaymentAllocation.count({ where: { chargeId: charge.id } }),
+      ChargeDelivery.count({ where: { chargeId: charge.id } }),
+    ]);
+    if (allocations > 0) {
+      return res.status(400).json({ message: 'No se puede eliminar: la deuda tiene pagos registrados. Elimina primero el pago correspondiente.' });
+    }
+    if (deliveries > 0) {
+      return res.status(400).json({ message: 'No se puede eliminar: la deuda tiene entregas registradas. Deshaz las entregas primero.' });
+    }
     const inscriptionId = charge.inscriptionId;
     await charge.destroy();
     await clearPapersHoldIfSettled(inscriptionId);

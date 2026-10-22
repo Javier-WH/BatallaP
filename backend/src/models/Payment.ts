@@ -30,12 +30,13 @@ interface PaymentAttributes {
   registeredByPersonId: number | null; // administrator who recorded the payment
   clientRequestId: string | null;      // idempotency key of the form submission
   dedupeKey: string | null;            // fingerprint of the operation (unique) — blocks duplicates
+  paymentGroupId: string | null;       // rows of one physical payment shared by several students
   paymentDate: Date;           // when the payment was made
   notes: string | null;
 }
 
 interface PaymentCreationAttributes
-  extends Optional<PaymentAttributes, 'id' | 'feeId' | 'sellableItemId' | 'chargeId' | 'month' | 'amountVES' | 'exchangeRate' | 'debtPeriodId' | 'equivalent' | 'equivalentCurrency' | 'atPar' | 'reference' | 'bank' | 'account' | 'registeredByPersonId' | 'clientRequestId' | 'dedupeKey' | 'notes'> {}
+  extends Optional<PaymentAttributes, 'id' | 'feeId' | 'sellableItemId' | 'chargeId' | 'month' | 'amountVES' | 'exchangeRate' | 'debtPeriodId' | 'equivalent' | 'equivalentCurrency' | 'atPar' | 'reference' | 'bank' | 'account' | 'registeredByPersonId' | 'clientRequestId' | 'dedupeKey' | 'paymentGroupId' | 'notes'> {}
 
 class Payment extends Model<PaymentAttributes, PaymentCreationAttributes>
   implements PaymentAttributes {
@@ -61,6 +62,7 @@ class Payment extends Model<PaymentAttributes, PaymentCreationAttributes>
   public registeredByPersonId!: number | null;
   public clientRequestId!: string | null;
   public dedupeKey!: string | null;
+  public paymentGroupId!: string | null;
   public paymentDate!: Date;
   public notes!: string | null;
 
@@ -172,6 +174,10 @@ Payment.init(
       allowNull: true,
       unique: true,
     },
+    paymentGroupId: {
+      type: DataTypes.STRING(36),
+      allowNull: true,
+    },
     paymentDate: {
       type: DataTypes.DATE,
       allowNull: false,
@@ -190,6 +196,7 @@ Payment.init(
       { fields: ['schoolPeriodId'] },
       { fields: ['chargeId'] },
       { fields: ['month'] },
+      { fields: ['paymentGroupId'] },
     ],
   }
 );

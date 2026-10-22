@@ -188,6 +188,85 @@ export async function distributePayment(
   return final;
 }
 
+export interface SharedPortion {
+  inscriptionId: number;
+  /** Share of the payment, in the payment's own currency. */
+  amount: number;
+  /** Debts this share would settle (simulation, nothing is stored). */
+  allocations: Array<{ chargeId: number; description: string | null; type: string | null; month: string | null; currency: string; amount: number }>;
+}
+
+/**
+ * Splits ONE physical payment across several students (siblings of a
+ * representative) by priority, without writing anything. Every student's pending
+ * debts are merged into a single global order — earlier school period first,
+ * then the enrollment package of EVERY student, then items, then monthly fees —
+ * so with Bs. for 2 × 165 EUR of enrollment each student gets his enrollment
+ * before anyone's tuition. Ties follow the order of `inscriptionIds`.
+ * The shares add up to exactly `amount`; any excess stays with the first student.
+ */
+export async function planSharedPayment(args: {
+  inscriptionIds: number[];
+  currency: string;
+  amount: number;
+  payDate: Date;
+  scope?: 'auto' | 'tuition' | 'item';
+  transaction?: Transaction;
+}): Promise<SharedPortion[]> {
+  const { inscriptionIds, currency, payDate, scope, transaction } = args;
+  const resolver = makeRateResolver(transaction);
+  const rate = async (cur: string) => (await resolver.vesPerUnit(cur, payDate)) ?? 1;
+  const payRate = await rate(currency);
+
+  type Entry = { insIdx: number; charge: Charge; key: SortKey; rem: number; par: boolean };
+  const entries: Entry[] = [];
+  for (let insIdx = 0; insIdx < inscriptionIds.length; insIdx++) {
+    const ctx = await orderedContext(inscriptionIds[insIdx], -1, transaction);
+    if (!ctx) continue;
+    for (const { charge } of ctx.ordered) {
+      if (scope === 'item' && charge.type !== 'item') continue;
+      if (scope === 'tuition' && EXTRA_TYPES.has(charge.type ?? '')) continue;
+      const rem = ctx.remaining.get(charge.id) ?? 0;
+      if (rem <= EPS) continue;
+      entries.push({
+        insIdx, charge, rem,
+        key: sortKeyOf(charge, ctx.periodById),
+        par: appliesAtPar(currency, charge.currency, !!ctx.periodById.get(charge.schoolPeriodId)?.usdAtPar),
+      });
+    }
+  }
+  entries.sort((a, b) => cmpKey(a.key, b.key) || a.insIdx - b.insIdx || a.charge.id - b.charge.id);
+
+  const portions: SharedPortion[] = inscriptionIds.map(inscriptionId => ({ inscriptionId, amount: 0, allocations: [] }));
+  let units = Number(args.amount);
+  for (const e of entries) {
+    if (units <= EPS) break;
+    const chargeRate = await rate(e.charge.currency);
+    const factor = currency === e.charge.currency || e.par ? 1 : chargeRate / payRate;
+    const cost = e.rem * factor;
+    const applyAll = units >= cost - EPS;
+    const apply = applyAll ? e.rem : round2(e.rem * (units / cost));
+    const used = applyAll ? cost : units;
+    const p = portions[e.insIdx];
+    p.amount += used;
+    p.allocations.push({
+      chargeId: e.charge.id, description: e.charge.description ?? null, type: e.charge.type ?? null,
+      month: e.charge.month ?? null, currency: e.charge.currency, amount: round2(apply),
+    });
+    units -= used;
+  }
+  if (units > EPS) portions[0].amount += units;
+
+  // Round every share to cents and make the last non-empty one absorb the difference.
+  for (const p of portions) p.amount = round2(p.amount);
+  const diff = round2(Number(args.amount) - portions.reduce((s, p) => s + p.amount, 0));
+  if (Math.abs(diff) >= 0.005) {
+    const target = [...portions].reverse().find(p => p.amount > 0) ?? portions[0];
+    target.amount = round2(target.amount + diff);
+  }
+  return portions;
+}
+
 /**
  * Pending amount of each charge in its own currency: net of discounts, minus
  * allocations of other payments, minus legacy (allocation-less) payments of its

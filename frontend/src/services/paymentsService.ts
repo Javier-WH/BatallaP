@@ -364,7 +364,7 @@ export interface LedgerGuardian {
   whatsapp: string | null;
   email: string | null;
   /** Other students this guardian represents: name + where they study (grade/section/period). */
-  alsoRepresents: { personId: number; name: string; where: string }[];
+  alsoRepresents: { personId: number; name: string; where: string; /** Still owed per currency (all periods). */ pending?: Record<string, number> }[];
 }
 
 export interface LedgerStudent {
@@ -497,6 +497,8 @@ export interface PaymentReportRow {
   bank: string | null;
   account: string | null;
   notes: string | null;
+  /** Rows with the same id are shares of one physical payment split between students. */
+  paymentGroupId: string | null;
   registeredById: number | null;
   registeredBy: string | null;
   allocations: { amount: number; currency: string | null; description: string | null; month: string | null }[];
@@ -573,6 +575,52 @@ export interface PaymentAllocationView {
 
 export async function createPayment(payload: PaymentPayload): Promise<any> {
   const { data } = await api.post('/ledger/payments', payload);
+  return data;
+}
+
+/** What to touch when correcting a payment that was shared between students. */
+export type SharedApplyTo = 'single' | 'group';
+
+/** A student who shares a representative with the one being charged. */
+export interface SharedStudent {
+  inscriptionId: number;
+  personId: number;
+  name: string;
+  where: string;
+  withdrawn: boolean;
+  pending: Record<string, number>;
+  hasDebt: boolean;
+}
+
+export interface SharedPortion {
+  inscriptionId: number;
+  name: string;
+  /** Share of the payment, in the payment's own currency. */
+  amount: number;
+  allocations: { chargeId: number; description: string | null; type: string | null; month: string | null; currency: string; amount: number }[];
+}
+
+export type SharedPaymentPayload = Omit<PaymentPayload, 'inscriptionId' | 'chargeId' | 'month' | 'nonMonthly' | 'debtPeriodId' | 'scope'> & {
+  inscriptionIds: number[];
+  scope?: 'auto' | 'tuition' | 'item';
+  /** Edited shares; they must add up to `amount`. Omit to use the priority plan. */
+  portions?: { inscriptionId: number; amount: number }[];
+};
+
+export async function getSharedStudents(inscriptionId: number, schoolPeriodId: number): Promise<SharedStudent[]> {
+  const { data } = await api.get<SharedStudent[]>(`/ledger/inscriptions/${inscriptionId}/shared-students`, { params: { schoolPeriodId } });
+  return data;
+}
+
+export async function previewSharedPayment(payload: {
+  inscriptionIds: number[]; amount: number; currency: string; paymentDate?: string; scope?: 'auto' | 'tuition' | 'item';
+}): Promise<{ portions: SharedPortion[] }> {
+  const { data } = await api.post('/ledger/payments/shared/preview', payload);
+  return data;
+}
+
+export async function createSharedPayment(payload: SharedPaymentPayload): Promise<{ groupId: string | null; payments: any[] }> {
+  const { data } = await api.post('/ledger/payments/shared', payload);
   return data;
 }
 
@@ -679,8 +727,8 @@ export async function undoItemDelivery(deliveryId: number): Promise<void> {
 }
 
 /** Removes a payment entered by mistake; the reason is mandatory and audited. */
-export async function deletePayment(id: number, reason: string): Promise<void> {
-  await api.delete(`/ledger/payments/${id}`, { data: { reason } });
+export async function deletePayment(id: number, reason: string, applyTo?: SharedApplyTo): Promise<void> {
+  await api.delete(`/ledger/payments/${id}`, { data: { reason, applyTo } });
 }
 
 export type PaymentDestination = 'auto' | 'tuition' | 'item';
@@ -693,8 +741,9 @@ export async function movePayment(
   id: number,
   target: { toInscriptionId?: number; scope?: PaymentDestination; chargeId?: number },
   reason: string,
+  applyTo?: SharedApplyTo,
 ): Promise<any> {
-  const { data } = await api.post(`/ledger/payments/${id}/move`, { ...target, reason });
+  const { data } = await api.post(`/ledger/payments/${id}/move`, { ...target, reason, applyTo });
   return data;
 }
 

@@ -251,6 +251,9 @@ export default function PaymentsReportModal({ onClose }: { onClose: () => void }
                     <td className="px-2.5 py-1.5 whitespace-nowrap tabular-nums">{fmtDate(r.paymentDate)}</td>
                     <td className="px-2.5 py-1.5">
                       <div className="font-medium">{r.student}</div>
+                      {r.paymentGroupId && (
+                        <div className="text-[10px] font-semibold text-[#2F5EA8]" title="Una sola operación repartida entre varios estudiantes">Pago compartido</div>
+                      )}
                       <div className="text-[10px] text-[#8B909A]">
                         {[r.document, r.gradeName && `${r.gradeName}${r.sectionName ? ` ${r.sectionName}` : ''}`].filter(Boolean).join(' · ')}
                       </div>

@@ -102,4 +102,27 @@ describe('Ledger: item payments, payment destination and multi-item debts', () =
     const rows = await Charge.findAll({ where: { inscriptionId, type: 'item' }, order: [['id', 'ASC']] });
     expect(rows.map(r => r.quantity)).toEqual([1, 2]);
   });
+
+  it('deletes a pending charge but refuses one with payments or deliveries', async () => {
+    const { c1, c2 } = await setupDebts();
+    const c3 = await mkCharge({ type: 'otro', description: 'Deuda de período pasado', amount: 30, schoolPeriodId: structure.period.id });
+
+    // Pending charge: deleted.
+    await agent.delete(`/api/ledger/charges/${c3.id}`).expect(200);
+    expect(await Charge.findByPk(c3.id)).toBeNull();
+
+    // Paid charge: refused, the payment stays consistent.
+    await pay({ scope: 'item', chargeId: c1.id, amount: 10 }).expect(201);
+    const paidRes = await agent.delete(`/api/ledger/charges/${c1.id}`).expect(400);
+    expect(paidRes.body.message).toContain('pagos registrados');
+    expect(await Charge.findByPk(c1.id)).not.toBeNull();
+
+    // Delivered item: refused, the hand-over history stays.
+    await agent.post(`/api/ledger/charges/${c2.id}/deliveries`).send({ quantity: 1 }).expect(201);
+    const delRes = await agent.delete(`/api/ledger/charges/${c2.id}`).expect(400);
+    expect(delRes.body.message).toContain('entregas registradas');
+    expect(await Charge.findByPk(c2.id)).not.toBeNull();
+
+    await agent.delete('/api/ledger/charges/999999').expect(404);
+  });
 });

@@ -3,6 +3,9 @@ import { requirePaymentsAccess, requireDebtView } from '@/middlewares/paymentsAc
 import {
   getLedgerBySection,
   createPayment,
+  createSharedPayment,
+  previewSharedPayment,
+  getSharedStudents,
   createCharge,
   bulkCreateCharges,
   deletePayment,
@@ -51,6 +54,7 @@ router.delete('/discounts/:id', deleteInscriptionDiscount);
 
 // PUT change the entry month of an inscription (generates the debts it now owes)
 router.put('/inscriptions/:id/entry-month', updateEntryMonth);
+router.get('/inscriptions/:id/shared-students', getSharedStudents);
 router.get('/inscriptions/:id/enrollment-plan', getInscriptionPlan);
 router.put('/inscriptions/:id/enrollment-plan', setInscriptionPlan);
 
@@ -59,6 +63,10 @@ router.get('/:schoolPeriodId/:gradeId/:sectionId', getLedgerBySection);
 
 // POST create a payment
 router.post('/payments', createPayment);
+
+// POST one physical payment shared by several students of the same representative
+router.post('/payments/shared/preview', previewSharedPayment);
+router.post('/payments/shared', createSharedPayment);
 
 // POST create a charge (debt)
 router.post('/charges', createCharge);

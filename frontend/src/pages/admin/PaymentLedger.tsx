@@ -16,8 +16,10 @@ import { useSchool } from '@/context/SchoolContext';
 import {
   getLedgerSections, getLedgerBySection, searchWithdrawnStudents,
   createPayment, createCharge, bulkCreateCharges, updateEntryMonth, listSellableItems,
-  deliverItemUnits, undoItemDelivery,
+  deliverItemUnits, undoItemDelivery, deleteCharge,
+  getRatesAtDate, listExchangeRateTypes, getSharedStudents, previewSharedPayment, createSharedPayment,
   type LedgerStudent, type LedgerSection, type SellableItem, type LedgerPriorPeriod, type LedgerBucket, type LedgerGuardian,
+  type RateAtDate, type ExchangeRateType, type SharedStudent, type SharedPortion,
   type DuplicatePaymentInfo, type WithdrawnStudentResult,
 } from '@/services/paymentsService';
 import { listBanks, type Bank } from '@/services/bankService';
@@ -196,6 +198,11 @@ function TransactionRow({ txn, index, onCorrect }: { txn: any; index: number; on
             = {Number(txn.equivalent).toFixed(2)} {txn.equivalentCurrency}{txn.atPar ? ' · a la par' : ''}
           </span>
         )}
+        {txn.sharedWith?.length > 0 && (
+          <span className="text-[10px] font-semibold text-[#2F5EA8] leading-tight" title="Una sola operación repartida entre varios estudiantes del mismo representante">
+            Compartido con {txn.sharedWith.map((o: any) => `${o.name} (${Number(o.amount).toFixed(2)} ${o.currency})`).join(', ')}
+          </span>
+        )}
         {txn.allocations?.length > 0 && (
           <span className="text-[10px] font-normal text-[#5B6472] tabular-nums leading-tight" title="Reparto del pago entre las deudas">
             {txn.allocations.map((a: any, i: number) => (
@@ -245,7 +252,7 @@ const RELATIONSHIP_LABEL: Record<string, string> = {
 };
 
 /** Contact card of the student's guardians, shown under their name in the expanded detail row. */
-function GuardianPanel({ guardians }: { guardians: LedgerGuardian[] }) {
+function GuardianPanel({ guardians, ownPending }: { guardians: LedgerGuardian[]; ownPending: Record<string, number> }) {
   if (!guardians?.length) {
     return <div className="px-3 pb-2 text-[10px] italic text-[#9CA3AF]">Sin representante registrado</div>;
   }
@@ -295,12 +302,27 @@ function GuardianPanel({ guardians }: { guardians: LedgerGuardian[] }) {
                 <Users size={10} className="shrink-0" /> También representa a
               </div>
               {g.alsoRepresents.map(s => (
-                <div key={s.personId} className="text-[10px] text-[#4B5563] leading-snug truncate" title={`${s.name}${s.where ? ` — ${s.where}` : ''}`}>
-                  {s.name}{s.where ? <span className="text-[#9CA3AF]"> — {s.where}</span> : ''}
+                <div key={s.personId} className="text-[10px] text-[#4B5563] leading-snug" title={`${s.name}${s.where ? ` — ${s.where}` : ''}`}>
+                  <div className="truncate">{s.name}{s.where ? <span className="text-[#9CA3AF]"> — {s.where}</span> : ''}</div>
+                  {Object.keys(s.pending ?? {}).length > 0 && (
+                    <div className="text-[#B42318] tabular-nums">Debe {formatTotals(s.pending!)}</div>
+                  )}
                 </div>
               ))}
             </div>
           )}
+          {g.alsoRepresents?.length > 0 && (() => {
+            // Grand total owed by everyone this representative answers for, this student included.
+            const total: Record<string, number> = { ...ownPending };
+            for (const s of g.alsoRepresents) for (const [cur, v] of Object.entries(s.pending ?? {})) total[cur] = (total[cur] ?? 0) + v;
+            const owes = Object.values(total).some(v => v > 0.005);
+            return (
+              <div className={`mt-1.5 px-2 py-1 text-[10px] font-semibold tabular-nums border ${owes ? 'bg-[#FDECEA] border-[#F2B8B2] text-[#B42318]' : 'bg-[#E9F7ED] border-[#B7EACB] text-[#1A4D2E]'}`}
+                title="Suma de la deuda pendiente de todos los representados de esta persona, incluido este estudiante">
+                Deuda total del representante: {owes ? formatTotals(total) : 'sin deuda'}
+              </div>
+            );
+          })()}
         </div>
       ))}
     </div>
@@ -389,6 +411,7 @@ function MonthDetail({ month, data, monthlyFee, onAddPayment, onCorrectPayment, 
                 <span className="tabular-nums text-[#8A5A00] min-w-24 text-right">
                   {pending > 0.005 ? `Falta ${pending.toFixed(2)}` : ''}
                 </span>
+                <DeleteChargeButton charge={c} paid={paid} onChanged={onChanged} />
               </div>
               {c.type === 'item' && <ChargeDeliveries charge={c} onChanged={onChanged} />}
             </div>
@@ -532,6 +555,52 @@ function chargePaidBy(...buckets: ({ payments?: any[] } | undefined | null)[]): 
 
 const deliveredOf = (c: any): number =>
   (c.deliveries ?? []).reduce((s: number, d: any) => s + Number(d.quantity ?? 0), 0);
+
+/**
+ * Trash button on a charge row. Disabled when the charge already has payments
+ * or deliveries recorded — the backend refuses those deletes too, but the
+ * disabled state explains why upfront.
+ */
+function DeleteChargeButton({ charge, paid, onChanged }: { charge: any; paid: number; onChanged: () => void }) {
+  const delivered = deliveredOf(charge);
+  const blocked = paid > 0.005
+    ? 'No se puede eliminar: tiene pagos registrados (elimina primero el pago)'
+    : delivered > 0
+      ? 'No se puede eliminar: tiene entregas registradas (deshaz las entregas primero)'
+      : null;
+  if (blocked) {
+    return (
+      <span title={blocked} className="shrink-0 p-1 text-[#C3C9D2] cursor-not-allowed">
+        <Trash2 size={13} />
+      </span>
+    );
+  }
+  return (
+    <button
+      title="Eliminar deuda"
+      className="shrink-0 p-1 text-[#C0453A] hover:bg-[#FBE3E0]"
+      onClick={() => {
+        Modal.confirm({
+          title: 'Eliminar deuda',
+          content: `¿Eliminar "${charge.description}" (${Number(charge.amount).toFixed(2)} ${charge.currency})? Esta acción no se puede deshacer.`,
+          okText: 'Eliminar',
+          okButtonProps: { danger: true },
+          cancelText: 'Cancelar',
+          onOk: async () => {
+            try {
+              await deleteCharge(charge.id);
+              onChanged();
+            } catch (err: any) {
+              Modal.error({ title: 'No se pudo eliminar la deuda', content: err?.response?.data?.message ?? 'Error al eliminar la deuda' });
+            }
+          },
+        });
+      }}
+    >
+      <Trash2 size={13} />
+    </button>
+  );
+}
 
 /**
  * One badge per sellable-item charge: gray while unpaid, colored once paid.
@@ -758,6 +827,7 @@ function PriorPeriodDetail({ group, onAddPayment, onCorrectPayment, onChanged }:
                     <span className="tabular-nums text-[#8A5A00] min-w-24 text-right">
                       {pending > 0.005 ? `Falta ${pending.toFixed(2)}` : ''}
                     </span>
+                    <DeleteChargeButton charge={c} paid={paid} onChanged={onChanged} />
                   </div>
                   {c.type === 'item' && <ChargeDeliveries charge={c} onChanged={onChanged} />}
                 </div>
@@ -902,8 +972,9 @@ function WithdrawnDebtModal({ onPick, onClose }: {
   );
 }
 
-function AddPaymentModal({ students, months, prefill, monthlyFee, usdAtPar, onClose, onSubmit }: {
+function AddPaymentModal({ students, months, prefill, monthlyFee, usdAtPar, schoolPeriodId, onClose, onSubmit }: {
   months: string[];
+  schoolPeriodId: number | undefined;
   /** The school period accepts USD/USDT at par (1:1) against EUR debts. */
   usdAtPar: boolean;
   students: LedgerStudent[];
@@ -992,6 +1063,158 @@ function AddPaymentModal({ students, months, prefill, monthlyFee, usdAtPar, onCl
   })();
   const atParNote = usdAtPar && targetDebtCurrency === 'EUR' && (form.currency === 'USD' || form.currency === 'USDT') && Number(form.amount) > 0;
 
+  // ── Live estimate: what this payment will cover, in each debt's currency ──
+  // Uses the rate in force on the payment date, exactly like distributePayment.
+  const [rateRows, setRateRows] = useState<RateAtDate[]>([]);
+  const [rateTypes, setRateTypes] = useState<ExchangeRateType[]>([]);
+  useEffect(() => {
+    listExchangeRateTypes().then(setRateTypes).catch(() => setRateTypes([]));
+  }, []);
+  useEffect(() => {
+    let alive = true;
+    getRatesAtDate(form.paymentDate || undefined)
+      .then(r => { if (alive) setRateRows(r.rates); })
+      .catch(() => { if (alive) setRateRows([]); });
+    return () => { alive = false; };
+  }, [form.paymentDate]);
+
+  // VES per unit of `currency` on the payment date; the default rate type of
+  // the currency wins (same choice the backend makes). USDT follows the USD rate.
+  const vesRateFor = (currency: string): number | null => {
+    if (currency === 'VES') return 1;
+    let rows = rateRows.filter(r => r.currency === currency && r.rate != null);
+    let def = rateTypes.find(t => t.active && t.isDefault && t.currency === currency);
+    if (!rows.length && currency === 'USDT') {
+      rows = rateRows.filter(r => r.currency === 'USD' && r.rate != null);
+      def = rateTypes.find(t => t.active && t.isDefault && t.currency === 'USD');
+    }
+    if (!rows.length) return null;
+    return (def ? rows.find(r => r.typeId === def.id) ?? rows[0] : rows[0]).rate;
+  };
+
+  // Pending charges in the backend's allocation order (prior periods first;
+  // inside a period: enrollment package > items/extraordinary > monthly debts),
+  // reduced to what the selected scope can touch.
+  const scopedCharges = useMemo((): { currency: string; remaining: number }[] => {
+    if (!selectedStudent) return [];
+    if (form.scope === 'item') {
+      const chosen = pendingItems.filter(i => i.id === Number(form.chargeId));
+      return [...chosen, ...pendingItems.filter(i => i.id !== Number(form.chargeId))]
+        .map(i => ({ currency: i.currency, remaining: i.remaining }));
+    }
+    const allBuckets = [
+      selectedStudent.enrollment, selectedStudent.other,
+      ...Object.values(selectedStudent.months ?? {}),
+      ...(selectedStudent.priorPeriods ?? []).flatMap(g => [g.enrollment, g.other, ...Object.values(g.months ?? {})]),
+    ].filter(Boolean) as LedgerBucket[];
+    const paidBy = chargePaidBy(...allBuckets);
+    const remaining = (c: any) => Math.round((Number(c.amount) - Number(c.discountAmount ?? 0) - (paidBy.get(c.id) ?? 0)) * 100) / 100;
+    const ENR_RANK: Record<string, number> = { matricula: 0, gastos_administrativos: 1, mensualidad: 2 };
+    const groups = [
+      ...[...(selectedStudent.priorPeriods ?? [])].sort((a, b) => a.periodId - b.periodId)
+        .map(g => ({ enr: g.enrollment, oth: g.other, byMonth: g.months ?? {}, billing: g.billingMonths ?? months })),
+      { enr: selectedStudent.enrollment, oth: selectedStudent.other, byMonth: selectedStudent.months ?? {}, billing: months },
+    ];
+    const out: { currency: string; remaining: number }[] = [];
+    const pushSorted = (charges: any[] | undefined, key: (c: any) => [number, number]) => {
+      for (const c of [...(charges ?? [])].sort((a, b) => { const x = key(a), y = key(b); return x[0] - y[0] || x[1] - y[1]; })) {
+        const rem = remaining(c);
+        if (rem > 0.005) out.push({ currency: c.currency, remaining: rem });
+      }
+    };
+    for (const g of groups) {
+      pushSorted(g.enr?.charges, c => [ENR_RANK[c.type] ?? 2, c.id]);
+      if (form.scope !== 'tuition') pushSorted(g.oth?.charges, c => [c.month ? g.billing.indexOf(c.month) : 0, c.id]);
+      for (const m of g.billing) pushSorted(g.byMonth[m]?.charges, c => [0, c.id]);
+    }
+    return out;
+  }, [selectedStudent, form.scope, form.chargeId, pendingItems, months]);
+
+  const coverageEstimate = useMemo(() => {
+    const amt = Number(form.amount);
+    if (!(amt > 0) || !scopedCharges.length) return null;
+    const payRate = vesRateFor(form.currency);
+    if (payRate == null) return { parts: [] as { currency: string; amount: number }[], missing: [form.currency] };
+    let vesLeft = amt * payRate;
+    const parts = new Map<string, number>();
+    const missing = new Set<string>();
+    const ratesUsed = new Map<string, number>();
+    let last: { currency: string; cost: number } | null = null;
+    for (const { currency, remaining } of scopedCharges) {
+      if (vesLeft <= 0.005) break;
+      const par = usdAtPar && currency === 'EUR' && (form.currency === 'USD' || form.currency === 'USDT');
+      const cost = (form.currency === currency || par) ? payRate : vesRateFor(currency);
+      if (cost == null) { missing.add(currency); continue; }
+      const cover = Math.min(remaining, vesLeft / cost);
+      parts.set(currency, (parts.get(currency) ?? 0) + cover);
+      vesLeft -= cover * cost;
+      ratesUsed.set(currency, cost);
+      last = { currency, cost };
+    }
+    // The excess stays credited to the last touched debt, like the backend does.
+    if (vesLeft > 0.005 && last) parts.set(last.currency, (parts.get(last.currency) ?? 0) + vesLeft / last.cost);
+    if (form.currency !== 'VES') ratesUsed.set(form.currency, payRate);
+    return { parts: [...parts.entries()].map(([currency, amount]) => ({ currency, amount })), missing: [...missing], ratesUsed };
+  }, [form.amount, form.currency, scopedCharges, rateRows, rateTypes, usdAtPar]);
+
+  // ── Shared payment: other students of the same representative ──
+  // They come pre-selected when they owe something; unchecking one pays for the rest only.
+  const [sharedStudents, setSharedStudents] = useState<SharedStudent[]>([]);
+  const [sharedPicked, setSharedPicked] = useState<Set<number>>(new Set());
+  const [portions, setPortions] = useState<SharedPortion[] | null>(null);
+  const [portionEdits, setPortionEdits] = useState<Record<number, string> | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSharedStudents([]);
+    setSharedPicked(new Set());
+    if (!form.studentId || !schoolPeriodId) return;
+    let alive = true;
+    getSharedStudents(Number(form.studentId), schoolPeriodId)
+      .then(list => {
+        if (!alive) return;
+        setSharedStudents(list);
+        setSharedPicked(new Set(list.filter(x => x.hasDebt).map(x => x.inscriptionId)));
+      })
+      .catch(() => { if (alive) setSharedStudents([]); });
+    return () => { alive = false; };
+  }, [form.studentId, schoolPeriodId]);
+
+  const sharedIds = useMemo(
+    () => (form.studentId ? [Number(form.studentId), ...[...sharedPicked]] : []),
+    [form.studentId, sharedPicked],
+  );
+  // A specific item can only be paid for one student, so the shared split is off then.
+  const sharedActive = sharedPicked.size > 0 && !(form.scope === 'item' && form.chargeId);
+
+  useEffect(() => {
+    setPortionEdits(null);
+    if (!sharedActive || !(Number(form.amount) > 0)) { setPortions(null); setPreviewError(null); return; }
+    let alive = true;
+    setPreviewing(true);
+    const timer = setTimeout(() => {
+      previewSharedPayment({
+        inscriptionIds: sharedIds, amount: Number(form.amount), currency: form.currency,
+        paymentDate: form.paymentDate || undefined, scope: form.scope === 'auto' ? undefined : form.scope,
+      })
+        .then(r => { if (alive) { setPortions(r.portions); setPreviewError(null); } })
+        .catch(err => { if (alive) { setPortions(null); setPreviewError(err?.response?.data?.message ?? 'No se pudo calcular el reparto'); } })
+        .finally(() => { if (alive) setPreviewing(false); });
+    }, 400);
+    return () => { alive = false; clearTimeout(timer); };
+  }, [sharedActive, sharedIds, form.amount, form.currency, form.paymentDate, form.scope]);
+
+  const portionAmount = (p: SharedPortion) => portionEdits?.[p.inscriptionId] ?? p.amount.toFixed(2);
+  const portionsSum = (portions ?? []).reduce((sum, p) => sum + (Number(portionAmount(p)) || 0), 0);
+  const portionsOk = !sharedActive || (!!portions && !previewing && Math.abs(portionsSum - Number(form.amount)) < 0.005
+    && (portions ?? []).every(p => Number(portionAmount(p)) >= 0));
+  const togglePicked = (id: number) => setSharedPicked(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
   const changeMethod = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const next = methodDef(e.target.value);
     // Fields that do not apply to the new method are cleared; the currency follows the method's default.
@@ -1000,7 +1223,8 @@ function AddPaymentModal({ students, months, prefill, monthlyFee, usdAtPar, onCl
 
   const referenceOk = !def.referenceLast4 || /^\d{4}$/.test(form.reference);
   const complete = !!form.studentId && Number(form.amount) > 0 && !!form.paymentDate
-    && (form.scope !== 'item' || pendingItems.length > 0)
+    && (form.scope !== 'item' || pendingItems.length > 0 || sharedActive)
+    && portionsOk
     && (!def.bank || !!form.bank) && (!def.account || !!form.account.trim())
     && referenceOk && (!def.notesRequired || !!form.notes.trim());
 
@@ -1009,7 +1233,13 @@ function AddPaymentModal({ students, months, prefill, monthlyFee, usdAtPar, onCl
     if (!complete || submitting) return;
     setSubmitting(true);
     try {
-      await onSubmit({ ...form, clientRequestId: requestId });
+      await onSubmit({
+        ...form,
+        clientRequestId: requestId,
+        shared: sharedActive && portions
+          ? { inscriptionIds: sharedIds, portions: portions.map(p => ({ inscriptionId: p.inscriptionId, amount: Number(portionAmount(p)) })) }
+          : undefined,
+      });
     } finally {
       setSubmitting(false);
     }
@@ -1079,6 +1309,101 @@ function AddPaymentModal({ students, months, prefill, monthlyFee, usdAtPar, onCl
               (no se convierten por tasa).
             </div>
           )}
+          {!sharedActive && coverageEstimate && (() => {
+            const fmt = (n: number) => n.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const parts = coverageEstimate.parts;
+            const foreign = parts.filter(p => p.currency !== form.currency);
+            if (!foreign.length && !coverageEstimate.missing.length) return null;
+            const ratesUsed = coverageEstimate.ratesUsed ?? new Map<string, number>();
+            const ddmmyyyy = form.paymentDate ? form.paymentDate.split('-').reverse().join('/') : '';
+            return (
+              <div className="col-span-2 text-xs bg-[#EEF2F9] border border-[#C9D6EC] text-[#274060] px-3 py-2">
+                {foreign.length > 0 && (
+                  <div>
+                    <b>Abonaría ≈</b> {parts.map(p => `${fmt(p.amount)} ${p.currency}`).join(' + ')}
+                    {ratesUsed.size > 0 && (
+                      <span className="text-[#61738F]">
+                        {' '}(tasa del {ddmmyyyy}: {[...ratesUsed.entries()].map(([c, r]) => `1 ${c} = Bs. ${fmt(r)}`).join(' · ')})
+                      </span>
+                    )}
+                  </div>
+                )}
+                {coverageEstimate.missing.length > 0 && (
+                  <div className="text-[#8A5A00]">
+                    Sin tasa de {coverageEstimate.missing.join(', ')} registrada para esa fecha — no se puede estimar esa parte.
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {sharedStudents.length > 0 && (
+            <div className="col-span-2 border border-[#C9D6EC] bg-[#F6F8FC] px-3 py-2 text-xs text-[#274060]">
+              <div className="font-semibold uppercase tracking-wide text-[10px] mb-1">Pago compartido con otros representados</div>
+              <div className="space-y-1">
+                {sharedStudents.map(st => (
+                  <label key={st.inscriptionId} className="flex items-start gap-2 cursor-pointer">
+                    <input type="checkbox" className="mt-0.5" checked={sharedPicked.has(st.inscriptionId)}
+                      onChange={() => togglePicked(st.inscriptionId)} />
+                    <span className="flex-1 min-w-0">
+                      <b className="font-semibold">{st.name}</b>
+                      <span className="text-[#61738F]"> — {st.where}{st.withdrawn ? ' · retirado' : ''}</span>
+                      <span className={st.hasDebt ? 'block text-[#8A5A00]' : 'block text-[#8B909A]'}>
+                        {st.hasDebt ? `Debe ${formatTotals(st.pending)}` : 'Sin deuda pendiente'}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              {sharedPicked.size === 0 && (
+                <p className="mt-1 text-[#61738F]">Sin otros estudiantes marcados: el pago es solo para {selectedStudent?.name ?? 'el estudiante'}.</p>
+              )}
+              {sharedActive && (
+                <div className="mt-2 border-t border-[#D5DEEE] pt-2">
+                  {!(Number(form.amount) > 0) && <p className="text-[#61738F]">Escribe el monto para ver cómo se reparte.</p>}
+                  {previewing && <p className="text-[#61738F]">Calculando reparto…</p>}
+                  {previewError && <p className="text-[#C0453A]">{previewError}</p>}
+                  {portions && !previewing && (
+                    <>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-semibold">Reparto por prioridad (editable)</span>
+                        {portionEdits && (
+                          <button type="button" className="text-[#2F5EA8] hover:underline" onClick={() => setPortionEdits(null)}>
+                            Recalcular
+                          </button>
+                        )}
+                      </div>
+                      {portions.map(p => (
+                        <div key={p.inscriptionId} className="py-1 border-b border-[#E3E9F4] last:border-b-0">
+                          <div className="flex items-center gap-2">
+                            <span className="flex-1 min-w-0 font-semibold truncate">{p.name}</span>
+                            <input
+                              type="number" step="0.01" min="0" inputMode="decimal"
+                              value={portionAmount(p)}
+                              onChange={e => setPortionEdits(prev => ({
+                                ...(prev ?? Object.fromEntries(portions.map(x => [x.inscriptionId, x.amount.toFixed(2)]))),
+                                [p.inscriptionId]: e.target.value,
+                              }))}
+                              className="w-28 border border-[#C5CAD2] px-2 py-1 text-right tabular-nums bg-white"
+                            />
+                            <span className="w-10 text-[#61738F]">{form.currency}</span>
+                          </div>
+                          <div className="text-[11px] text-[#61738F] pl-1">
+                            {p.allocations.length
+                              ? p.allocations.map(a => `${a.amount.toFixed(2)} ${a.currency} · ${a.description ?? a.type ?? 'Deuda'}`).join(' + ')
+                              : Number(portionAmount(p)) > 0 ? 'Excedente a favor' : 'No recibe pago'}
+                          </div>
+                        </div>
+                      ))}
+                      <div className={`mt-1 text-right font-semibold ${portionsOk ? 'text-[#1A4D2E]' : 'text-[#C0453A]'}`}>
+                        Suma: {portionsSum.toFixed(2)} de {Number(form.amount).toFixed(2)} {form.currency}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {def.bank && (
             <Field label="Banco" className="col-span-2">
@@ -1120,7 +1445,7 @@ function AddPaymentModal({ students, months, prefill, monthlyFee, usdAtPar, onCl
             </button>
             <button type="submit" disabled={!complete || submitting}
               className="text-sm font-semibold px-3 py-1.5 bg-[#2F5EA8] text-white hover:bg-[#284F8E] disabled:opacity-50 disabled:cursor-not-allowed">
-              {submitting ? 'Registrando…' : 'Registrar pago'}
+              {submitting ? 'Registrando…' : sharedActive ? 'Registrar pago compartido' : 'Registrar pago'}
             </button>
           </div>
         </form>
@@ -1399,7 +1724,12 @@ export default function PaymentLedger() {
   const [monthlyFeeByMonth, setMonthlyFeeByMonth] = useState<Record<string, { amount: number; currency: string } | null>>({});
   const [monthlyFee, setMonthlyFee] = useState<{ amount: number; currency: string } | null>(null);
   const [totals, setTotals] = useState<Record<string, { charged: number; paid: number; pending: number }>>({});
-  const [loading, setLoading] = useState(false);
+  // Which section the loaded `students` belong to. While it matches the selected
+  // section the table stays mounted during reloads (no "Cargando…" flicker).
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const sectionKey = selectedSection && schoolPeriodId
+    ? `${schoolPeriodId}/${selectedSection.gradeId}/${selectedSection.sectionId}`
+    : null;
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [paymentModal, setPaymentModal] = useState<{ studentId?: number; month?: string } | null>(null);
@@ -1428,7 +1758,7 @@ export default function PaymentLedger() {
   // Load ledger data when section changes
   const loadLedger = useCallback(async () => {
     if (!schoolPeriodId || !selectedSection) return;
-    setLoading(true);
+    const key = `${schoolPeriodId}/${selectedSection.gradeId}/${selectedSection.sectionId}`;
     try {
       const res = await getLedgerBySection(schoolPeriodId, selectedSection.gradeId, selectedSection.sectionId);
       setStudents(res.students);
@@ -1439,7 +1769,7 @@ export default function PaymentLedger() {
     } catch {
       setStudents([]);
     } finally {
-      setLoading(false);
+      setLoadedKey(key);
     }
   }, [schoolPeriodId, selectedSection]);
 
@@ -1476,6 +1806,30 @@ export default function PaymentLedger() {
   const handleAddPayment = async (form: any, allowDuplicate = false): Promise<void> => {
     if (!schoolPeriodId) return;
     try {
+      if (form.shared) {
+        const result = await createSharedPayment({
+          inscriptionIds: form.shared.inscriptionIds,
+          schoolPeriodId,
+          scope: form.scope === 'auto' ? undefined : form.scope,
+          amount: parseFloat(form.amount),
+          currency: form.currency,
+          amountVES: form.currency === 'VES' ? parseFloat(form.amount) : null,
+          method: form.method,
+          reference: form.reference || undefined,
+          bank: form.bank || undefined,
+          account: form.account || undefined,
+          notes: form.notes || undefined,
+          paymentDate: form.paymentDate || undefined,
+          clientRequestId: form.clientRequestId,
+          allowDuplicate: allowDuplicate || undefined,
+          portions: form.shared.portions,
+        });
+        setPaymentModal(null);
+        setFlash(`Pago de ${form.amount} ${form.currency} registrado y repartido entre ${result.payments.length} estudiantes`);
+        setTimeout(() => setFlash(null), 5000);
+        loadLedger();
+        return;
+      }
       const created = await createPayment({
         inscriptionId: Number(form.studentId),
         schoolPeriodId,
@@ -1786,7 +2140,7 @@ export default function PaymentLedger() {
           <div className="bg-white border-x border-b border-[#C5CAD2] p-12 text-center text-[#8B909A]">
             Selecciona una sección para ver el ledger de pagos.
           </div>
-        ) : loading ? (
+        ) : sectionKey !== loadedKey ? (
           <div className="bg-white border-x border-b border-[#C5CAD2] p-12 text-center text-[#8B909A]">
             Cargando…
           </div>
@@ -1835,7 +2189,8 @@ export default function PaymentLedger() {
                   const progress = yearProgress(student, feeAmountFor, months);
                   const [openInscription, openMonth] = openKey?.split('-') ?? ['', ''];
                   const isOpen = openKey === `${student.inscriptionId}-${openMonth}` && openInscription === String(student.inscriptionId);
-                  const rowBg = rowIndex % 2 === 1 ? 'bg-[#FAFBFC]' : 'bg-white';
+                  // The student whose detail is open stands out: tinted row, blue accent bar and a blue frame around row + detail.
+                  const rowBg = isOpen ? 'bg-[#E6EEFA]' : rowIndex % 2 === 1 ? 'bg-[#FAFBFC]' : 'bg-white';
                   // Paid credited per charge (drives the item-badge paid/pending color).
                   const paidByCharges = chargePaidBy(
                     student.enrollment, student.other,
@@ -1844,11 +2199,11 @@ export default function PaymentLedger() {
                   );
 
                   return (
-                    <div key={student.inscriptionId}>
+                    <div key={student.inscriptionId} className={isOpen ? 'border-y-2 border-[#2F5EA8]' : ''}>
                       <Dropdown trigger={['contextMenu']} menu={studentMenu(student)}>
                       <div className={`flex ${rowBg}`}>
                         <div style={{ width: NAME_COL }}
-                          className={`sticky left-0 z-10 ${rowBg} flex items-stretch min-w-0 border-r-2 border-[#B9BEC7] border-b border-[#DBDEE4]`}>
+                          className={`sticky left-0 z-10 ${rowBg} flex items-stretch min-w-0 border-r-2 border-[#B9BEC7] border-b border-[#DBDEE4] ${isOpen ? 'border-l-[6px] border-l-[#2F5EA8]' : ''}`}>
                           <span
                             className="absolute top-0.5 left-1.5 text-[9px] leading-none font-semibold tabular-nums text-[#0F7A45] pointer-events-none"
                             title="Total pagado por este estudiante"
@@ -1957,11 +2312,11 @@ export default function PaymentLedger() {
                       {isOpen && openMonth && (
                         <div className="flex">
                           <div style={{ width: NAME_COL }}
-                            className="sticky left-0 z-10 bg-[#FAFBFC] border-r-2 border-[#B9BEC7] border-b-2 border-b-[#B9BEC7] flex flex-col pt-2.5 min-w-0">
+                            className="sticky left-0 z-10 bg-[#E6EEFA] border-l-[6px] border-l-[#2F5EA8] border-r-2 border-[#B9BEC7] flex flex-col pt-2.5 min-w-0">
                             <div className="flex justify-end pr-2 shrink-0">
                               <ChevronDown size={13} className="text-[#2F5EA8]" />
                             </div>
-                            <GuardianPanel guardians={student.guardians ?? []} />
+                            <GuardianPanel guardians={student.guardians ?? []} ownPending={totalsOf(student).pending} />
                           </div>
                           {/* Pinned next to the name column and capped to the visible width, so amounts and action buttons never leave the screen. */}
                           <div className="sticky @container" style={{
@@ -2040,6 +2395,7 @@ export default function PaymentLedger() {
           prefill={paymentModal}
           monthlyFee={monthlyFee}
           usdAtPar={!!allPeriods.find((p: any) => p.id === schoolPeriodId)?.usdAtPar}
+          schoolPeriodId={schoolPeriodId}
           onClose={() => setPaymentModal(null)}
           onSubmit={handleAddPayment}
         />

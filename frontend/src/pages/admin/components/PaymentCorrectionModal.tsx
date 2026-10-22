@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Input, Modal, Select } from 'antd';
+import { Alert, Input, Modal, Radio, Select } from 'antd';
 import api from '@/services/api';
-import { deletePayment, movePayment, type PaymentDestination } from '@/services/paymentsService';
+import { deletePayment, movePayment, type PaymentDestination, type SharedApplyTo } from '@/services/paymentsService';
 import { methodDef } from '../paymentMethods';
 
 export type CorrectionMode = 'delete' | 'move' | 'destination';
@@ -46,6 +46,11 @@ export default function PaymentCorrectionModal({ txn, mode, studentName, schoolP
   const [searching, setSearching] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Payments shared between students (one transfer, several students) must say what to touch.
+  const [applyTo, setApplyTo] = useState<SharedApplyTo | null>(null);
+  const [sharedOthers, setSharedOthers] = useState<{ studentName: string; amount: number; currency: string }[] | null>(null);
+  const others: { studentName: string; amount: number; currency: string }[] = sharedOthers
+    ?? (txn.sharedWith ?? []).map((o: any) => ({ studentName: o.name, amount: o.amount, currency: o.currency }));
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
@@ -68,7 +73,9 @@ export default function PaymentCorrectionModal({ txn, mode, studentName, schoolP
 
   const isMove = mode === 'move';
   const isDestination = mode === 'destination';
-  const canSubmit = reason.trim().length >= 3 && (!isMove || !!target) && !submitting;
+  // Moving a share to another student only ever concerns that one row.
+  const askShared = others.length > 0 && !isMove;
+  const canSubmit = reason.trim().length >= 3 && (!isMove || !!target) && (!askShared || !!applyTo) && !submitting;
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -76,17 +83,23 @@ export default function PaymentCorrectionModal({ txn, mode, studentName, schoolP
     setError(null);
     try {
       if (isMove) {
-        await movePayment(txn.id, { toInscriptionId: target!.inscriptionId }, reason.trim());
+        await movePayment(txn.id, { toInscriptionId: target!.inscriptionId }, reason.trim(), others.length ? 'single' : undefined);
         onDone(`Pago #${txn.id} movido a ${target!.lastName}, ${target!.firstName}`);
       } else if (isDestination) {
-        await movePayment(txn.id, { scope }, reason.trim());
+        await movePayment(txn.id, { scope }, reason.trim(), askShared ? applyTo! : undefined);
         onDone(`Pago #${txn.id} reasignado a: ${DESTINATION_LABEL[scope]}`);
       } else {
-        await deletePayment(txn.id, reason.trim());
+        await deletePayment(txn.id, reason.trim(), askShared ? applyTo! : undefined);
         onDone(`Pago #${txn.id} eliminado`);
       }
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'No se pudo completar la corrección');
+      const data = err?.response?.data;
+      if (err?.response?.status === 409 && data?.code === 'SHARED_PAYMENT') {
+        setSharedOthers(data.others ?? []);
+        setError('Este pago es compartido con otros estudiantes: elija a cuáles aplicar la corrección.');
+      } else {
+        setError(data?.message || 'No se pudo completar la corrección');
+      }
       setSubmitting(false);
     }
   };
@@ -111,6 +124,25 @@ export default function PaymentCorrectionModal({ txn, mode, studentName, schoolP
             {txn.registeredBy && <> · registrado por <b>{txn.registeredBy.firstName} {txn.registeredBy.lastName}</b></>}
           </div>
         </div>
+
+        {others.length > 0 && (
+          <div className="border border-amber-200 bg-amber-50 rounded p-3 space-y-2">
+            <div>
+              Este pago es <b>compartido</b>: la misma operación se repartió también a{' '}
+              {others.map((o, i) => (
+                <span key={i}>{i > 0 && ', '}<b>{o.studentName}</b> ({Number(o.amount).toFixed(2)} {o.currency})</span>
+              ))}.
+            </div>
+            {isMove ? (
+              <div className="text-xs text-slate-500">Solo se moverá la parte de este estudiante; las demás no se tocan.</div>
+            ) : (
+              <Radio.Group value={applyTo} onChange={e => setApplyTo(e.target.value)} className="flex flex-col gap-1">
+                <Radio value="single">Solo esta parte ({Number(txn.amount).toFixed(2)} {txn.currency})</Radio>
+                <Radio value="group">Todo el pago compartido (todos los estudiantes)</Radio>
+              </Radio.Group>
+            )}
+          </div>
+        )}
 
         {isMove ? (
           <div>
