@@ -131,6 +131,13 @@ describe('Payment methods, audit and duplicate protection', () => {
       await pay(agent, { ...transfer, amount: 6000 }).expect(201);
     });
 
+    it('same reference and amount on a different date is still flagged', async () => {
+      await pay(agent, transfer).expect(201);
+      const res = await pay(agent, { ...transfer, paymentDate: '2020-01-15' }).expect(409);
+      expect(res.body.code).toBe('DUPLICATE_PAYMENT');
+      await pay(agent, { ...transfer, paymentDate: '2020-01-15', allowDuplicate: true }).expect(201);
+    });
+
     it('allowDuplicate registers it anyway', async () => {
       await pay(agent, transfer).expect(201);
       await pay(agent, { ...transfer, allowDuplicate: true }).expect(201);

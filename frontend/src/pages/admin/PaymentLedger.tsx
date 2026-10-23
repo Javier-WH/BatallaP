@@ -184,24 +184,57 @@ function TransactionRow({ txn, index, onCorrect }: { txn: any; index: number; on
         {METHODS.find(m => m.value === txn.method)?.label ?? txn.method}
       </div>
       <div className="order-5 @[800px]:order-none flex-1 basis-40 min-w-0 @[800px]:flex-none @[800px]:w-36 @[800px]:shrink-0 border-r border-[#E4E6EB] flex flex-col justify-center px-2.5 py-2 tabular-nums font-medium text-[#0F7A45]">
-        {Number(txn.amount).toFixed(2)} {txn.currency}
-        {txn.currency === 'VES' && txn.amountVES != null && (
-          <span className="text-[10px] font-normal text-[#9CA3AF] tabular-nums">
-            Bs. {Number(txn.amountVES).toLocaleString('es-VE')}
-            {txn.equivalent != null && txn.equivalentCurrency && txn.equivalentCurrency !== txn.currency && (
-              <span title="Equivalente total en la moneda de la deuda, a la tasa de la fecha del pago"> ({Number(txn.equivalent).toFixed(2)} {txn.equivalentCurrency})</span>
+        {txn.sharedWith?.length > 0 ? (() => {
+          // Shared payment: the operation total on top, this student's share
+          // below, then every other student's share — each with its conversion.
+          const conv = (p: any) => p.currency === 'VES'
+            ? (p.equivalent != null && p.equivalentCurrency && p.equivalentCurrency !== p.currency
+                ? `= ${Number(p.equivalent).toFixed(2)} ${p.equivalentCurrency}${p.atPar ? ' · a la par' : ''}` : null)
+            : (p.amountVES != null ? `Bs. ${Number(p.amountVES).toLocaleString('es-VE')}` : null);
+          const parts = [{ amount: txn.amount, currency: txn.currency, amountVES: txn.amountVES, equivalent: txn.equivalent, equivalentCurrency: txn.equivalentCurrency }, ...txn.sharedWith];
+          const total = parts.reduce((s: number, p: any) => s + Number(p.amount), 0);
+          const totalVES = parts.every(p => p.amountVES != null) ? parts.reduce((s: number, p: any) => s + Number(p.amountVES), 0) : null;
+          const equivCurrencies = [...new Set(parts.filter(p => p.equivalent != null && p.equivalentCurrency && p.equivalentCurrency !== p.currency).map(p => p.equivalentCurrency))];
+          const totalEquiv = equivCurrencies.length === 1
+            ? parts.reduce((s: number, p: any) => s + (p.equivalentCurrency === equivCurrencies[0] ? Number(p.equivalent ?? 0) : 0), 0)
+            : null;
+          const totalConv = txn.currency === 'VES'
+            ? (totalEquiv != null ? `= ${totalEquiv.toFixed(2)} ${equivCurrencies[0]}` : null)
+            : (totalVES != null ? `Bs. ${totalVES.toLocaleString('es-VE')}` : null);
+          const ownConv = conv(txn);
+          return (
+            <>
+              <span title="Total del pago compartido (una sola operación repartida entre varios estudiantes)">
+                Total: {total.toFixed(2)} {txn.currency}
+                {totalConv && <span className="text-[10px] font-normal text-[#9CA3AF]"> ({totalConv})</span>}
+              </span>
+              <span className="text-[10px] font-semibold text-[#374151] tabular-nums" title="Parte adjudicada a este estudiante">
+                Este estudiante: {Number(txn.amount).toFixed(2)} {txn.currency}{ownConv ? ` (${ownConv})` : ''}
+              </span>
+              {txn.sharedWith.map((o: any) => (
+                <span key={o.paymentId} className="text-[10px] font-semibold text-[#2F5EA8] leading-tight" title="Parte adjudicada a otro estudiante de este mismo pago">
+                  {o.name}: {Number(o.amount).toFixed(2)} {o.currency}{conv(o) ? ` (${conv(o)})` : ''}
+                </span>
+              ))}
+            </>
+          );
+        })() : (
+          <>
+            {Number(txn.amount).toFixed(2)} {txn.currency}
+            {txn.currency === 'VES' && txn.amountVES != null && (
+              <span className="text-[10px] font-normal text-[#9CA3AF] tabular-nums">
+                Bs. {Number(txn.amountVES).toLocaleString('es-VE')}
+                {txn.equivalent != null && txn.equivalentCurrency && txn.equivalentCurrency !== txn.currency && (
+                  <span title="Equivalente total en la moneda de la deuda, a la tasa de la fecha del pago"> ({Number(txn.equivalent).toFixed(2)} {txn.equivalentCurrency})</span>
+                )}
+              </span>
             )}
-          </span>
-        )}
-        {txn.currency !== 'VES' && txn.equivalent != null && txn.equivalentCurrency && txn.equivalentCurrency !== txn.currency && (
-          <span className="text-[10px] font-semibold text-[#1A7A3E] tabular-nums" title={txn.atPar ? 'Dólares acreditados 1:1 contra una deuda en euros' : 'Equivalente total en la moneda de la deuda, a la tasa de la fecha del pago'}>
-            = {Number(txn.equivalent).toFixed(2)} {txn.equivalentCurrency}{txn.atPar ? ' · a la par' : ''}
-          </span>
-        )}
-        {txn.sharedWith?.length > 0 && (
-          <span className="text-[10px] font-semibold text-[#2F5EA8] leading-tight" title="Una sola operación repartida entre varios estudiantes del mismo representante">
-            Compartido con {txn.sharedWith.map((o: any) => `${o.name} (${Number(o.amount).toFixed(2)} ${o.currency})`).join(', ')}
-          </span>
+            {txn.currency !== 'VES' && txn.equivalent != null && txn.equivalentCurrency && txn.equivalentCurrency !== txn.currency && (
+              <span className="text-[10px] font-semibold text-[#1A7A3E] tabular-nums" title={txn.atPar ? 'Dólares acreditados 1:1 contra una deuda en euros' : 'Equivalente total en la moneda de la deuda, a la tasa de la fecha del pago'}>
+                = {Number(txn.equivalent).toFixed(2)} {txn.equivalentCurrency}{txn.atPar ? ' · a la par' : ''}
+              </span>
+            )}
+          </>
         )}
         {txn.allocations?.length > 0 && (
           <span className="text-[10px] font-normal text-[#5B6472] tabular-nums leading-tight" title="Reparto del pago entre las deudas">
@@ -490,6 +523,28 @@ function mergedTotals(...buckets: (LedgerBucket | undefined | null)[]): { charge
     }
   }
   return { charged, paid };
+}
+
+/**
+ * Pending debt of several buckets, kept per currency ({ USD: 30, EUR: 165 }).
+ * A cell shows this in its corner — it drops to nothing as the debts get paid.
+ */
+function pendingByCurrency(...buckets: (LedgerBucket | undefined | null)[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const b of buckets.filter(Boolean) as LedgerBucket[]) {
+    const entries = Object.entries(b.byCurrency ?? {});
+    if (entries.length === 0) {
+      const pending = Math.max((b.totalCharged ?? 0) - (b.totalPaid ?? 0), 0);
+      if (pending > 0.005) out[b.currency ?? 'VES'] = (out[b.currency ?? 'VES'] ?? 0) + pending;
+      continue;
+    }
+    for (const [cur, v] of entries) {
+      const pending = Math.max(v.charged - v.paid, 0);
+      if (pending > 0.005) out[cur] = (out[cur] ?? 0) + pending;
+    }
+  }
+  for (const cur of Object.keys(out)) out[cur] = Math.round(out[cur] * 100) / 100;
+  return out;
 }
 
 /**
@@ -2211,7 +2266,15 @@ export default function PaymentLedger() {
                             Pagado {formatTotals(totalsOf(student).paid)}
                           </span>
                           {/* Name — 80% */}
-                          <div className="flex items-center gap-2.5 min-w-0 flex-1 px-4 py-2.5">
+                          <div className="relative flex items-center gap-2.5 min-w-0 flex-1 px-4 py-2.5">
+                            {formatTotals(totalsOf(student).pending) !== '0' && (
+                              <span
+                                className="absolute top-0.5 right-1 text-[9px] leading-none font-semibold tabular-nums text-[#B42318] pointer-events-none"
+                                title="Deuda pendiente total de este estudiante"
+                              >
+                                Debe {formatTotals(totalsOf(student).pending)}
+                              </span>
+                            )}
                             <span className="text-[10px] font-bold w-6 text-right tabular-nums shrink-0 text-[#8B909A]">
                               {student.rosterNumber ?? '—'}
                             </span>
@@ -2261,6 +2324,7 @@ export default function PaymentLedger() {
 
                         {hasOther && (() => {
                           const { charged, paid } = mergedTotals(student.other);
+                          const pending = pendingByCurrency(student.other);
                           return (
                             <MonthCell
                               paid={paid}
@@ -2269,6 +2333,11 @@ export default function PaymentLedger() {
                               months={months}
                               isOpen={openKey === `${student.inscriptionId}-${OTHER}`}
                               onClick={() => toggle(student.inscriptionId, OTHER)}
+                              corner={Object.keys(pending).length ? (
+                                <span className="text-[#B42318]" title="Deuda pendiente de estas deudas extraordinarias">
+                                  {formatTotals(pending)}
+                                </span>
+                              ) : undefined}
                             />
                           );
                         })()}
@@ -2277,16 +2346,22 @@ export default function PaymentLedger() {
                           const key = `${student.inscriptionId}-${m}`;
                           const priors = priorBucketsOf(student);
                           const priorT = mergedTotals(...priors);
+                          const isEntry = m === entryMonthOf(student);
                           // The entry month's cell carries the enrollment-plan
                           // debts AND any prior-period debt (which is always
                           // past due — it must be settled before this year's).
-                          const { charged, paid } = m === entryMonthOf(student)
+                          const { charged, paid } = isEntry
                             ? mergedTotals(data, student.enrollment, ...priors)
                             : { charged: data?.totalCharged ?? 0, paid: data?.totalPaid ?? 0 };
-                          const priorDue = m === entryMonthOf(student) && priorT.charged - priorT.paid > 0.005;
-                          const badges = m === entryMonthOf(student)
+                          const priorDue = isEntry && priorT.charged - priorT.paid > 0.005;
+                          const badges = isEntry
                             ? itemChargesOf(data, student.enrollment, ...priors)
                             : itemChargesOf(data);
+                          // Corner: this cell's pending debt, per currency
+                          // (entry month = enrollment + prior periods + month).
+                          const pending = isEntry
+                            ? pendingByCurrency(data, student.enrollment, ...priors)
+                            : pendingByCurrency(data);
                           return (
                             <MonthCell
                               key={m}
@@ -2298,9 +2373,10 @@ export default function PaymentLedger() {
                               isOpen={openKey === key}
                               onClick={() => toggle(student.inscriptionId, m)}
                               badges={badges.length ? <ItemBadges charges={badges} paidBy={paidByCharges} /> : undefined}
-                              corner={m === months[months.length - 1] ? (
-                                <span className="text-[#B42318]" title="Deuda pendiente de este estudiante">
-                                  Debe {formatTotals(totalsOf(student).pending)}
+                              corner={Object.keys(pending).length ? (
+                                <span className="text-[#B42318]"
+                                  title={isEntry ? 'Deuda pendiente: inscripción + deudas de períodos anteriores + este mes' : 'Deuda pendiente de este mes'}>
+                                  {formatTotals(pending)}
                                 </span>
                               ) : undefined}
                             />

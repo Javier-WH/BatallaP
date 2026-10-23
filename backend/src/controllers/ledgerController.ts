@@ -284,7 +284,7 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
     const groupRows = groupIds.length
       ? await Payment.findAll({
           where: { paymentGroupId: { [Op.in]: groupIds } },
-          attributes: ['id', 'inscriptionId', 'paymentGroupId', 'amount', 'currency'],
+          attributes: ['id', 'inscriptionId', 'paymentGroupId', 'amount', 'currency', 'amountVES', 'equivalent', 'equivalentCurrency', 'atPar'],
           include: [{ model: Inscription, as: 'inscription', attributes: ['id'], include: [{ model: Person, as: 'student', attributes: ['firstName', 'lastName'] }] }],
         })
       : [];
@@ -292,7 +292,13 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
       if (p.paymentGroupId) {
         (p as any).setDataValue('sharedWith', (groupRows as any[])
           .filter(r => r.paymentGroupId === p.paymentGroupId && r.id !== p.id)
-          .map(r => ({ paymentId: r.id, name: studentLabel(r.inscription), amount: Number(r.amount), currency: r.currency })));
+          .map(r => ({
+            paymentId: r.id, name: studentLabel(r.inscription), amount: Number(r.amount), currency: r.currency,
+            amountVES: r.amountVES == null ? null : Number(r.amountVES),
+            equivalent: r.equivalent == null ? null : Number(r.equivalent),
+            equivalentCurrency: r.equivalentCurrency ?? null,
+            atPar: !!r.atPar,
+          })));
       }
       const key = p.inscriptionId;
       if (!paymentsByInscription[key]) paymentsByInscription[key] = [];
@@ -847,6 +853,7 @@ export const createPayment = async (req: Request, res: Response) => {
     if (!allowDuplicate) {
       const duplicate = await findDuplicatePayment({
         dedupeKey, inscriptionId: Number(inscriptionId), method: fields.method, currency, amount: Number(amount), payDate,
+        reference: fields.reference,
       });
       if (duplicate) return res.status(409).json(duplicateResponse(duplicate));
     }
@@ -1131,6 +1138,7 @@ export const createSharedPayment = async (req: Request, res: Response) => {
     if (!allowDuplicate) {
       const duplicate = await findDuplicatePayment({
         dedupeKey, inscriptionId: ids[0], method: fields.method, currency, amount: total, payDate,
+        reference: fields.reference,
       });
       if (duplicate) return res.status(409).json(duplicateResponse(duplicate));
     }
@@ -1398,10 +1406,27 @@ const DUPLICATE_WINDOW_MS = 10 * 60 * 1000;
 
 async function findDuplicatePayment(args: {
   dedupeKey: string | null; inscriptionId: number; method: string; currency: string; amount: number; payDate: Date;
+  reference?: string | null;
 }): Promise<DuplicateInfo | null> {
   if (args.dedupeKey) {
     const byKey = await Payment.findOne({ where: { dedupeKey: args.dedupeKey } });
     if (byKey) return describeDuplicate(byKey);
+    // Same reference + amount + currency on ANY date (even another bank/method) is
+    // most likely a typo or a repeated operation. A shared payment counts as one
+    // operation: its rows are summed per paymentGroupId before comparing.
+    if (args.reference) {
+      const sameRef = await Payment.findAll({ where: { reference: args.reference, currency: args.currency }, order: [['id', 'ASC']] });
+      const operations = new Map<string, { sum: number; first: Payment }>();
+      for (const row of sameRef) {
+        const key = row.paymentGroupId ?? `p${row.id}`;
+        const op = operations.get(key);
+        if (op) op.sum += Number(row.amount);
+        else operations.set(key, { sum: Number(row.amount), first: row });
+      }
+      for (const op of operations.values()) {
+        if (Math.abs(op.sum - args.amount) < 0.005) return describeDuplicate(op.first);
+      }
+    }
     // A distinct reference proves a distinct operation: skip the time-window heuristic.
     return null;
   }
