@@ -4,11 +4,11 @@ import { Op, Transaction, UniqueConstraintError } from 'sequelize';
 import {
   Inscription, Person, Grade, Section, SchoolPeriod,
   Payment, PaymentAllocation, PaymentAuditLog, Charge, ChargeDelivery, Fee, SellableItem, ExchangeRate, ExchangeRateType,
-  InscriptionDiscount, DiscountReason, StudentGuardian, GuardianProfile, EnrollmentPlan, EnrollmentPlanItem,
+  InscriptionDiscount, CurrencyDiscount, DiscountReason, StudentGuardian, GuardianProfile, EnrollmentPlan, EnrollmentPlanItem,
 } from '@/models/index';
 import { DISCOUNT_KINDS, DISCOUNT_SCOPES } from '@/models/InscriptionDiscount';
 import { appliesAtPar, buildDedupeKey, normalizePaymentFields } from '@/services/paymentRulesService';
-import { distributePayment, checkTargetOrder, pendingByCharge, planSharedPayment, AllocationPart, AllocationTarget } from '@/services/paymentAllocationService';
+import { distributePayment, checkTargetOrder, pendingByCharge, planSharedPayment, releaseOverpaidAllocations, AllocationPart, AllocationTarget } from '@/services/paymentAllocationService';
 import { randomUUID } from 'crypto';
 import { applyDiscountsToCharges, DiscountRule } from '@/services/discountService';
 import { getBillingMonths, monthCodeFromDate, resolveEntryMonth } from '@/services/billingCalendarService';
@@ -167,12 +167,19 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
       });
     }
     // What each of those students still owes (every period, per currency), so a
-    // guardian card can show the representative's grand total.
+    // guardian card can show the representative's grand total. With `upToMonth`
+    // only the debts due up to that month of the viewed period count (month-less
+    // debts and those of other periods always do).
+    const upToMonth = typeof req.query.upToMonth === 'string' && (months as string[]).includes(req.query.upToMonth) ? req.query.upToMonth : null;
+    const dueByCutoff = (c: { month?: string | null; schoolPeriodId: number }) =>
+      !upToMonth || !c.month || c.schoolPeriodId !== viewedPeriodId
+      || (months as string[]).indexOf(c.month) <= (months as string[]).indexOf(upToMonth);
     const pendingByStudent = new Map<number, Record<string, number>>();
     for (const [personId, ins] of otherInscByPerson) {
       const pending: Record<string, number> = {};
       for (const row of await pendingByCharge(ins.id)) {
-        if (row.remaining > 0.005) pending[row.charge.currency] = Math.round(((pending[row.charge.currency] ?? 0) + row.remaining) * 100) / 100;
+        if (row.remaining <= 0.005 || !dueByCutoff(row.charge)) continue;
+        pending[row.charge.currency] = Math.round(((pending[row.charge.currency] ?? 0) + row.remaining) * 100) / 100;
       }
       pendingByStudent.set(personId, pending);
     }
@@ -234,7 +241,10 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
         { model: Person, as: 'registeredBy', attributes: ['id', 'firstName', 'lastName'] },
         {
           model: PaymentAllocation, as: 'allocations',
-          include: [{ model: Charge, as: 'charge', attributes: ['id', 'month', 'type', 'currency', 'schoolPeriodId', 'description'] }],
+          include: [
+            { model: Charge, as: 'charge', attributes: ['id', 'month', 'type', 'currency', 'schoolPeriodId', 'description'] },
+            { model: CurrencyDiscount, as: 'currencyDiscount', attributes: ['id', 'name', 'currency', 'kind', 'value'] },
+          ],
         },
       ],
     });
@@ -762,6 +772,8 @@ export const createInscriptionDiscount = async (req: Request, res: Response) => 
       active: true,
       createdByPersonId: (req.session as any)?.user?.personId ?? null,
     });
+    // Payments that already covered the now-discounted amount spill into the next debts.
+    await releaseOverpaidAllocations(inscription.id);
     return res.status(201).json(discountView(created));
   } catch (error) {
     console.error('[createInscriptionDiscount] Error:', error);
@@ -796,6 +808,7 @@ export const updateInscriptionDiscount = async (req: Request, res: Response) => 
       note: body.note !== undefined ? body.note || null : discount.note,
       active: body.active ?? discount.active,
     });
+    await releaseOverpaidAllocations(discount.inscriptionId);
     return res.json(discountView(discount));
   } catch (error) {
     console.error('[updateInscriptionDiscount] Error:', error);
@@ -808,6 +821,7 @@ export const deleteInscriptionDiscount = async (req: Request, res: Response) => 
     const discount = await InscriptionDiscount.findByPk(Number(req.params.id));
     if (!discount) return res.status(404).json({ message: 'Descuento no encontrado' });
     await discount.destroy();
+    await releaseOverpaidAllocations(discount.inscriptionId);
     return res.json({ message: 'Descuento eliminado' });
   } catch (error) {
     console.error('[deleteInscriptionDiscount] Error:', error);
@@ -823,11 +837,14 @@ export const createPayment = async (req: Request, res: Response) => {
       inscriptionId, schoolPeriodId, feeId, sellableItemId, chargeId,
       month, debtPeriodId, amount, currency, amountVES, exchangeRate,
       method, reference, bank, account, paymentDate, notes, nonMonthly,
-      clientRequestId, allowDuplicate, scope,
+      clientRequestId, allowDuplicate, allowNoDebt, scope,
     } = req.body;
 
     if (!inscriptionId || !schoolPeriodId || amount === undefined || !currency) {
       return res.status(400).json({ message: 'inscriptionId, schoolPeriodId, amount y currency son requeridos' });
+    }
+    if (!(await Inscription.findByPk(Number(inscriptionId), { attributes: ['id'] }))) {
+      return res.status(404).json({ message: 'Inscripción no encontrada' });
     }
 
     // Idempotency: the same form submission (double click, retry) returns the payment already created.
@@ -846,6 +863,17 @@ export const createPayment = async (req: Request, res: Response) => {
     const dayStr = payDate.toISOString().slice(0, 10);
     const tomorrow = new Date(Date.now() + 36 * 3600 * 1000).toISOString().slice(0, 10);
     if (dayStr > tomorrow) return res.status(400).json({ message: 'La fecha del pago no puede ser futura' });
+
+    // A payment for a student with nothing pending is probably a mistake: require explicit confirmation.
+    if (!allowNoDebt && scope !== 'item') {
+      const pending = await pendingByCharge(Number(inscriptionId));
+      if (!pending.some(p => p.remaining > 0.005)) {
+        return res.status(409).json({
+          code: 'NO_PENDING_DEBT',
+          message: 'Este estudiante no tiene deudas pendientes',
+        });
+      }
+    }
 
     // Duplicate protection: same operation (bank/account + reference + amount + currency + day) or,
     // for payments without reference, the same student/method/amount registered in the last 10 minutes.
@@ -945,6 +973,8 @@ export const createPayment = async (req: Request, res: Response) => {
     // Split the payment across the outstanding debts, each in its own currency.
     parts = await distributePayment(payment, target, { transaction: t });
     if (parts.length) await applyDistribution(payment, parts, t);
+    // Heals credit left on discounted debts (e.g. a discount granted after an earlier payment).
+    await releaseOverpaidAllocations(Number(inscriptionId), t);
     await t.commit();
     } catch (e) {
       await t.rollback();
@@ -963,7 +993,7 @@ export const createPayment = async (req: Request, res: Response) => {
       ...payment.toJSON(),
       allocations: parts.map(x => ({
         chargeId: x.chargeId, amount: x.amount, currency: x.currency,
-        month: x.month, periodId: x.periodId, atPar: x.atPar,
+        month: x.month, periodId: x.periodId, atPar: x.atPar, bonus: x.bonus,
         description: chargeById.get(x.chargeId)?.description ?? null,
         type: chargeById.get(x.chargeId)?.type ?? null,
       })),
@@ -1074,7 +1104,7 @@ export const getSharedStudents = async (req: Request, res: Response) => {
 /** POST /payments/shared/preview — how a shared payment would be split (nothing is stored). */
 export const previewSharedPayment = async (req: Request, res: Response) => {
   try {
-    const { inscriptionIds, amount, currency, paymentDate, scope } = req.body;
+    const { inscriptionIds, amount, currency, paymentDate, scope, schoolPeriodId } = req.body;
     const ids = Array.isArray(inscriptionIds) ? [...new Set(inscriptionIds.map(Number).filter(Boolean))] : [];
     if (ids.length === 0 || !(Number(amount) > 0) || !currency) {
       return res.status(400).json({ message: 'inscriptionIds, amount y currency son requeridos' });
@@ -1082,7 +1112,7 @@ export const previewSharedPayment = async (req: Request, res: Response) => {
     if (scope !== undefined && !SHARED_SCOPES.includes(scope)) return res.status(400).json({ message: 'Destino de pago inválido' });
     const payDate = parsePayDate(paymentDate);
     if (!payDate) return res.status(400).json({ message: 'Fecha de pago inválida' });
-    const portions = await planSharedPayment({ inscriptionIds: ids, currency, amount: Number(amount), payDate, scope });
+    const portions = await planSharedPayment({ inscriptionIds: ids, currency, amount: Number(amount), payDate, schoolPeriodId: schoolPeriodId ? Number(schoolPeriodId) : undefined, scope });
     const inscriptions = await Inscription.findAll({
       where: { id: { [Op.in]: ids } },
       include: [{ model: Person, as: 'student', attributes: ['firstName', 'lastName'] }],
@@ -1154,7 +1184,7 @@ export const createSharedPayment = async (req: Request, res: Response) => {
         return res.status(400).json({ message: 'La suma de los montos por estudiante debe ser igual al monto total del pago' });
       }
     } else {
-      shares = await planSharedPayment({ inscriptionIds: ids, currency, amount: total, payDate, scope });
+      shares = await planSharedPayment({ inscriptionIds: ids, currency, amount: total, payDate, schoolPeriodId: Number(schoolPeriodId), scope });
     }
     shares = shares.filter(s => s.amount > 0);
     if (shares.length === 0) return res.status(400).json({ message: 'Ningún estudiante tiene deuda pendiente para aplicar el pago' });
@@ -1225,7 +1255,7 @@ export const createSharedPayment = async (req: Request, res: Response) => {
       payments: created.map(({ payment, parts }) => ({
         ...payment.toJSON(),
         allocations: parts.map(x => ({
-          chargeId: x.chargeId, amount: x.amount, currency: x.currency, month: x.month, periodId: x.periodId, atPar: x.atPar,
+          chargeId: x.chargeId, amount: x.amount, currency: x.currency, month: x.month, periodId: x.periodId, atPar: x.atPar, bonus: x.bonus,
           description: chargeById.get(x.chargeId)?.description ?? null,
           type: chargeById.get(x.chargeId)?.type ?? null,
         })),
@@ -1344,7 +1374,7 @@ async function applyDistribution(payment: Payment, parts: AllocationPart[], tran
     chargeId: parts.length === 1 ? parts[0].chargeId : null,
     month: months.length === 1 ? months[0] : null,
     debtPeriodId: periods.length === 1 ? periods[0] : payment.schoolPeriodId,
-    equivalent: currencies.length === 1 ? Math.round(parts.reduce((sum, x) => sum + x.amount, 0) * 100) / 100 : null,
+    equivalent: currencies.length === 1 ? Math.round(parts.reduce((sum, x) => sum + x.amount - x.bonus, 0) * 100) / 100 : null,
     equivalentCurrency: currencies.length === 1 ? currencies[0] : null,
     atPar: parts.some(x => x.atPar),
   }, { transaction });
@@ -1457,6 +1487,10 @@ export const createCharge = async (req: Request, res: Response) => {
 
     if (!inscriptionId || !schoolPeriodId || !type || !description || amount === undefined || !currency) {
       return res.status(400).json({ message: 'inscriptionId, schoolPeriodId, type, description, amount y currency son requeridos' });
+    }
+    if (!(Number(amount) > 0)) return res.status(400).json({ message: 'El monto de la deuda debe ser mayor que cero' });
+    if (!(await Inscription.findByPk(Number(inscriptionId), { attributes: ['id'] }))) {
+      return res.status(404).json({ message: 'Inscripción no encontrada' });
     }
 
     // The charge's period is the period the debt belongs to — it may differ

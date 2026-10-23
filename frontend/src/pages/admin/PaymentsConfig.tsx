@@ -14,6 +14,7 @@ import BanksCard from './components/BanksCard';
 import ChargeSyncModal from './components/ChargeSyncModal';
 import ItemInventoryModal from './components/ItemInventoryModal';
 import DiscountReasonsCard from './components/DiscountReasonsCard';
+import CurrencyDiscountsCard from './components/CurrencyDiscountsCard';
 import { billingMonthOptions, MONTH_NAMES } from '@/utils/billingMonths';
 import type {
   ExchangeRateType, ExchangeRate, Fee, SellableItem, EnrollmentPlan, PlanCalculation,
@@ -633,6 +634,13 @@ const PaymentsConfig: React.FC = () => {
             key: 'discountReasons',
             label: <span><PercentageOutlined /> Descuentos y Becas</span>,
             children: <DiscountReasonsCard />,
+          },
+
+          // ── Tab: Descuentos por pagar en divisa ──
+          {
+            key: 'currencyDiscounts',
+            label: <span><PercentageOutlined /> Descuento por divisa</span>,
+            children: <CurrencyDiscountsCard />,
           },
 
           // ── Tab: Calendario de cobro ──

@@ -454,8 +454,9 @@ export async function getLedgerSections(schoolPeriodId: number): Promise<LedgerS
   return data;
 }
 
-export async function getLedgerBySection(schoolPeriodId: number, gradeId: number, sectionId: number | null): Promise<LedgerResponse> {
-  const { data } = await api.get<LedgerResponse>(`/ledger/${schoolPeriodId}/${gradeId}/${sectionId ?? 'null'}`);
+/** `upToMonth`: the representatives' debt counts only what is due up to that month of the period. */
+export async function getLedgerBySection(schoolPeriodId: number, gradeId: number, sectionId: number | null, upToMonth?: string): Promise<LedgerResponse> {
+  const { data } = await api.get<LedgerResponse>(`/ledger/${schoolPeriodId}/${gradeId}/${sectionId ?? 'null'}`, { params: upToMonth ? { upToMonth } : undefined });
   return data;
 }
 
@@ -547,6 +548,8 @@ export interface PaymentPayload {
   clientRequestId?: string;
   /** Register even though the server flagged a possible duplicate. */
   allowDuplicate?: boolean;
+  /** Register even though the student has no pending debt. */
+  allowNoDebt?: boolean;
 }
 
 export interface DuplicatePaymentInfo {
@@ -569,6 +572,8 @@ export interface PaymentAllocationView {
   month: string | null;
   periodId: number;
   atPar: boolean;
+  /** Part of `amount` granted by a currency discount (not paid in cash). */
+  bonus?: number;
   description: string | null;
   type: string | null;
 }
@@ -597,7 +602,7 @@ export interface SharedPortion {
   name: string;
   /** Share of the payment, in the payment's own currency. */
   amount: number;
-  allocations: { chargeId: number; description: string | null; type: string | null; month: string | null; currency: string; amount: number }[];
+  allocations: { chargeId: number; description: string | null; type: string | null; month: string | null; currency: string; amount: number; bonus?: number }[];
 }
 
 export type SharedPaymentPayload = Omit<PaymentPayload, 'inscriptionId' | 'chargeId' | 'month' | 'nonMonthly' | 'debtPeriodId' | 'scope'> & {
@@ -613,7 +618,7 @@ export async function getSharedStudents(inscriptionId: number, schoolPeriodId: n
 }
 
 export async function previewSharedPayment(payload: {
-  inscriptionIds: number[]; amount: number; currency: string; paymentDate?: string; scope?: 'auto' | 'tuition' | 'item';
+  inscriptionIds: number[]; amount: number; currency: string; paymentDate?: string; scope?: 'auto' | 'tuition' | 'item'; schoolPeriodId?: number;
 }): Promise<{ portions: SharedPortion[] }> {
   const { data } = await api.post('/ledger/payments/shared/preview', payload);
   return data;
@@ -651,6 +656,44 @@ export async function createDiscountReason(payload: { name: string; description?
 export async function updateDiscountReason(id: number, payload: Partial<DiscountReason>): Promise<DiscountReason> {
   const { data } = await api.put<DiscountReason>(`/payments/discount-reasons/${id}`, payload);
   return data;
+}
+
+// ── Currency discounts (paying in USDT, USD, …) ──
+
+export interface CurrencyDiscount {
+  id: number;
+  schoolPeriodId: number;
+  name: string;
+  /** Currency the payment must be made in. */
+  currency: string;
+  /** percent: less to pay; fixed: amount (in each debt's currency) off every debt settled in full. */
+  kind: 'percent' | 'fixed';
+  value: number;
+  validFrom: string | null;
+  validTo: string | null;
+  active: boolean;
+  note: string | null;
+}
+
+export type CurrencyDiscountPayload = Partial<Omit<CurrencyDiscount, 'id'>>;
+
+export async function listCurrencyDiscounts(schoolPeriodId?: number): Promise<CurrencyDiscount[]> {
+  const { data } = await api.get<CurrencyDiscount[]>('/payments/currency-discounts', { params: schoolPeriodId ? { schoolPeriodId } : undefined });
+  return data;
+}
+
+export async function createCurrencyDiscount(payload: CurrencyDiscountPayload): Promise<CurrencyDiscount> {
+  const { data } = await api.post<CurrencyDiscount>('/payments/currency-discounts', payload);
+  return data;
+}
+
+export async function updateCurrencyDiscount(id: number, payload: CurrencyDiscountPayload): Promise<CurrencyDiscount> {
+  const { data } = await api.put<CurrencyDiscount>(`/payments/currency-discounts/${id}`, payload);
+  return data;
+}
+
+export async function deleteCurrencyDiscount(id: number): Promise<void> {
+  await api.delete(`/payments/currency-discounts/${id}`);
 }
 
 export interface DiscountPayload {

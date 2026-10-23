@@ -2,7 +2,7 @@ import request from 'supertest';
 import app from '@/app';
 import {
   Role, PersonRole, Charge, ExchangeRateType, ExchangeRate, Payment, PaymentAllocation, PaymentAuditLog,
-  GuardianProfile, StudentGuardian,
+  GuardianProfile, StudentGuardian, CurrencyDiscount,
 } from '@/models/index';
 import { createTestUser, createAcademicStructure, createTestInscription } from '../helpers/testData';
 
@@ -204,5 +204,34 @@ describe('Ledger: shared payment between students of the same representative', (
     const st = res.body.students.find((s: any) => s.inscriptionId === ins1);
     const other = st.guardians[0].alsoRepresents.find((a: any) => a.personId === person2);
     expect(other.pending.EUR).toBeCloseTo(100, 2);
+  });
+
+  it("the representative's debt can be cut at a month: later months are not counted yet", async () => {
+    await enrollment(ins2, 100);
+    await tuition(ins2, 'Oct', 55);
+    await tuition(ins2, 'Mar', 55);
+    const { period, grade, section } = structure;
+    const owed = async (q = '') => {
+      const res = await agent.get(`/api/ledger/${period.id}/${grade.id}/${section.id}${q}`).expect(200);
+      const st = res.body.students.find((s: any) => s.inscriptionId === ins1);
+      return st.guardians[0].alsoRepresents.find((a: any) => a.personId === person2).pending.EUR;
+    };
+    expect(await owed()).toBeCloseTo(210, 2);
+    expect(await owed('?upToMonth=Oct')).toBeCloseTo(155, 2);
+    expect(await owed('?upToMonth=Mar')).toBeCloseTo(210, 2);
+    expect(await owed('?upToMonth=Nope')).toBeCloseTo(210, 2);
+  });
+
+  it('a currency discount stretches a shared payment over every student', async () => {
+    await enrollment(ins1, 100);
+    await enrollment(ins2, 100);
+    await CurrencyDiscount.create({
+      schoolPeriodId: structure.period.id, name: 'USDT', currency: 'USDT', kind: 'percent', value: 20,
+    } as any);
+    const res = await shared({ amount: 160, currency: 'USDT', method: 'binance', account: 'juan' }).expect(201);
+    expect(res.body.payments).toHaveLength(2);
+    expect(res.body.payments.map((p: any) => Number(p.amount))).toEqual([80, 80]);
+    const rows = await PaymentAllocation.findAll();
+    expect(rows.map(r => [Number(r.amount), Number(r.bonus)])).toEqual([[100, 20], [100, 20]]);
   });
 });

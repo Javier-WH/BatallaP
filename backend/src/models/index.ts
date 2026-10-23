@@ -158,6 +158,7 @@ import ChargeDelivery from './ChargeDelivery';
 import ItemInventoryMovement from './ItemInventoryMovement';
 import DiscountReason from './DiscountReason';
 import InscriptionDiscount from './InscriptionDiscount';
+import CurrencyDiscount from './CurrencyDiscount';
 import Bank from './Bank';
 import ConstanciaTemplate from './ConstanciaTemplate';
 import TeacherAvailability from './TeacherAvailability';
@@ -614,6 +615,11 @@ PaymentAllocation.belongsTo(Payment, { foreignKey: 'paymentId', as: 'payment' })
 Charge.hasMany(PaymentAllocation, { foreignKey: 'chargeId', as: 'allocations', onDelete: 'CASCADE' });
 PaymentAllocation.belongsTo(Charge, { foreignKey: 'chargeId', as: 'charge' });
 
+// Currency discount (paying in USDT, USD, …): which rule gave an allocation its bonus
+SchoolPeriod.hasMany(CurrencyDiscount, { foreignKey: 'schoolPeriodId', as: 'currencyDiscounts' });
+CurrencyDiscount.belongsTo(SchoolPeriod, { foreignKey: 'schoolPeriodId', as: 'schoolPeriod' });
+PaymentAllocation.belongsTo(CurrencyDiscount, { foreignKey: 'currencyDiscountId', as: 'currencyDiscount' });
+
 // Payment corrections (delete / move): who did it
 PaymentAuditLog.belongsTo(Person, { foreignKey: 'performedByPersonId', as: 'performer' });
 
@@ -789,6 +795,7 @@ export {
   ItemInventoryMovement,
   DiscountReason,
   InscriptionDiscount,
+  CurrencyDiscount,
   Bank,
   ConstanciaTemplate,
   TeacherAvailability,

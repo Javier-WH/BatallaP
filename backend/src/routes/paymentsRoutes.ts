@@ -22,6 +22,10 @@ import {
   listDiscountReasons,
   createDiscountReason,
   updateDiscountReason,
+  listCurrencyDiscounts,
+  createCurrencyDiscount,
+  updateCurrencyDiscount,
+  deleteCurrencyDiscount,
   previewChargeSync,
   applyChargeSync,
   // Sellable items
@@ -73,6 +77,12 @@ router.put('/fees/:id', updateFee);
 router.get('/discount-reasons', listDiscountReasons);
 router.post('/discount-reasons', createDiscountReason);
 router.put('/discount-reasons/:id', updateDiscountReason);
+
+// ── Currency discounts (paying in USDT, USD, …) ──
+router.get('/currency-discounts', listCurrencyDiscounts);
+router.post('/currency-discounts', createCurrencyDiscount);
+router.put('/currency-discounts/:id', updateCurrencyDiscount);
+router.delete('/currency-discounts/:id', deleteCurrencyDiscount);
 
 // ── Charge generation / sync (whole period) ──
 router.post('/charges/preview', previewChargeSync);

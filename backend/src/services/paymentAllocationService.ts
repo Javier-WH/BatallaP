@@ -15,6 +15,7 @@ import { Transaction } from 'sequelize';
 import { Charge, Payment, PaymentAllocation, SchoolPeriod } from '@/models/index';
 import { getBillingMonths } from '@/services/billingCalendarService';
 import { appliesAtPar } from '@/services/paymentRulesService';
+import { findActiveCurrencyDiscount, chargesWithFixedBonus, settleCharge, type ActiveCurrencyDiscount } from '@/services/currencyDiscountService';
 import {
   loadNetCharges, makeRateResolver, paymentToVES, paymentDebtPeriodId, paymentBucketMonth, type RateResolver,
 } from '@/services/debtBalanceService';
@@ -83,6 +84,9 @@ export interface AllocationPart {
   month: string | null;
   periodId: number;
   atPar: boolean;
+  /** Part of `amount` granted by a currency discount (not paid in cash). */
+  bonus: number;
+  currencyDiscountId: number | null;
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -96,14 +100,23 @@ const EPS = 0.005;
 export async function distributePayment(
   payment: Payment,
   target: AllocationTarget,
-  options: { transaction?: Transaction } = {}
+  options: {
+    transaction?: Transaction;
+    /** Place only this many payment units (default: the whole payment). */
+    units?: number;
+    /** Count the payment's existing allocations as already placed and add to them. */
+    keepExisting?: boolean;
+    /** Never park an excess on a debt: report it in `out.leftover` instead. */
+    noExcess?: boolean;
+    out?: { leftover: number };
+  } = {}
 ): Promise<AllocationPart[]> {
   const { transaction } = options;
   const resolver = makeRateResolver(transaction);
   const payDate = payment.paymentDate;
   const rate = async (currency: string) => (await resolver.vesPerUnit(currency, payDate)) ?? 1;
 
-  const ctx = await orderedContext(payment.inscriptionId, payment.id, transaction);
+  const ctx = await orderedContext(payment.inscriptionId, options.keepExisting ? -1 : payment.id, transaction);
   if (!ctx) return [];
   const { ordered: allOrdered, periodById, remaining } = ctx;
 
@@ -125,14 +138,18 @@ export async function distributePayment(
     : matches;
 
   const payRate = await rate(payment.currency);
-  let units = Number(payment.amount); // left to place, in payment currency
+  let units = options.units ?? Number(payment.amount); // left to place, in payment currency
   const parts: AllocationPart[] = [];
   let lastTouched: AllocationPart | null = null;
+  const discount = await findActiveCurrencyDiscount(payment.schoolPeriodId, payment.currency, payDate, transaction);
+  const fixedGiven = discount?.kind === 'fixed'
+    ? await chargesWithFixedBonus(discount.id, ordered.map(o => o.charge.id), options.keepExisting ? -1 : payment.id, transaction)
+    : new Set<number>();
 
   const partFor = async (chargeId: number, atPar: boolean, currency: string, month: string | null, periodId: number): Promise<AllocationPart> => {
     let part = parts.find(p => p.chargeId === chargeId);
     if (!part) {
-      part = { chargeId, amount: 0, amountVES: 0, currency, month, periodId, atPar };
+      part = { chargeId, amount: 0, amountVES: 0, currency, month, periodId, atPar, bonus: 0, currencyDiscountId: null };
       parts.push(part);
     }
     return part;
@@ -146,14 +163,16 @@ export async function distributePayment(
     const chargeRate = await rate(charge.currency);
     // Payment units needed to settle `rem`: 1:1 for the same currency or at par, else through bolívares.
     const factor = payment.currency === charge.currency || par ? 1 : chargeRate / payRate;
-    const cost = rem * factor;
-    const applyAll = units >= cost - EPS;
-    const apply = applyAll ? rem : round2(rem * (units / cost));
-    const used = applyAll ? cost : units;
+    const { apply, used, bonus } = settleCharge({ rem, units, factor, discount, fixedAlready: fixedGiven.has(charge.id) });
 
     const part = await partFor(charge.id, par, charge.currency, charge.month ?? null, charge.schoolPeriodId);
     part.amount += apply;
-    part.amountVES += apply * chargeRate;
+    part.amountVES += (apply - bonus) * chargeRate;
+    if (bonus > EPS && discount) {
+      part.bonus += bonus;
+      part.currencyDiscountId = discount.id;
+      if (discount.kind === 'fixed') fixedGiven.add(charge.id);
+    }
     lastTouched = part;
     units -= used;
     remaining.set(charge.id, rem - apply);
@@ -161,7 +180,8 @@ export async function distributePayment(
 
   // Whatever is left over exceeds every targeted debt: keep it as an excess on the last touched debt
   // (or on the last debt of the target when nothing was owed).
-  if (units > EPS) {
+  if (options.out) options.out.leftover = units > EPS ? units : 0;
+  if (units > EPS && !options.noExcess) {
     const lastCharge = ordered[ordered.length - 1].charge;
     const part = lastTouched ?? await partFor(
       lastCharge.id,
@@ -177,15 +197,96 @@ export async function distributePayment(
   }
 
   const final = parts
-    .map(p => ({ ...p, amount: round2(p.amount), amountVES: round2(p.amountVES) }))
+    .map(p => ({ ...p, amount: round2(p.amount), amountVES: round2(p.amountVES), bonus: round2(p.bonus) }))
     .filter(p => p.amount > 0);
   if (final.length > 0) {
-    await PaymentAllocation.bulkCreate(
-      final.map(p => ({ paymentId: payment.id, chargeId: p.chargeId, amount: p.amount, amountVES: p.amountVES })),
-      { transaction },
-    );
+    const existing = options.keepExisting
+      ? await PaymentAllocation.findAll({ where: { paymentId: payment.id, chargeId: final.map(p => p.chargeId) }, transaction })
+      : [];
+    const fresh = [];
+    for (const p of final) {
+      const row = existing.find(e => e.chargeId === p.chargeId);
+      if (row) {
+        await row.update({
+          amount: round2(Number(row.amount) + p.amount), amountVES: round2(Number(row.amountVES) + p.amountVES),
+          bonus: round2(Number(row.bonus) + p.bonus), currencyDiscountId: p.currencyDiscountId ?? row.currencyDiscountId,
+        }, { transaction });
+      } else {
+        fresh.push({ paymentId: payment.id, chargeId: p.chargeId, amount: p.amount, amountVES: p.amountVES, bonus: p.bonus, currencyDiscountId: p.currencyDiscountId });
+      }
+    }
+    if (fresh.length > 0) await PaymentAllocation.bulkCreate(fresh, { transaction });
   }
   return final;
+}
+
+/**
+ * After a discount lowers what a charge owes, payments already credited to it
+ * may exceed the new net amount. That excess is taken back from the charge
+ * (latest payment first) and re-applied, in debt order, to the student's next
+ * pending debts. Whatever no debt can absorb stays where it was (a credit).
+ */
+export async function releaseOverpaidAllocations(inscriptionId: number, transaction?: Transaction): Promise<void> {
+  const net = await loadNetCharges(inscriptionId, transaction);
+  if (net.length === 0) return;
+  const netById = new Map(net.map(n => [n.charge.id, n]));
+  const allocs = await PaymentAllocation.findAll({
+    where: { chargeId: [...netById.keys()] },
+    include: [{ model: Payment, as: 'payment' }],
+    transaction,
+  }) as any[];
+  const byCharge = new Map<number, any[]>();
+  for (const a of allocs) (byCharge.get(a.chargeId) ?? byCharge.set(a.chargeId, []).get(a.chargeId)!).push(a);
+
+  const periods = await SchoolPeriod.findAll({ where: { id: [...new Set(net.map(n => n.charge.schoolPeriodId))] }, transaction });
+  const periodById = new Map(periods.map(p => [p.id, p]));
+  const resolver = makeRateResolver(transaction);
+
+  type Freed = { payment: Payment; units: number; origins: { charge: Charge; chargeAmount: number; ratio: number; units: number; bonus: number; discountId: number | null }[] };
+  const freed = new Map<number, Freed>();
+  for (const [chargeId, list] of byCharge) {
+    const { charge, net: netAmount } = netById.get(chargeId)!;
+    let excess = round2(list.reduce((s, a) => s + Number(a.amount), 0) - netAmount);
+    if (excess <= EPS) continue;
+    list.sort((a, b) => (new Date(b.payment.paymentDate).getTime() - new Date(a.payment.paymentDate).getTime()) || (b.id - a.id));
+    for (const a of list) {
+      if (excess <= EPS) break;
+      const take = Math.min(Number(a.amount), excess);
+      const payment: Payment = a.payment;
+      const ratio = Number(a.amount) > 0 ? Number(a.amountVES) / Number(a.amount) : 0;
+      const par = appliesAtPar(payment.currency, charge.currency, !!periodById.get(charge.schoolPeriodId)?.usdAtPar);
+      const payRate = (await resolver.vesPerUnit(payment.currency, payment.paymentDate)) ?? 1;
+      const units = payment.currency === charge.currency || par ? take : (take * ratio) / payRate;
+      const left = round2(Number(a.amount) - take);
+      const bonusTaken = round2(Number(a.bonus) * (take / Number(a.amount)));
+      if (left <= EPS) await a.destroy({ transaction });
+      else await a.update({ amount: left, amountVES: round2(left * ratio), bonus: round2(Number(a.bonus) - bonusTaken) }, { transaction });
+      const f = freed.get(payment.id) ?? { payment, units: 0, origins: [] };
+      f.units += units;
+      f.origins.push({ charge, chargeAmount: take, ratio, units, bonus: bonusTaken, discountId: a.currencyDiscountId ?? null });
+      freed.set(payment.id, f);
+      excess = round2(excess - take);
+    }
+  }
+
+  const ordered = [...freed.values()].sort((a, b) =>
+    (new Date(a.payment.paymentDate).getTime() - new Date(b.payment.paymentDate).getTime()) || (a.payment.id - b.payment.id));
+  for (const f of ordered) {
+    const out = { leftover: 0 };
+    await distributePayment(f.payment, { kind: 'auto' }, { transaction, units: f.units, keepExisting: true, noExcess: true, out });
+    // No debt could take it: give it back to the charge it came from.
+    let back = out.leftover;
+    for (const o of f.origins) {
+      if (back <= EPS) break;
+      const used = Math.min(back, o.units);
+      const chargeAmount = round2(o.chargeAmount * (used / o.units));
+      const row = await PaymentAllocation.findOne({ where: { paymentId: f.payment.id, chargeId: o.charge.id }, transaction });
+      const bonusBack = round2(o.bonus * (used / o.units));
+      if (row) await row.update({ amount: round2(Number(row.amount) + chargeAmount), amountVES: round2(Number(row.amountVES) + chargeAmount * o.ratio), bonus: round2(Number(row.bonus) + bonusBack), currencyDiscountId: o.discountId ?? row.currencyDiscountId }, { transaction });
+      else await PaymentAllocation.create({ paymentId: f.payment.id, chargeId: o.charge.id, amount: chargeAmount, amountVES: round2(chargeAmount * o.ratio), bonus: bonusBack, currencyDiscountId: o.discountId }, { transaction });
+      back -= used;
+    }
+  }
 }
 
 export interface SharedPortion {
@@ -193,7 +294,7 @@ export interface SharedPortion {
   /** Share of the payment, in the payment's own currency. */
   amount: number;
   /** Debts this share would settle (simulation, nothing is stored). */
-  allocations: Array<{ chargeId: number; description: string | null; type: string | null; month: string | null; currency: string; amount: number }>;
+  allocations: Array<{ chargeId: number; description: string | null; type: string | null; month: string | null; currency: string; amount: number; bonus?: number }>;
 }
 
 /**
@@ -210,6 +311,8 @@ export async function planSharedPayment(args: {
   currency: string;
   amount: number;
   payDate: Date;
+  /** Period of the payment: where the currency discount is looked up. */
+  schoolPeriodId?: number;
   scope?: 'auto' | 'tuition' | 'item';
   transaction?: Transaction;
 }): Promise<SharedPortion[]> {
@@ -217,6 +320,10 @@ export async function planSharedPayment(args: {
   const resolver = makeRateResolver(transaction);
   const rate = async (cur: string) => (await resolver.vesPerUnit(cur, payDate)) ?? 1;
   const payRate = await rate(currency);
+  const discount: ActiveCurrencyDiscount | null = args.schoolPeriodId
+    ? await findActiveCurrencyDiscount(args.schoolPeriodId, currency, payDate, transaction)
+    : null;
+  const fixedGiven = new Set<number>();
 
   type Entry = { insIdx: number; charge: Charge; key: SortKey; rem: number; par: boolean };
   const entries: Entry[] = [];
@@ -243,15 +350,17 @@ export async function planSharedPayment(args: {
     if (units <= EPS) break;
     const chargeRate = await rate(e.charge.currency);
     const factor = currency === e.charge.currency || e.par ? 1 : chargeRate / payRate;
-    const cost = e.rem * factor;
-    const applyAll = units >= cost - EPS;
-    const apply = applyAll ? e.rem : round2(e.rem * (units / cost));
-    const used = applyAll ? cost : units;
+    if (discount?.kind === 'fixed' && !fixedGiven.has(e.charge.id)) {
+      const given = await chargesWithFixedBonus(discount.id, [e.charge.id], -1, transaction);
+      if (given.has(e.charge.id)) fixedGiven.add(e.charge.id);
+    }
+    const { apply, used, bonus } = settleCharge({ rem: e.rem, units, factor, discount, fixedAlready: fixedGiven.has(e.charge.id) });
+    if (bonus > EPS && discount?.kind === 'fixed') fixedGiven.add(e.charge.id);
     const p = portions[e.insIdx];
     p.amount += used;
     p.allocations.push({
       chargeId: e.charge.id, description: e.charge.description ?? null, type: e.charge.type ?? null,
-      month: e.charge.month ?? null, currency: e.charge.currency, amount: round2(apply),
+      month: e.charge.month ?? null, currency: e.charge.currency, amount: round2(apply), bonus,
     });
     units -= used;
   }

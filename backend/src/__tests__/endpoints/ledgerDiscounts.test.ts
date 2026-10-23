@@ -1,7 +1,7 @@
 import request from 'supertest';
 import app from '@/app';
 import {
-  Charge, DiscountReason, InscriptionDiscount, PersonRole,
+  Charge, DiscountReason, InscriptionDiscount, PaymentAllocation, PersonRole,
 } from '@/models/index';
 import {
   createAcademicStructure, createTestInscription, createTestRole, createTestUser,
@@ -221,5 +221,69 @@ describe('Payments without a month (enrollment and other one-time debts)', () =>
     // The 150 payment settles enrollment (100) and its overflow covers "other" (50)
     expect(student.enrollment.totalPaid).toBe(100);
     expect(student.other.totalPaid).toBe(50);
+  });
+});
+
+describe('A discount granted after the payment', () => {
+  const pay = (agent: any, inscriptionId: number, schoolPeriodId: number, amount: number) =>
+    agent.post('/api/ledger/payments').send({
+      inscriptionId, schoolPeriodId, method: 'efectivo', currency: 'USD', amount,
+      paymentDate: new Date().toISOString().slice(0, 10), allowDuplicate: true,
+    }).expect(201);
+  const allocationsOf = async (inscriptionId: number) => {
+    const charges = await Charge.findAll({ where: { inscriptionId }, order: [['id', 'ASC']] });
+    const rows = await PaymentAllocation.findAll({ where: { chargeId: charges.map(c => c.id) } });
+    return charges.map(c => rows.filter(r => r.chargeId === c.id).reduce((s, r) => s + Number(r.amount), 0));
+  };
+
+  it('moves the now-excess credit to the next pending debt', async () => {
+    const { agent } = await login();
+    const { insc, reason, period } = await setup();
+    await monthlyCharge(insc.id, period.id, 'Oct');
+    await monthlyCharge(insc.id, period.id, 'Nov');
+    await pay(agent, insc.id, period.id, 100);
+    expect(await allocationsOf(insc.id)).toEqual([100, 0]);
+
+    await agent.post(`/api/ledger/inscriptions/${insc.id}/discounts`)
+      .send({ reasonId: reason.id, kind: 'percent', value: 50, appliesTo: 'mensualidad' }).expect(201);
+    expect(await allocationsOf(insc.id)).toEqual([50, 50]);
+  });
+
+  it('a payment made after the discount settles only the net amount', async () => {
+    const { agent } = await login();
+    const { insc, reason, period, grade, section } = await setup();
+    await monthlyCharge(insc.id, period.id, 'Oct');
+    await monthlyCharge(insc.id, period.id, 'Nov');
+    await agent.post(`/api/ledger/inscriptions/${insc.id}/discounts`)
+      .send({ reasonId: reason.id, kind: 'percent', value: 50, appliesTo: 'mensualidad' }).expect(201);
+    await pay(agent, insc.id, period.id, 100);
+    expect(await allocationsOf(insc.id)).toEqual([50, 50]);
+    const res = await agent.get(`/api/ledger/${period.id}/${grade.id}/${section.id}`).expect(200);
+    const st = res.body.students.find((s: any) => s.inscriptionId === insc.id);
+    expect(st.months.Oct.totalPaid).toBe(50);
+    expect(st.months.Nov.totalPaid).toBe(50);
+  });
+
+  it('registering any later payment also heals a stale excess', async () => {
+    const { agent } = await login();
+    const { insc, reason, period } = await setup();
+    await monthlyCharge(insc.id, period.id, 'Oct');
+    await monthlyCharge(insc.id, period.id, 'Nov');
+    await pay(agent, insc.id, period.id, 100);
+    await InscriptionDiscount.create({
+      inscriptionId: insc.id, reasonId: reason.id, kind: 'percent', value: 50, appliesTo: 'mensualidad',
+    } as any);
+    await pay(agent, insc.id, period.id, 10);
+    expect(await allocationsOf(insc.id)).toEqual([60, 50]); // both months settled at net 50; the extra 10 stays as credit
+  });
+
+  it('keeps the excess as credit when there is no other debt to take it', async () => {
+    const { agent } = await login();
+    const { insc, reason, period } = await setup();
+    await monthlyCharge(insc.id, period.id, 'Oct');
+    await pay(agent, insc.id, period.id, 100);
+    await agent.post(`/api/ledger/inscriptions/${insc.id}/discounts`)
+      .send({ reasonId: reason.id, kind: 'percent', value: 50, appliesTo: 'mensualidad' }).expect(201);
+    expect(await allocationsOf(insc.id)).toEqual([100]);
   });
 });

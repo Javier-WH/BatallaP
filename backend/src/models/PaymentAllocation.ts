@@ -6,10 +6,12 @@ interface PaymentAllocationAttributes {
   paymentId: number;
   chargeId: number;
   amount: number;      // credited to the charge, in the CHARGE's currency
-  amountVES: number;   // value of that credit in bolívares (payment-date rate)
+  amountVES: number;   // value of that credit in bolívares (payment-date rate), WITHOUT the bonus
+  bonus: number;       // part of `amount` granted by a currency discount (not paid in cash), in the charge's currency
+  currencyDiscountId: number | null;
 }
 
-type PaymentAllocationCreationAttributes = Optional<PaymentAllocationAttributes, 'id'>;
+type PaymentAllocationCreationAttributes = Optional<PaymentAllocationAttributes, 'id' | 'bonus' | 'currencyDiscountId'>;
 
 /**
  * The part of a payment that settles one charge. A single payment may be split
@@ -26,6 +28,8 @@ class PaymentAllocation
   public chargeId!: number;
   public amount!: number;
   public amountVES!: number;
+  public bonus!: number;
+  public currencyDiscountId!: number | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -48,6 +52,8 @@ PaymentAllocation.init(
     },
     amount: { type: DataTypes.DECIMAL(18, 2), allowNull: false },
     amountVES: { type: DataTypes.DECIMAL(18, 2), allowNull: false },
+    bonus: { type: DataTypes.DECIMAL(18, 2), allowNull: false, defaultValue: 0 },
+    currencyDiscountId: { type: DataTypes.INTEGER, allowNull: true },
   },
   {
     sequelize,

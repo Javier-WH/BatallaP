@@ -10,10 +10,14 @@ import {
   EnrollmentPlanItem,
   SchoolPeriod,
   DiscountReason,
+  CurrencyDiscount,
   ItemInventoryMovement,
+  PaymentAllocation,
   Person,
 } from '@/models/index';
 import { INVENTORY_MOVEMENT_TYPES } from '@/models/ItemInventoryMovement';
+import { CURRENCY_DISCOUNT_KINDS } from '@/models/CurrencyDiscount';
+import { PAYMENT_CURRENCIES } from '@/services/paymentRulesService';
 import { getItemInventory, listMovements, normalizeSizes, sizesInUseRemoved } from '@/services/itemInventoryService';
 import { scrapeBcvRates } from '@/services/bcvScraperService';
 import { getBillingMonths, compareBillingMonths } from '@/services/billingCalendarService';
@@ -450,6 +454,116 @@ export const updateDiscountReason = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[updateDiscountReason] Error:', error);
     return res.status(500).json({ message: 'Error al actualizar el motivo' });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+// Currency discounts (e.g. 20% for payments in USDT), per school period
+// ─────────────────────────────────────────────────────────────
+
+const currencyDiscountView = (d: CurrencyDiscount) => ({
+  id: d.id, schoolPeriodId: d.schoolPeriodId, name: d.name, currency: d.currency, kind: d.kind,
+  value: Number(d.value), validFrom: d.validFrom, validTo: d.validTo, active: d.active, note: d.note,
+});
+
+const isDay = (v: unknown) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(new Date(`${v}T00:00:00Z`).getTime());
+
+/** Validates a rule and rejects overlaps: one active rule per period, currency and day. */
+const validateCurrencyDiscount = async (
+  d: { schoolPeriodId: number; name: string; currency: string; kind: string; value: number; validFrom: string | null; validTo: string | null; active: boolean },
+  ignoreId?: number,
+): Promise<string | null> => {
+  if (!d.name) return 'El nombre es requerido';
+  if (!(PAYMENT_CURRENCIES as readonly string[]).includes(d.currency)) return 'Moneda inválida';
+  if (!(CURRENCY_DISCOUNT_KINDS as readonly string[]).includes(d.kind)) return 'Tipo de descuento inválido';
+  if (!(Number.isFinite(d.value) && d.value > 0)) return 'El valor del descuento debe ser mayor que cero';
+  if (d.kind === 'percent' && d.value >= 100) return 'El porcentaje debe ser menor que 100';
+  if (d.validFrom && !isDay(d.validFrom)) return 'Fecha de inicio inválida';
+  if (d.validTo && !isDay(d.validTo)) return 'Fecha de fin inválida';
+  if (d.validFrom && d.validTo && d.validFrom > d.validTo) return 'La vigencia termina antes de empezar';
+  if (!(await SchoolPeriod.findByPk(d.schoolPeriodId))) return 'El período escolar no existe';
+  if (d.active) {
+    const others = await CurrencyDiscount.findAll({
+      where: { schoolPeriodId: d.schoolPeriodId, currency: d.currency, active: true, ...(ignoreId ? { id: { [Op.ne]: ignoreId } } : {}) },
+    });
+    const from = d.validFrom ?? '0000-01-01';
+    const to = d.validTo ?? '9999-12-31';
+    const clash = others.find(o => (o.validFrom ?? '0000-01-01') <= to && (o.validTo ?? '9999-12-31') >= from);
+    if (clash) return `Se cruza con "${clash.name}", que ya aplica a pagos en ${d.currency} en esas fechas`;
+  }
+  return null;
+};
+
+export const listCurrencyDiscounts = async (req: Request, res: Response) => {
+  try {
+    const where: any = {};
+    if (req.query.schoolPeriodId) where.schoolPeriodId = Number(req.query.schoolPeriodId);
+    const rows = await CurrencyDiscount.findAll({ where, order: [['schoolPeriodId', 'DESC'], ['currency', 'ASC'], ['id', 'ASC']] });
+    return res.json(rows.map(currencyDiscountView));
+  } catch (error) {
+    console.error('[listCurrencyDiscounts] Error:', error);
+    return res.status(500).json({ message: 'Error al listar los descuentos por divisa' });
+  }
+};
+
+export const createCurrencyDiscount = async (req: Request, res: Response) => {
+  try {
+    const b = req.body ?? {};
+    const data = {
+      schoolPeriodId: Number(b.schoolPeriodId), name: String(b.name ?? '').trim(), currency: String(b.currency ?? ''),
+      kind: String(b.kind ?? ''), value: Number(b.value), validFrom: b.validFrom || null, validTo: b.validTo || null,
+      active: b.active ?? true,
+    };
+    const error = await validateCurrencyDiscount(data);
+    if (error) return res.status(400).json({ message: error });
+    const created = await CurrencyDiscount.create({
+      ...data, kind: data.kind as 'percent' | 'fixed', note: b.note || null,
+      createdByPersonId: (req.session as any)?.user?.personId ?? null,
+    });
+    return res.status(201).json(currencyDiscountView(created));
+  } catch (error) {
+    console.error('[createCurrencyDiscount] Error:', error);
+    return res.status(500).json({ message: 'Error al crear el descuento por divisa' });
+  }
+};
+
+export const updateCurrencyDiscount = async (req: Request, res: Response) => {
+  try {
+    const row = await CurrencyDiscount.findByPk(Number(req.params.id));
+    if (!row) return res.status(404).json({ message: 'Descuento no encontrado' });
+    const b = req.body ?? {};
+    const data = {
+      schoolPeriodId: row.schoolPeriodId,
+      name: b.name !== undefined ? String(b.name).trim() : row.name,
+      currency: b.currency ?? row.currency,
+      kind: b.kind ?? row.kind,
+      value: b.value !== undefined ? Number(b.value) : Number(row.value),
+      validFrom: b.validFrom !== undefined ? b.validFrom || null : row.validFrom,
+      validTo: b.validTo !== undefined ? b.validTo || null : row.validTo,
+      active: b.active ?? row.active,
+    };
+    const error = await validateCurrencyDiscount(data, row.id);
+    if (error) return res.status(400).json({ message: error });
+    await row.update({ ...data, kind: data.kind as 'percent' | 'fixed', note: b.note !== undefined ? b.note || null : row.note });
+    return res.json(currencyDiscountView(row));
+  } catch (error) {
+    console.error('[updateCurrencyDiscount] Error:', error);
+    return res.status(500).json({ message: 'Error al actualizar el descuento por divisa' });
+  }
+};
+
+export const deleteCurrencyDiscount = async (req: Request, res: Response) => {
+  try {
+    const row = await CurrencyDiscount.findByPk(Number(req.params.id));
+    if (!row) return res.status(404).json({ message: 'Descuento no encontrado' });
+    if (await PaymentAllocation.count({ where: { currencyDiscountId: row.id } })) {
+      return res.status(400).json({ message: 'Ya se aplicó a pagos registrados: desactívelo en lugar de eliminarlo' });
+    }
+    await row.destroy();
+    return res.json({ message: 'Descuento eliminado' });
+  } catch (error) {
+    console.error('[deleteCurrencyDiscount] Error:', error);
+    return res.status(500).json({ message: 'Error al eliminar el descuento por divisa' });
   }
 };
 

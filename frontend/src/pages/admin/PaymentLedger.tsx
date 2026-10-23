@@ -5,7 +5,7 @@ import {
   ChevronDown, Search, Banknote, Smartphone, Landmark, CreditCard, Hash,
   Plus, X, DollarSign, TrendingUp, AlertTriangle,
   ArrowDownAZ, ArrowUpAZ, ArrowUpDown, MoreHorizontal, CalendarClock, BadgePercent,
-  ArrowRightLeft, Shirt, Trash2, UserX, Check, PackageCheck, Phone, Mail, Users, FileText,
+  ArrowRightLeft, Shirt, Trash2, UserX, Check, PackageCheck, Phone, Mail, Users, FileText, FileSpreadsheet,
 } from 'lucide-react';
 import { ItemGlyph } from './itemIcons';
 import PaymentsReportModal from './components/PaymentsReportModal';
@@ -17,9 +17,9 @@ import {
   getLedgerSections, getLedgerBySection, searchWithdrawnStudents,
   createPayment, createCharge, bulkCreateCharges, updateEntryMonth, listSellableItems,
   deliverItemUnits, undoItemDelivery, deleteCharge,
-  getRatesAtDate, listExchangeRateTypes, getSharedStudents, previewSharedPayment, createSharedPayment,
+  getRatesAtDate, listExchangeRateTypes, getSharedStudents, previewSharedPayment, createSharedPayment, listCurrencyDiscounts,
   type LedgerStudent, type LedgerSection, type SellableItem, type LedgerPriorPeriod, type LedgerBucket, type LedgerGuardian,
-  type RateAtDate, type ExchangeRateType, type SharedStudent, type SharedPortion,
+  type RateAtDate, type ExchangeRateType, type SharedStudent, type SharedPortion, type CurrencyDiscount,
   type DuplicatePaymentInfo, type WithdrawnStudentResult,
 } from '@/services/paymentsService';
 import { listBanks, type Bank } from '@/services/bankService';
@@ -243,6 +243,9 @@ function TransactionRow({ txn, index, onCorrect }: { txn: any; index: number; on
                 → {Number(a.amount).toFixed(2)} {a.charge?.currency ?? '—'}
                 {a.charge?.description ? ` · ${a.charge.description}` : ''}
                 {a.atPar ? ' · a la par' : ''}
+                {Number(a.bonus) > 0.005 && (
+                  <span className="text-[#0F7A45]"> · incl. {Number(a.bonus).toFixed(2)} {a.charge?.currency ?? ''} de descuento{a.currencyDiscount?.name ? ` (${a.currencyDiscount.name})` : ''}</span>
+                )}
               </span>
             ))}
           </span>
@@ -908,39 +911,56 @@ function PriorPeriodDetail({ group, onAddPayment, onCorrectPayment, onChanged }:
  * period and bucket (months, enrollment, extraordinary, prior periods).
  * Pending never goes negative per bucket.
  */
-function studentTotals(student: LedgerStudent): { paid: Record<string, number>; pending: Record<string, number> } {
+function studentTotals(student: LedgerStudent, months: string[], upToMonth: string): { paid: Record<string, number>; pending: Record<string, number> } {
   const paid: Record<string, number> = {};
   const pending: Record<string, number> = {};
-  const add = (b: LedgerBucket | undefined | null) => {
+  const cutoff = months.indexOf(upToMonth);
+  const add = (b: LedgerBucket | undefined | null, countsDebt = true) => {
     if (!b) return;
     const parts: [string, { charged: number; paid: number }][] = b.byCurrency && Object.keys(b.byCurrency).length
       ? Object.entries(b.byCurrency)
       : b.currency ? [[b.currency, { charged: b.totalCharged, paid: b.totalPaid }]] : [];
     for (const [cur, v] of parts) {
       paid[cur] = (paid[cur] ?? 0) + v.paid;
-      pending[cur] = (pending[cur] ?? 0) + Math.max(v.charged - v.paid, 0);
+      if (countsDebt) pending[cur] = (pending[cur] ?? 0) + Math.max(v.charged - v.paid, 0);
     }
   };
-  Object.values(student.months).forEach(add);
+  // Months after the cutoff are not due yet: their payments still count as paid, their debt does not.
+  Object.entries(student.months).forEach(([m, b]) => add(b, cutoff < 0 || months.indexOf(m) <= cutoff));
   add(student.enrollment);
   add(student.other);
   for (const g of student.priorPeriods ?? []) {
-    Object.values(g.months).forEach(add);
+    Object.values(g.months).forEach(b => add(b));
     add(g.enrollment);
     add(g.other);
   }
   return { paid, pending };
 }
 
-function yearProgress(student: LedgerStudent, feeFor: (month: string) => number, months: string[]): number {
-  const monthsWithData = months.filter(m => student.months[m]);
-  const extras = [student.enrollment, student.other].filter(b => (b?.totalCharged ?? 0) > 0);
-  if (monthsWithData.length === 0 && extras.length === 0) return 0;
-  const paidTotal = monthsWithData.reduce((s, m) => s + Math.min(student.months[m].totalPaid, student.months[m].totalCharged || feeFor(m)), 0)
-    + extras.reduce((s, b) => s + Math.min(b!.totalPaid, b!.totalCharged), 0);
-  const dueTotal = monthsWithData.reduce((s, m) => s + (student.months[m].totalCharged || feeFor(m)), 0)
-    + extras.reduce((s, b) => s + b!.totalCharged, 0);
-  return dueTotal > 0 ? paidTotal / dueTotal : 0;
+/**
+ * Paid vs due up to `upToMonth` (inclusive): months after the cutoff are not
+ * due yet and advance payments on them are ignored. Enrollment, extraordinary
+ * debts and debts of other periods always count.
+ */
+function yearProgress(student: LedgerStudent, feeFor: (month: string) => number, months: string[], upToMonth: string): number {
+  const cutoff = months.indexOf(upToMonth);
+  const due: { paid: number; charged: number }[] = [];
+  const addDue = (b: LedgerBucket | undefined | null, fallback = 0) => {
+    const charged = b?.totalCharged || fallback;
+    if (b && charged > 0) due.push({ paid: Math.min(b.totalPaid, charged), charged });
+  };
+  for (const m of months) {
+    if (student.months[m] && (cutoff < 0 || months.indexOf(m) <= cutoff)) addDue(student.months[m], feeFor(m));
+  }
+  addDue(student.enrollment);
+  addDue(student.other);
+  for (const g of student.priorPeriods ?? []) {
+    Object.values(g.months).forEach(b => addDue(b));
+    addDue(g.enrollment);
+    addDue(g.other);
+  }
+  const dueTotal = due.reduce((s, d) => s + d.charged, 0);
+  return dueTotal > 0 ? due.reduce((s, d) => s + d.paid, 0) / dueTotal : 0;
 }
 
 // ── Modal: Add Payment ──
@@ -1043,8 +1063,8 @@ function AddPaymentModal({ students, months, prefill, monthlyFee, usdAtPar, scho
     studentId: (prefill as any).studentId || '',
     scope: 'auto' as 'auto' | 'tuition' | 'item',
     chargeId: '',
-    method: 'efectivo',
-    currency: methodDef('efectivo').defaultCurrency,
+    method: 'transferencia',
+    currency: 'VES',
     amount: '',
     paymentDate: todayStr,
     bank: '',
@@ -1117,6 +1137,17 @@ function AddPaymentModal({ students, months, prefill, monthlyFee, usdAtPar, scho
     return monthlyFee?.currency ?? null;
   })();
   const atParNote = usdAtPar && targetDebtCurrency === 'EUR' && (form.currency === 'USD' || form.currency === 'USDT') && Number(form.amount) > 0;
+
+  // Discount for paying in this currency on this date (the server applies it by itself).
+  const [currencyDiscounts, setCurrencyDiscounts] = useState<CurrencyDiscount[]>([]);
+  useEffect(() => {
+    if (!schoolPeriodId) return;
+    listCurrencyDiscounts(schoolPeriodId).then(setCurrencyDiscounts).catch(() => setCurrencyDiscounts([]));
+  }, [schoolPeriodId]);
+  const activeDiscount = useMemo(() => currencyDiscounts.find(d =>
+    d.active && d.currency === form.currency
+    && (!d.validFrom || d.validFrom <= form.paymentDate) && (!d.validTo || d.validTo >= form.paymentDate)) ?? null,
+  [currencyDiscounts, form.currency, form.paymentDate]);
 
   // ── Live estimate: what this payment will cover, in each debt's currency ──
   // Uses the rate in force on the payment date, exactly like distributePayment.
@@ -1200,17 +1231,19 @@ function AddPaymentModal({ students, months, prefill, monthlyFee, usdAtPar, scho
       const par = usdAtPar && currency === 'EUR' && (form.currency === 'USD' || form.currency === 'USDT');
       const cost = (form.currency === currency || par) ? payRate : vesRateFor(currency);
       if (cost == null) { missing.add(currency); continue; }
-      const cover = Math.min(remaining, vesLeft / cost);
+      // A percent discount makes every unit paid settle 1 / (1 - p) units of debt.
+      const keep = activeDiscount?.kind === 'percent' ? 1 - activeDiscount.value / 100 : 1;
+      const cover = Math.min(remaining, vesLeft / (cost * keep));
       parts.set(currency, (parts.get(currency) ?? 0) + cover);
-      vesLeft -= cover * cost;
+      vesLeft -= cover * cost * keep;
       ratesUsed.set(currency, cost);
       last = { currency, cost };
     }
     // The excess stays credited to the last touched debt, like the backend does.
-    if (vesLeft > 0.005 && last) parts.set(last.currency, (parts.get(last.currency) ?? 0) + vesLeft / last.cost);
+    if (vesLeft > 0.005 && last) parts.set(last.currency, (parts.get(last.currency) ?? 0) + vesLeft / last.cost); // excess is not boosted
     if (form.currency !== 'VES') ratesUsed.set(form.currency, payRate);
     return { parts: [...parts.entries()].map(([currency, amount]) => ({ currency, amount })), missing: [...missing], ratesUsed };
-  }, [form.amount, form.currency, scopedCharges, rateRows, rateTypes, usdAtPar]);
+  }, [form.amount, form.currency, scopedCharges, rateRows, rateTypes, usdAtPar, activeDiscount]);
 
   // ── Shared payment: other students of the same representative ──
   // They come pre-selected when they owe something; unchecking one pays for the rest only.
@@ -1252,13 +1285,14 @@ function AddPaymentModal({ students, months, prefill, monthlyFee, usdAtPar, scho
       previewSharedPayment({
         inscriptionIds: sharedIds, amount: Number(form.amount), currency: form.currency,
         paymentDate: form.paymentDate || undefined, scope: form.scope === 'auto' ? undefined : form.scope,
+        schoolPeriodId,
       })
         .then(r => { if (alive) { setPortions(r.portions); setPreviewError(null); } })
         .catch(err => { if (alive) { setPortions(null); setPreviewError(err?.response?.data?.message ?? 'No se pudo calcular el reparto'); } })
         .finally(() => { if (alive) setPreviewing(false); });
     }, 400);
     return () => { alive = false; clearTimeout(timer); };
-  }, [sharedActive, sharedIds, form.amount, form.currency, form.paymentDate, form.scope]);
+  }, [sharedActive, sharedIds, form.amount, form.currency, form.paymentDate, form.scope, schoolPeriodId]);
 
   const portionAmount = (p: SharedPortion) => portionEdits?.[p.inscriptionId] ?? p.amount.toFixed(2);
   const portionsSum = (portions ?? []).reduce((sum, p) => sum + (Number(portionAmount(p)) || 0), 0);
@@ -1362,6 +1396,15 @@ function AddPaymentModal({ students, months, prefill, monthlyFee, usdAtPar, scho
             <div className="col-span-2 text-xs bg-[#E8F5EC] border border-[#B7DEC3] text-[#1A4D2E] px-3 py-2">
               <b>A la par:</b> {Number(form.amount).toFixed(2)} {form.currency} saldan {Number(form.amount).toFixed(2)} EUR
               (no se convierten por tasa).
+            </div>
+          )}
+          {activeDiscount && (
+            <div className="col-span-2 text-xs bg-[#E8F5EC] border border-[#B7DEC3] text-[#1A4D2E] px-3 py-2">
+              <b>Descuento por pagar en {form.currency}{activeDiscount.name ? ` · ${activeDiscount.name}` : ''}:</b>{' '}
+              {activeDiscount.kind === 'percent'
+                ? `${activeDiscount.value}% menos. Cada ${form.currency} pagado salda ${(1 / (1 - activeDiscount.value / 100)).toFixed(2)} de deuda.`
+                : `${activeDiscount.value.toFixed(2)} menos en cada deuda que este pago salde completa (en la moneda de esa deuda).`}
+              {' '}Se aplica automáticamente.
             </div>
           )}
           {!sharedActive && coverageEstimate && (() => {
@@ -1769,7 +1812,7 @@ function LegendSwatch({ color, label }: { color: string; label: string }) {
 
 export default function PaymentLedger() {
   const dragScroll = useDragScroll<HTMLDivElement>();
-  const { viewPeriod, allPeriods } = useSchool();
+  const { viewPeriod, activePeriod, allPeriods } = useSchool();
   const schoolPeriodId = viewPeriod?.id;
 
   const [sections, setSections] = useState<LedgerSection[]>([]);
@@ -1779,6 +1822,10 @@ export default function PaymentLedger() {
   const [monthlyFeeByMonth, setMonthlyFeeByMonth] = useState<Record<string, { amount: number; currency: string } | null>>({});
   const [monthlyFee, setMonthlyFee] = useState<{ amount: number; currency: string } | null>(null);
   const [totals, setTotals] = useState<Record<string, { charged: number; paid: number; pending: number }>>({});
+  // Debts are counted up to this month (null = the default: the current month of the active period, else the whole period).
+  const [cutoffChoice, setCutoffChoice] = useState<string | null>(null);
+  const defaultCutoff = viewPeriod?.id === activePeriod?.id && months.includes(CURRENT_MONTH) ? CURRENT_MONTH : months[months.length - 1];
+  const cutoffMonth = cutoffChoice && months.includes(cutoffChoice) ? cutoffChoice : defaultCutoff;
   // Which section the loaded `students` belong to. While it matches the selected
   // section the table stays mounted during reloads (no "Cargando…" flicker).
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
@@ -1808,6 +1855,7 @@ export default function PaymentLedger() {
   useEffect(() => {
     loadSections();
     setSelectedSection(null);
+    setCutoffChoice(null);
   }, [loadSections]);
 
   // Load ledger data when section changes
@@ -1815,7 +1863,7 @@ export default function PaymentLedger() {
     if (!schoolPeriodId || !selectedSection) return;
     const key = `${schoolPeriodId}/${selectedSection.gradeId}/${selectedSection.sectionId}`;
     try {
-      const res = await getLedgerBySection(schoolPeriodId, selectedSection.gradeId, selectedSection.sectionId);
+      const res = await getLedgerBySection(schoolPeriodId, selectedSection.gradeId, selectedSection.sectionId, cutoffMonth);
       setStudents(res.students);
       setMonths(res.months?.length ? res.months : DEFAULT_MONTHS);
       setMonthlyFeeByMonth(res.monthlyFeeByMonth ?? {});
@@ -1826,7 +1874,7 @@ export default function PaymentLedger() {
     } finally {
       setLoadedKey(key);
     }
-  }, [schoolPeriodId, selectedSection]);
+  }, [schoolPeriodId, selectedSection, cutoffMonth]);
 
   useEffect(() => {
     loadLedger();
@@ -1853,12 +1901,54 @@ export default function PaymentLedger() {
   // cell (entry month) — that year's enrollment cannot be paid until the old
   // debt is settled, and the payment order already enforces it.
 
+  // Opening a student's detail brings it into view (it may expand below the visible edge).
+  useEffect(() => {
+    if (!openKey) return;
+    const id = openKey.split('-')[0];
+    const timer = setTimeout(() => {
+      const box = dragScroll.ref.current;
+      const block = box?.querySelector(`[data-ledger-student="${id}"]`);
+      if (!box || !block) return;
+      const head = box.querySelector('[data-ledger-head]')?.getBoundingClientRect().height ?? 0;
+      const b = block.getBoundingClientRect();
+      const c = box.getBoundingClientRect();
+      const top = b.top - c.top - head;
+      if (top >= 0 && b.bottom - c.top <= c.height) return;
+      const room = c.height - head;
+      const offset = b.height >= room ? 0 : (room - b.height) / 2;
+      box.scrollBy({ top: top - offset, behavior: 'smooth' });
+    }, 60);
+    return () => clearTimeout(timer);
+  }, [openKey, dragScroll.ref]);
+
+  const [exporting, setExporting] = useState(false);
+  const handleExport = async () => {
+    if (!selectedSection) return;
+    setExporting(true);
+    try {
+      const { exportLedgerExcel } = await import('./exportLedgerExcel');
+      await exportLedgerExcel({
+        sectionLabel: `${selectedSection.gradeName} ${selectedSection.sectionName}`,
+        periodLabel: viewPeriod?.name ?? viewPeriod?.period ?? '',
+        cutoffLabel: MONTH_FULL[cutoffMonth] ?? cutoffMonth,
+        rows: filteredStudents.map(st => ({
+          name: st.name, document: st.document, rosterNumber: st.rosterNumber,
+          paid: totalsByStudent.get(st.inscriptionId)?.paid ?? {},
+          pending: totalsByStudent.get(st.inscriptionId)?.pending ?? {},
+          progress: yearProgress(st, feeAmountFor, months, cutoffMonth),
+        })),
+      });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const toggle = (inscriptionId: number, month: string) => {
     const key = `${inscriptionId}-${month}`;
     setOpenKey(prev => prev === key ? null : key);
   };
 
-  const handleAddPayment = async (form: any, allowDuplicate = false): Promise<void> => {
+  const handleAddPayment = async (form: any, allowDuplicate = false, allowNoDebt = false): Promise<void> => {
     if (!schoolPeriodId) return;
     try {
       if (form.shared) {
@@ -1902,15 +1992,16 @@ export default function PaymentLedger() {
         paymentDate: form.paymentDate || undefined,
         clientRequestId: form.clientRequestId,
         allowDuplicate: allowDuplicate || undefined,
+        allowNoDebt: allowNoDebt || undefined,
       });
       setPaymentModal(null);
-      const allocs: { amount: number; currency: string; description: string | null; atPar: boolean }[] = created?.allocations ?? [];
+      const allocs: { amount: number; currency: string; description: string | null; atPar: boolean; bonus?: number }[] = created?.allocations ?? [];
       // The total in the debt currency plus the breakdown of which debts the payment settled.
       const totalNote = created?.equivalent != null && created?.equivalentCurrency && created.equivalentCurrency !== form.currency
         ? ` = ${Number(created.equivalent).toFixed(2)} ${created.equivalentCurrency}${created.atPar ? ' a la par' : ''}`
         : '';
       const splitNote = allocs.length
-        ? ' → ' + allocs.map(a => `${Number(a.amount).toFixed(2)} ${a.currency}${a.atPar ? ' a la par' : ''}${a.description ? ` · ${a.description}` : ''}`).join(' + ')
+        ? ' → ' + allocs.map(a => `${Number(a.amount).toFixed(2)} ${a.currency}${a.atPar ? ' a la par' : ''}${a.description ? ` · ${a.description}` : ''}${(a.bonus ?? 0) > 0.005 ? ` (incl. ${Number(a.bonus).toFixed(2)} de descuento)` : ''}`).join(' + ')
         : '';
       setFlash(`Pago de ${form.amount} ${form.currency} registrado${totalNote}${splitNote || (form.scope === 'auto' ? ' · distribución automática' : '')}`);
       setTimeout(() => setFlash(null), allocs.length > 1 ? 8000 : 3500);
@@ -1938,7 +2029,25 @@ export default function PaymentLedger() {
               <p>Si es el mismo pago, cancele. Registre solo si es una operación distinta.</p>
             </div>
           ) : 'Este pago ya fue registrado.',
-          onOk: () => handleAddPayment(form, true),
+          onOk: () => handleAddPayment(form, true, allowNoDebt),
+        });
+        return;
+      }
+      if (err?.response?.status === 409 && data?.code === 'NO_PENDING_DEBT') {
+        const name = students.find(s => s.inscriptionId === Number(form.studentId))?.name;
+        Modal.confirm({
+          title: 'El estudiante no tiene deudas pendientes',
+          width: 460,
+          okText: 'Registrar de todas formas',
+          cancelText: 'Cancelar',
+          okButtonProps: { danger: true },
+          content: (
+            <div className="text-sm space-y-1">
+              <p>{name ? <b>{name}</b> : 'Este estudiante'} no tiene ninguna deuda pendiente, así que este pago de <b>{form.amount} {form.currency}</b> no se aplicaría a nada y quedaría como saldo a favor.</p>
+              <p>Verifique que el estudiante y el monto sean correctos. Registre solo si el pago es adelantado o intencional.</p>
+            </div>
+          ),
+          onOk: () => handleAddPayment(form, allowDuplicate, true),
         });
         return;
       }
@@ -2080,14 +2189,17 @@ export default function PaymentLedger() {
   };
 
   // Per-student totals, computed once per ledger load (shown in the row corners).
-  const totalsByStudent = useMemo(() => new Map(students.map(s => [s.inscriptionId, studentTotals(s)])), [students]);
+  const totalsByStudent = useMemo(() => new Map(students.map(s => [s.inscriptionId, studentTotals(s, months, cutoffMonth)])), [students, months, cutoffMonth]);
   const totalsOf = (s: LedgerStudent) => totalsByStudent.get(s.inscriptionId) ?? { paid: {}, pending: {} };
 
   const feeAmountFor = (m: string) => (monthlyFeeByMonth[m] ?? monthlyFee)?.amount ?? 0;
   const totalPaidText = formatTotals(Object.fromEntries(Object.entries(totals).map(([c, t]) => [c, t.paid])));
-  const totalPendingText = formatTotals(Object.fromEntries(Object.entries(totals).map(([c, t]) => [c, t.pending])));
+  const totalPendingText = formatTotals(students.reduce((acc, s) => {
+    for (const [c, v] of Object.entries(totalsOf(s).pending)) acc[c] = (acc[c] ?? 0) + v;
+    return acc;
+  }, {} as Record<string, number>));
   const avgCompletion = students.length > 0
-    ? Math.round(students.reduce((s, st) => s + yearProgress(st, feeAmountFor, months), 0) / students.length * 100)
+    ? Math.round(students.reduce((s, st) => s + yearProgress(st, feeAmountFor, months, cutoffMonth), 0) / students.length * 100)
     : 0;
   // The "Otros" column only exists when some student has extraordinary debts
   const hasOther = useMemo(
@@ -2129,6 +2241,13 @@ export default function PaymentLedger() {
           {selectedSection && (
             <div className="flex items-stretch divide-x divide-[#E4E6EB]">
               <Stat label="Total pagado" value={totalPaidText} icon={<DollarSign size={10} />} tone="text-[#0F7A45]" large />
+              <div className="flex flex-col justify-center px-3 py-1 gap-0.5" title="La deuda se calcula hasta este mes de cobro, inclusive (inscripción y deudas de otros períodos siempre cuentan)">
+                <span className="text-[9px] font-semibold text-[#8B909A] uppercase tracking-wide">Deuda hasta</span>
+                <select value={cutoffMonth} onChange={e => setCutoffChoice(e.target.value)}
+                  className="text-xs font-bold border border-[#C5CAD2] px-1 py-0.5 focus:outline-none focus:ring-2 focus:ring-[#2F5EA8]">
+                  {months.map(m => <option key={m} value={m}>{MONTH_FULL[m] ?? m}</option>)}
+                </select>
+              </div>
               <Stat label="Deuda pendiente" value={totalPendingText} icon={<AlertTriangle size={10} />} tone="text-[#B42318]" large />
               <Stat label="Cumplimiento" value={`${avgCompletion}%`} icon={<TrendingUp size={10} />} />
               <Stat label="Estudiantes" value={students.length} />
@@ -2150,6 +2269,15 @@ export default function PaymentLedger() {
                 <FileText size={14} /> Resumen de movimientos
               </button>
             </div>
+            {selectedSection && (
+              <div className="flex items-center px-3 py-2 border-l border-[#E4E6EB]">
+                <button type="button" onClick={handleExport} disabled={exporting || filteredStudents.length === 0}
+                  title="Descargar en Excel la lista de estudiantes (en el orden mostrado) con sus totales pagados y deudas hasta el mes elegido"
+                  className="flex items-center gap-1.5 text-xs font-semibold text-[#2F5EA8] hover:text-[#1E4478] disabled:opacity-50 disabled:cursor-not-allowed">
+                  <FileSpreadsheet size={14} /> {exporting ? 'Exportando…' : 'Exportar a Excel'}
+                </button>
+              </div>
+            )}
             {selectedSection && (
               <div className="flex items-center px-3 py-2 border-l border-[#E4E6EB] flex-1 min-[1500px]:flex-none">
                 <div className="relative w-full min-[1500px]:w-auto">
@@ -2212,7 +2340,7 @@ export default function PaymentLedger() {
               className={`flex-1 min-h-0 overflow-auto ${dragScroll.dragging ? 'cursor-grabbing select-none' : ''}`}
             >
               <div style={{ width: tableWidth }}>
-                <div className="sticky top-0 z-30 flex bg-[#EDEEF1] border-b-2 border-[#B9BEC7]">
+                <div data-ledger-head className="sticky top-0 z-30 flex bg-[#EDEEF1] border-b-2 border-[#B9BEC7]">
                   <button
                     type="button"
                     onClick={cycleNameSort}
@@ -2235,13 +2363,13 @@ export default function PaymentLedger() {
                     <div key={m} style={{ width: MONTH_COL }}
                       className={`py-2.5 text-[11px] font-semibold text-center border-r border-[#DBDEE4] uppercase tracking-wide
                         ${m === CURRENT_MONTH ? 'bg-[#DCE5F7] text-[#2F5EA8]' : 'text-[#5B6472]'}`}>
-                      {m}
+                      {MONTH_FULL[m] ?? m}
                     </div>
                   ))}
                 </div>
 
                 {filteredStudents.map((student, rowIndex) => {
-                  const progress = yearProgress(student, feeAmountFor, months);
+                  const progress = yearProgress(student, feeAmountFor, months, cutoffMonth);
                   const [openInscription, openMonth] = openKey?.split('-') ?? ['', ''];
                   const isOpen = openKey === `${student.inscriptionId}-${openMonth}` && openInscription === String(student.inscriptionId);
                   // The student whose detail is open stands out: tinted row, blue accent bar and a blue frame around row + detail.
@@ -2254,7 +2382,7 @@ export default function PaymentLedger() {
                   );
 
                   return (
-                    <div key={student.inscriptionId} className={isOpen ? 'border-y-2 border-[#2F5EA8]' : ''}>
+                    <div key={student.inscriptionId} data-ledger-student={student.inscriptionId} className={isOpen ? 'border-y-2 border-[#2F5EA8]' : ''}>
                       <Dropdown trigger={['contextMenu']} menu={studentMenu(student)}>
                       <div className={`flex ${rowBg}`}>
                         <div style={{ width: NAME_COL }}

@@ -29,6 +29,7 @@ describe('Payment methods, audit and duplicate protection', () => {
     inscriptionId: inscription.id,
     schoolPeriodId: structure.period.id,
     paymentDate: today,
+    allowNoDebt: true, // these tests are about methods and duplicates, not about debt
     ...body,
   });
 
@@ -106,6 +107,35 @@ describe('Payment methods, audit and duplicate protection', () => {
     });
   });
 
+  describe('payment for a student without pending debt', () => {
+    it('is flagged until the operator confirms it', async () => {
+      const res = await pay(agent, { method: 'efectivo', currency: 'USD', amount: 10, inscriptionId: otherInscription.id, allowNoDebt: false }).expect(409);
+      expect(res.body.code).toBe('NO_PENDING_DEBT');
+      expect(await Payment.count()).toBe(0);
+      await pay(agent, { method: 'efectivo', currency: 'USD', amount: 10, inscriptionId: otherInscription.id }).expect(201);
+    });
+
+    it('is flagged once the student has paid everything', async () => {
+      await pay(agent, { method: 'efectivo', currency: 'USD', amount: 100, allowNoDebt: false }).expect(201);
+      const res = await pay(agent, { method: 'efectivo', currency: 'USD', amount: 5, allowNoDebt: false, allowDuplicate: true }).expect(409);
+      expect(res.body.code).toBe('NO_PENDING_DEBT');
+    });
+
+    it('a student with pending debt is not flagged', async () => {
+      await pay(agent, { method: 'efectivo', currency: 'USD', amount: 40, allowNoDebt: false }).expect(201);
+    });
+
+    it('answers 404 for an unknown inscription and rejects non-positive debts', async () => {
+      await pay(agent, { method: 'efectivo', currency: 'USD', amount: 5, inscriptionId: 999999 }).expect(404);
+      await agent.post('/api/ledger/charges').send({
+        inscriptionId: inscription.id, schoolPeriodId: structure.period.id, type: 'otro', description: 'x', amount: -10, currency: 'USD',
+      }).expect(400);
+      await agent.post('/api/ledger/charges').send({
+        inscriptionId: 999999, schoolPeriodId: structure.period.id, type: 'otro', description: 'x', amount: 10, currency: 'USD',
+      }).expect(404);
+    });
+  });
+
   describe('duplicate protection', () => {
     const transfer = { method: 'transferencia', currency: 'VES', amount: 5000, bank: 'Banesco', reference: '9876' };
 
@@ -113,7 +143,7 @@ describe('Payment methods, audit and duplicate protection', () => {
       await pay(agent, transfer).expect(201);
       const second = await login('pm_admin2');
       const res = await second.agent.post('/api/ledger/payments').send({
-        ...transfer, inscriptionId: otherInscription.id, schoolPeriodId: structure.period.id, paymentDate: today,
+        ...transfer, inscriptionId: otherInscription.id, schoolPeriodId: structure.period.id, paymentDate: today, allowNoDebt: true,
       }).expect(409);
       expect(res.body.code).toBe('DUPLICATE_PAYMENT');
       expect(res.body.duplicate.registeredBy).toBeTruthy();
