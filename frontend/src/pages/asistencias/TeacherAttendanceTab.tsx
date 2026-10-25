@@ -1075,7 +1075,14 @@ function RosterScreen({
                   index={selectedIndex}
                   total={roster.length}
                   reasonDraft={activeReasonDraft}
-                  onReasonDraftChange={(value) => setReasonDraft({ inscriptionId: selectedStudent.inscriptionId, value })}
+                  onReasonDraftChange={(value) => {
+                    setReasonDraft({ inscriptionId: selectedStudent.inscriptionId, value });
+                    // Already marked absent (or similar): the reason goes onto that mark right away, so what the
+                    // teacher sees selected is exactly what gets saved. Unmarked students keep "reason first, then status".
+                    if (selectedStudent.status && selectedStudent.status !== 'present') {
+                      setStatus(selectedStudent.inscriptionId, selectedStudent.status, value);
+                    }
+                  }}
                   onPrev={() => scrollToStudent(roster[Math.max(0, selectedIndex - 1)]?.inscriptionId ?? selectedStudent.inscriptionId)}
                   onNext={() => scrollToStudent(roster[Math.min(roster.length - 1, selectedIndex + 1)]?.inscriptionId ?? selectedStudent.inscriptionId)}
                   onSetStatus={(status, reason) => {

@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Select, DatePicker, Button, message } from 'antd';
+import { Select, DatePicker, Button, Switch, message } from 'antd';
 import { LeftOutlined, RightOutlined, ArrowLeftOutlined, FileExcelOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import api from '@/services/api';
 import { useSchool } from '@/context/SchoolContext';
-import AttendanceDatasheet, { type DatasheetColumn, type DatasheetRow } from './AttendanceDatasheet';
+import AttendanceDatasheet, { isMissingReason, type DatasheetColumn, type DatasheetRow } from './AttendanceDatasheet';
 import type { SectionWeekReport, SectionDayReport } from './types';
 import { DAY_FULL_BY_SHORT, mondayOf, timeRange } from './reportUtils';
 import { exportDatasheetExcel } from './exportSessionExcel';
@@ -34,6 +34,8 @@ const SectionReportTab: React.FC = () => {
   const [dayData, setDayData] = useState<SectionDayReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [showReasons, setShowReasons] = useState(false);
+  const [onlyMissing, setOnlyMissing] = useState(false);
 
   useEffect(() => {
     if (!viewPeriod?.id) return;
@@ -109,6 +111,10 @@ const SectionReportTab: React.FC = () => {
     subtitle = `Semana del ${dayjs(weekData.dateFrom).format('DD/MM/YYYY')} al ${dayjs(weekData.dateTo).format('DD/MM/YYYY')}`;
   }
 
+  // Students with at least one absence saved without a reason, so the gaps are easy to find and fix.
+  const missingCount = rows.filter(r => Object.values(r.cells).some(isMissingReason)).length;
+  if (onlyMissing) rows = rows.filter(r => Object.values(r.cells).some(isMissingReason));
+
   const handleExport = async () => {
     setExporting(true);
     try {
@@ -151,6 +157,13 @@ const SectionReportTab: React.FC = () => {
             Volver a la semana
           </Button>
         )}
+        <label className="ml-2 flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+          <Switch size="small" checked={showReasons} onChange={setShowReasons} /> Mostrar motivos
+        </label>
+        <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500" title="Estudiantes con una ausencia guardada sin motivo">
+          <Switch size="small" checked={onlyMissing} onChange={setOnlyMissing} />
+          <span className={missingCount > 0 ? 'text-red-600' : undefined}>Solo sin motivo ({missingCount})</span>
+        </label>
         <Button
           icon={<FileExcelOutlined />}
           className="ml-auto"
@@ -172,7 +185,8 @@ const SectionReportTab: React.FC = () => {
           columns={columns}
           rows={rows}
           loading={loading}
-          emptyText={day ? 'La sección no tiene clases en el horario ese día' : 'Sin estudiantes inscritos'}
+          showReasons={showReasons || onlyMissing}
+          emptyText={onlyMissing ? 'Ningún estudiante tiene ausencias sin motivo' : day ? 'La sección no tiene clases en el horario ese día' : 'Sin estudiantes inscritos'}
         />
       )}
       {selected && !day && !loading && (

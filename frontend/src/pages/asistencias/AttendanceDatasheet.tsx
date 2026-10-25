@@ -34,7 +34,13 @@ interface AttendanceDatasheetProps {
   rows: DatasheetRow[];
   loading?: boolean;
   emptyText?: string;
+  /** Shows each mark's reason under its label and flags absences saved without one. */
+  showReasons?: boolean;
 }
+
+/** An absence-like mark that carries no reason (justified ones do not need it). */
+export const isMissingReason = (cell: ReportCell | null | undefined): boolean =>
+  !!cell && (cell.code === 'absent' || cell.code === 'jubilado' || cell.code === 'kicked') && !(cell.reason ?? '').trim();
 
 export const CELL_STYLE: Record<ReportCellCode, { color: string; background: string; fontWeight?: number }> = {
   present: { color: '#166534', background: 'transparent' },
@@ -69,7 +75,7 @@ const td: React.CSSProperties = {
  * no cards, no floating widgets.
  */
 const AttendanceDatasheet: React.FC<AttendanceDatasheetProps> = ({
-  title, subtitle, leadColumns, columns, rows, loading, emptyText = 'Sin datos',
+  title, subtitle, leadColumns, columns, rows, loading, emptyText = 'Sin datos', showReasons = false,
 }) => (
   <div style={{ fontSize: 12, color: '#0f172a' }}>
     <div style={{ border: BORDER, borderBottom: 0, background: '#e2e8f0', padding: '4px 8px' }}>
@@ -141,6 +147,13 @@ const AttendanceDatasheet: React.FC<AttendanceDatasheetProps> = ({
                     }}
                   >
                     {cell?.label ?? '—'}
+                    {showReasons && cell && (
+                      cell.reason?.trim()
+                        ? <div style={{ fontSize: 10, fontWeight: 400, lineHeight: 1.2, maxWidth: 110, margin: '0 auto', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cell.reason}</div>
+                        : isMissingReason(cell)
+                          ? <div style={{ fontSize: 10, fontWeight: 400, lineHeight: 1.2, textAlign: 'center', fontStyle: 'italic', textDecoration: 'underline dotted' }}>sin motivo</div>
+                          : null
+                    )}
                   </td>
                 );
               })}

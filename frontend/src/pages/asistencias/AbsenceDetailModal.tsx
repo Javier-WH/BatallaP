@@ -6,7 +6,7 @@ import api from '@/services/api';
 import type { AbsenceCategory, AbsenceDetailReport, AbsenceDetailRow } from './types';
 import { pct } from './summaryUtils';
 
-export type DetailFilter = 'unjustified' | 'justified' | 'late' | 'kicked' | 'all';
+export type DetailFilter = 'unjustified' | 'justified' | 'late' | 'kicked' | 'noReason' | 'all';
 
 const CATEGORY_META: Record<AbsenceCategory, { label: string; color: string }> = {
   absent: { label: 'Inasistencia', color: 'red' },
@@ -16,11 +16,16 @@ const CATEGORY_META: Record<AbsenceCategory, { label: string; color: string }> =
   kicked: { label: 'Retirado de clase', color: 'volcano' },
 };
 
-const FILTER_MATCH: Record<DetailFilter, (c: AbsenceCategory) => boolean> = {
-  unjustified: c => c === 'absent' || c === 'jubilado',
-  justified: c => c === 'justified',
-  late: c => c === 'late',
-  kicked: c => c === 'kicked',
+/** Absence-like rows saved without a reason (justified ones and late arrivals do not need one). */
+const lacksReason = (r: AbsenceDetailRow) =>
+  (r.category === 'absent' || r.category === 'jubilado' || r.category === 'kicked') && !(r.reason ?? '').trim();
+
+const FILTER_MATCH: Record<DetailFilter, (r: AbsenceDetailRow) => boolean> = {
+  unjustified: r => r.category === 'absent' || r.category === 'jubilado',
+  justified: r => r.category === 'justified',
+  late: r => r.category === 'late',
+  kicked: r => r.category === 'kicked',
+  noReason: lacksReason,
   all: () => true,
 };
 
@@ -31,6 +36,7 @@ const FILTER_LABEL: Record<DetailFilter, string> = {
   justified: 'Inasistencias justificadas',
   late: 'Retardos',
   kicked: 'Retirado de clase',
+  noReason: 'Registros sin motivo',
   all: 'Todos los registros',
 };
 
@@ -47,7 +53,7 @@ function printDetail(data: AbsenceDetailReport, rows: AbsenceDetailRow[], filter
     <td>${esc(r.subjectName ?? '—')}</td>
     <td>${esc(r.teacherName ?? '—')}</td>
     <td>${esc(CATEGORY_META[r.category].label)}</td>
-    <td>${esc(r.reason || '—')}</td>
+    <td>${esc(r.reason || (lacksReason(r) ? 'SIN MOTIVO' : '—'))}</td>
   </tr>`).join('');
   const stat = (label: string, value: number, sub: string) =>
     `<td><b>${value}</b> <small>${esc(sub)}</small><br><small>${esc(label)}</small></td>`;
@@ -121,7 +127,8 @@ const AbsenceDetailModal: React.FC<Props> = ({ open, inscriptionId, termId, init
     return () => { cancelled = true; };
   }, [open, inscriptionId, termId]);
 
-  const rows = useMemo(() => (data?.rows ?? []).filter(r => FILTER_MATCH[filter](r.category)), [data, filter]);
+  const rows = useMemo(() => (data?.rows ?? []).filter(r => FILTER_MATCH[filter](r)), [data, filter]);
+  const missingReasons = useMemo(() => (data?.rows ?? []).filter(lacksReason).length, [data]);
   const c = data?.counts;
   const s = data?.student;
 
@@ -169,6 +176,7 @@ const AbsenceDetailModal: React.FC<Props> = ({ open, inscriptionId, termId, init
               { value: 'justified', label: `Justificadas (${c.justifiedBlocks})` },
               { value: 'late', label: `Retardos (${c.lateBlocks})` },
               { value: 'kicked', label: `Retirado de clase (${c.kickedBlocks})` },
+              { value: 'noReason', label: <span className={missingReasons > 0 ? 'text-red-600' : undefined}>{`Sin motivo (${missingReasons})`}</span> },
               { value: 'all', label: 'Todas' },
             ]}
           />
@@ -199,7 +207,11 @@ const AbsenceDetailModal: React.FC<Props> = ({ open, inscriptionId, termId, init
                 width: 140,
                 render: (cat: AbsenceCategory) => <Tag color={CATEGORY_META[cat].color}>{CATEGORY_META[cat].label}</Tag>,
               },
-              { title: 'Motivo', dataIndex: 'reason', render: (v: string | null) => v || '—' },
+              {
+                title: 'Motivo',
+                dataIndex: 'reason',
+                render: (v: string | null, r) => (v ?? '').trim() || (lacksReason(r) ? <span className="text-red-600 font-medium">Sin motivo</span> : '—'),
+              },
             ]}
           />
         </div>
