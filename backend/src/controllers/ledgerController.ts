@@ -197,6 +197,7 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
         entry = {
           relationships: [] as string[],
           isRepresentative: false,
+          isBenefactor: false,
           firstName: p.firstName,
           lastName: p.lastName,
           document: p.document ?? null,
@@ -218,6 +219,7 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
       }
       if (!entry.relationships.includes(g.relationship)) entry.relationships.push(g.relationship);
       entry.isRepresentative ||= g.isRepresentative;
+      entry.isBenefactor ||= !!g.isBenefactor || g.relationship === 'benefactor';
     }
 
     // Get all charges for these inscriptions

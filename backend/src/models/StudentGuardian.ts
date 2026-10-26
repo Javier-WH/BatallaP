@@ -3,7 +3,7 @@ import sequelize from '@/config/database';
 import Person from './Person';
 import GuardianProfile from './GuardianProfile';
 
-export type GuardianRelationship = 'mother' | 'father' | 'sibling' | 'grandparent' | 'uncle_aunt' | 'representative';
+export type GuardianRelationship = 'mother' | 'father' | 'sibling' | 'grandparent' | 'uncle_aunt' | 'representative' | 'benefactor';
 
 interface StudentGuardianAttributes {
   id: number;
@@ -11,11 +11,13 @@ interface StudentGuardianAttributes {
   guardianId: number;
   relationship: GuardianRelationship;
   isRepresentative: boolean;
+  /** Who actually pays for the student (may be a parent, the representative, or a third person with relationship 'benefactor'). */
+  isBenefactor: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-type StudentGuardianCreationAttributes = Optional<StudentGuardianAttributes, 'id' | 'isRepresentative'>;
+type StudentGuardianCreationAttributes = Optional<StudentGuardianAttributes, 'id' | 'isRepresentative' | 'isBenefactor'>;
 
 class StudentGuardian extends Model<StudentGuardianAttributes, StudentGuardianCreationAttributes>
   implements StudentGuardianAttributes {
@@ -24,6 +26,7 @@ class StudentGuardian extends Model<StudentGuardianAttributes, StudentGuardianCr
   public guardianId!: number;
   public relationship!: GuardianRelationship;
   public isRepresentative!: boolean;
+  public isBenefactor!: boolean;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -56,10 +59,15 @@ StudentGuardian.init(
       onDelete: 'CASCADE'
     },
     relationship: {
-      type: DataTypes.ENUM('mother', 'father', 'sibling', 'grandparent', 'uncle_aunt', 'representative'),
+      type: DataTypes.ENUM('mother', 'father', 'sibling', 'grandparent', 'uncle_aunt', 'representative', 'benefactor'),
       allowNull: false
     },
     isRepresentative: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false
+    },
+    isBenefactor: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: false

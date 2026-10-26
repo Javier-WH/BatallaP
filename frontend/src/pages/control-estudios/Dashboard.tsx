@@ -123,7 +123,21 @@ interface ContentSubjectProgress {
   subjectAbbreviation: string | null;
   order: number;
   hasContent: boolean;
+  /** What each pending teacher still lacks (empty when complete). */
+  missing?: { teacher: string | null; code: 'no_teacher' | 'no_content' | 'no_contents' | 'no_learnings'; count: number }[];
 }
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** One readable line per pending teacher of a subject's content. */
+const describeMissing = (m: NonNullable<ContentSubjectProgress['missing']>[number]): string => {
+  switch (m.code) {
+    case 'no_teacher': return 'Sin profesor asignado';
+    case 'no_content': return `${m.teacher}: aún no ha cargado contenido`;
+    case 'no_contents': return `${m.teacher}: tiene ${plural(m.count, 'componente', 'componentes')} pero sin contenidos`;
+    default: return `${m.teacher}: ${plural(m.count, 'contenido cargado', 'contenidos cargados')}, falta vincular aprendizajes esperados`;
+  }
+};
 
 interface ContentGradeProgress {
   gradeId: number;
@@ -649,7 +663,10 @@ const ContentProgressCard: React.FC<{
                   icon: subject.subjectIcon,
                   color: subject.subjectColor,
                 });
-                const b = subject.hasContent ? BAND_STYLES.green : BAND_STYLES.red;
+                const missing = subject.missing ?? [];
+                // Only the learnings are missing: the content itself is loaded.
+                const onlyLearnings = !subject.hasContent && missing.length > 0 && missing.every(m => m.code === 'no_learnings');
+                const b = subject.hasContent ? BAND_STYLES.green : onlyLearnings ? BAND_STYLES.amber : BAND_STYLES.red;
                 return (
                   <tr key={subject.subjectId} className="hover:bg-slate-50/70">
                     <td className="px-3 py-1.5 border-b border-slate-100 last:border-0">
@@ -670,9 +687,18 @@ const ContentProgressCard: React.FC<{
                             <CheckCircleOutlined style={{ fontSize: 11 }} /> Completo
                           </span>
                         ) : (
-                          <span className={`flex items-center gap-1 text-[11px] font-semibold ${b.text}`}>
-                            <ClockCircleOutlined style={{ fontSize: 11 }} /> Pendiente
-                          </span>
+                          <Tooltip
+                            title={missing.length > 0 ? (
+                              <div style={{ fontSize: 12 }}>
+                                <div style={{ fontWeight: 600, marginBottom: 2 }}>Qué falta:</div>
+                                {missing.map((m, i) => <div key={i}>{describeMissing(m)}</div>)}
+                              </div>
+                            ) : undefined}
+                          >
+                            <span className={`flex items-center gap-1 text-[11px] font-semibold ${b.text}`}>
+                              <ClockCircleOutlined style={{ fontSize: 11 }} /> {onlyLearnings ? 'Faltan aprendizajes' : 'Pendiente'}
+                            </span>
+                          </Tooltip>
                         )}
                       </div>
                     </td>
@@ -686,6 +712,7 @@ const ContentProgressCard: React.FC<{
         {/* Legend */}
         <div className="flex items-center gap-3 px-3 py-2 border-t border-slate-200 text-[10px]" style={{ color: 'rgba(15,23,42,0.5)' }}>
           <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-500" />Pendiente</span>
+          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-500" />Faltan aprendizajes</span>
           <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500" />Completo</span>
         </div>
       </div>

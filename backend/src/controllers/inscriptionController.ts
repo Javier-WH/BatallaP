@@ -11,7 +11,7 @@ import { saveEnrollmentAnswers } from '@/services/enrollmentAnswerService';
 import { GuardianDocumentType } from '@/models/GuardianProfile';
 import { GuardianRelationship } from '@/models/StudentGuardian';
 import { GuardianProfilePayload } from '@/services/guardianProfileService';
-import { assignGuardians, GuardianAssignment } from '@/services/studentGuardianService';
+import { assignGuardians, buildEditGuardianAssignments, GuardianAssignment, GuardianInputError } from '@/services/studentGuardianService';
 import { EscolaridadStatus } from '@/types/enrollment';
 import { registerAndEnrollStudent, EnrollmentValidationError, GUARDIAN_FIELD_LABELS } from '@/services/studentEnrollmentService';
 import { generateEnrollmentReport } from '@/services/enrollmentReportService';
@@ -1413,6 +1413,7 @@ export const updateInscription = async (req: Request, res: Response) => {
       mother,
       father,
       representative,
+      benefactor,
       representativeType,
       enrollmentAnswers,
       escolaridad,
@@ -1522,35 +1523,9 @@ export const updateInscription = async (req: Request, res: Response) => {
     }
 
     // Guardians
-    const assignments: GuardianAssignment[] = [];
-
-    if (mother && hasGuardianData(mother)) {
-      assignments.push({
-        payload: mapToGuardianProfilePayload(mother as CompleteGuardianInput),
-        relationship: 'mother',
-        isRepresentative: representativeType === 'mother'
-      });
-    }
-    if (father && hasGuardianData(father)) {
-      assignments.push({
-        payload: mapToGuardianProfilePayload(father as CompleteGuardianInput),
-        relationship: 'father',
-        isRepresentative: representativeType === 'father'
-      });
-    }
-    if (representative && hasGuardianData(representative)) {
-      const repRelationship = (representativeType === 'sibling' || representativeType === 'grandparent' || representativeType === 'uncle_aunt')
-        ? (representativeType as GuardianRelationship)
-        : 'representative';
-      assignments.push({
-        payload: mapToGuardianProfilePayload(representative as CompleteGuardianInput),
-        relationship: repRelationship,
-        isRepresentative: true
-      });
-    }
-
+    const { assignments, benefactorSpecified } = buildEditGuardianAssignments({ mother, father, representative, benefactor, representativeType });
     if (assignments.length > 0) {
-      await assignGuardians(person.id, assignments, t);
+      await assignGuardians(person.id, assignments, t, { preserveBenefactor: !benefactorSpecified });
     }
 
     // Enrollment Answers
@@ -1725,6 +1700,7 @@ export const updateInscription = async (req: Request, res: Response) => {
     res.json({ message: 'Datos actualizados correctamente', inscription });
   } catch (error: any) {
     if (t) await t.rollback();
+    if (error instanceof GuardianInputError) return res.status(error.status).json({ error: error.message });
     console.error('Error updating inscription:', error);
     res.status(500).json({ error: 'Error actualizando inscripción', details: error.message || error });
   }
@@ -1852,6 +1828,7 @@ export const updateMatriculation = async (req: Request, res: Response) => {
       mother,
       father,
       representative,
+      benefactor,
       representativeType,
       enrollmentAnswers,
       escolaridad,
@@ -1990,35 +1967,9 @@ export const updateMatriculation = async (req: Request, res: Response) => {
     }
 
     // Guardians - Simplified for partial updates
-    const assignments: GuardianAssignment[] = [];
-
-    if (mother && hasGuardianData(mother)) {
-      assignments.push({
-        payload: mapToGuardianProfilePayload(mother as CompleteGuardianInput),
-        relationship: 'mother',
-        isRepresentative: representativeType === 'mother'
-      });
-    }
-    if (father && hasGuardianData(father)) {
-      assignments.push({
-        payload: mapToGuardianProfilePayload(father as CompleteGuardianInput),
-        relationship: 'father',
-        isRepresentative: representativeType === 'father'
-      });
-    }
-    if (representative && hasGuardianData(representative)) {
-      const repRelationship = (representativeType === 'sibling' || representativeType === 'grandparent' || representativeType === 'uncle_aunt')
-        ? (representativeType as GuardianRelationship)
-        : 'representative';
-      assignments.push({
-        payload: mapToGuardianProfilePayload(representative as CompleteGuardianInput),
-        relationship: repRelationship,
-        isRepresentative: true
-      });
-    }
-
+    const { assignments, benefactorSpecified } = buildEditGuardianAssignments({ mother, father, representative, benefactor, representativeType });
     if (assignments.length > 0) {
-      await assignGuardians(person.id, assignments, t);
+      await assignGuardians(person.id, assignments, t, { preserveBenefactor: !benefactorSpecified });
     }
 
     // Enrollment Answers
@@ -2164,6 +2115,7 @@ export const updateMatriculation = async (req: Request, res: Response) => {
 
   } catch (error: any) {
     if (t) await t.rollback();
+    if (error instanceof GuardianInputError) return res.status(error.status).json({ error: error.message });
     console.error('Error updating matriculation:', error);
     res.status(500).json({ error: 'Error actualizando datos', details: error.message || error });
   }

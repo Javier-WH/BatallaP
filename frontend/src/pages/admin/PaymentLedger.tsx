@@ -284,7 +284,7 @@ function TransactionRow({ txn, index, onCorrect }: { txn: any; index: number; on
 
 const RELATIONSHIP_LABEL: Record<string, string> = {
   mother: 'Madre', father: 'Padre', sibling: 'Hermano/a',
-  grandparent: 'Abuelo/a', uncle_aunt: 'Tío/a', representative: 'Representante',
+  grandparent: 'Abuelo/a', uncle_aunt: 'Tío/a', representative: 'Representante', benefactor: 'Benefactor',
 };
 
 /** Contact card of the student's guardians, shown under their name in the expanded detail row. */
@@ -313,7 +313,8 @@ function GuardianPanel({ guardians, ownPending }: { guardians: LedgerGuardian[];
       {guardians.map((g, i) => (
         <div key={i} className="min-w-0">
           <div className="text-[9px] font-semibold uppercase tracking-wide text-[#8B909A]">
-            {g.relationships.map(r => RELATIONSHIP_LABEL[r] ?? 'Representante').join(' · ')}
+            {[...g.relationships.map(r => RELATIONSHIP_LABEL[r] ?? 'Representante'),
+              ...(g.isBenefactor && !g.relationships.includes('benefactor') ? ['Benefactor'] : [])].join(' · ')}
           </div>
           <div className="text-[12px] font-medium text-[#1F2937] leading-tight" title={`${g.firstName} ${g.lastName}`}>
             {g.firstName} {g.lastName}
@@ -335,7 +336,7 @@ function GuardianPanel({ guardians, ownPending }: { guardians: LedgerGuardian[];
           {g.alsoRepresents?.length > 0 && (
             <div className="mt-1.5 border-t border-[#E4E6EB] pt-1.5 min-w-0">
               <div className="flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wide text-[#9CA3AF]">
-                <Users size={10} className="shrink-0" /> También representa a
+                <Users size={10} className="shrink-0" /> {g.isBenefactor && !g.isRepresentative ? 'También paga por' : 'También representa a'}
               </div>
               {g.alsoRepresents.map(s => (
                 <div key={s.personId} className="text-[10px] text-[#4B5563] leading-snug" title={`${s.name}${s.where ? ` — ${s.where}` : ''}`}>
@@ -347,20 +348,27 @@ function GuardianPanel({ guardians, ownPending }: { guardians: LedgerGuardian[];
               ))}
             </div>
           )}
-          {g.alsoRepresents?.length > 0 && (() => {
-            // Grand total owed by everyone this representative answers for, this student included.
-            const total: Record<string, number> = { ...ownPending };
-            for (const s of g.alsoRepresents) for (const [cur, v] of Object.entries(s.pending ?? {})) total[cur] = (total[cur] ?? 0) + v;
-            const owes = Object.values(total).some(v => v > 0.005);
-            return (
-              <div className={`mt-1.5 px-2 py-1 text-[10px] font-semibold tabular-nums border ${owes ? 'bg-[#FDECEA] border-[#F2B8B2] text-[#B42318]' : 'bg-[#E9F7ED] border-[#B7EACB] text-[#1A4D2E]'}`}
-                title="Suma de la deuda pendiente de todos los representados de esta persona, incluido este estudiante">
-                Deuda total del representante: {owes ? formatTotals(total) : 'sin deuda'}
-              </div>
-            );
-          })()}
         </div>
       ))}
+      {(() => {
+        // One grand total for who answers for the debt: the representative and the benefactor
+        // (the person who pays), each student counted once however many cards list them.
+        const payers = guardians.filter(g => g.isRepresentative || g.isBenefactor);
+        const group = payers.length ? payers : guardians;
+        const students = new Map<number, { pending?: Record<string, number> }>();
+        for (const g of group) for (const s of g.alsoRepresents ?? []) students.set(s.personId, s);
+        if (students.size === 0) return null;
+        const total: Record<string, number> = { ...ownPending };
+        for (const s of students.values()) for (const [cur, v] of Object.entries(s.pending ?? {})) total[cur] = (total[cur] ?? 0) + v;
+        const owes = Object.values(total).some(v => v > 0.005);
+        const withBenefactor = group.some(g => g.isBenefactor);
+        return (
+          <div className={`px-2 py-1 text-[10px] font-semibold tabular-nums border ${owes ? 'bg-[#FDECEA] border-[#F2B8B2] text-[#B42318]' : 'bg-[#E9F7ED] border-[#B7EACB] text-[#1A4D2E]'}`}
+            title="Suma de la deuda pendiente de todos los estudiantes del representante y del benefactor, sin repetir ninguno, incluido este estudiante">
+            Deuda total del representante{withBenefactor ? ' y benefactor' : ''}: {owes ? formatTotals(total) : 'sin deuda'}
+          </div>
+        );
+      })()}
     </div>
   );
 }

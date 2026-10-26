@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo } from 'react';
-import { Modal, Form, Input, Select, Row, Col, Radio, DatePicker, Tabs, Checkbox, Collapse } from 'antd';
+import { Modal, Form, Input, Select, Row, Col, Radio, DatePicker, Tabs, Checkbox, Collapse, message } from 'antd';
+import type { Rule } from 'antd/es/form';
 import dayjs from 'dayjs';
 import DocumentField from '@/components/shared/DocumentField';
 import PhoneInput from '@/components/shared/PhoneInput';
@@ -27,6 +28,8 @@ export interface EditStudentGuardian {
   address?: string;
   occupation?: string;
   birthdate?: string | null;
+  /** This person pays for the student. */
+  isBenefactor?: boolean;
 }
 
 export interface EditStudentDocuments {
@@ -64,6 +67,8 @@ export interface EditStudentData {
   mother?: EditStudentGuardian | null;
   father?: EditStudentGuardian | null;
   representative?: EditStudentGuardian | null;
+  /** A third person who pays for the student (when it is not a parent nor the representative). */
+  benefactor?: EditStudentGuardian | null;
   representativeType?: string;
   documents?: EditStudentDocuments | null;
 }
@@ -76,7 +81,8 @@ export interface VenezuelaLocation {
 interface EditStudentModalProps {
   visible: boolean;
   onCancel: () => void;
-  onSave: (data: Partial<EditStudentData>) => void;
+  /** Resolve to `false` to keep the modal open (e.g. the server rejected the data). */
+  onSave: (data: Partial<EditStudentData>) => void | boolean | Promise<boolean | void>;
   studentName: string;
   initialData: EditStudentData | null;
   locations: VenezuelaLocation[];
@@ -94,7 +100,9 @@ const REP_TYPES = [
 ];
 
 const PARENT_KEYS = ['mother', 'father'] as const;
-type GuardianBucket = 'mother' | 'father' | 'representative';
+type GuardianBucket = 'mother' | 'father' | 'representative' | 'benefactor';
+/** Buckets whose card carries the "is the benefactor" checkbox (the third person is the benefactor by being there). */
+const BENEFACTOR_CHECK_KEYS: GuardianBucket[] = ['mother', 'father', 'representative'];
 
 const PHONE_RULE = { pattern: /^(04|02)\d{2}-\d{7}$/, message: 'Formato: 04XX-XXXXXXX' };
 
@@ -106,6 +114,7 @@ const guardianLabel: Record<GuardianBucket, string> = {
   mother: 'La Madre',
   father: 'El Padre',
   representative: 'el representante',
+  benefactor: 'el benefactor',
 };
 
 const personName = (g?: EditStudentGuardian | null) =>
@@ -115,10 +124,25 @@ interface GuardianFieldsProps {
   prefix: GuardianBucket;
   required: boolean;
   locations: VenezuelaLocation[];
+  /** Shows the "is the benefactor" checkbox (only one card can hold it). */
+  benefactorCheck?: boolean;
 }
 
-const GuardianFields: React.FC<GuardianFieldsProps> = ({ prefix, required, locations }) => {
+const hasIdentity = (g?: EditStudentGuardian | null) =>
+  [g?.firstName, g?.lastName, g?.document].some(v => String(v ?? '').trim() !== '');
+
+const GuardianFields: React.FC<GuardianFieldsProps> = ({ prefix, required, locations, benefactorCheck }) => {
   const form = Form.useFormInstance();
+  // An optional card may stay empty, but once name or document is filled the minimum to identify the person is required.
+  const identityRules: Rule[] = required
+    ? [{ required: true, message: 'Requerido' }]
+    : [({ getFieldValue }) => ({
+      validator: (_, value) => (
+        hasIdentity(getFieldValue(prefix)) && String(value ?? '').trim() === ''
+          ? Promise.reject(new Error('Requerido si llena esta sección'))
+          : Promise.resolve()
+      ),
+    })];
   const stateValue = Form.useWatch([prefix, 'residenceState'], form);
   const munValue = Form.useWatch([prefix, 'residenceMunicipality'], form);
 
@@ -140,14 +164,28 @@ const GuardianFields: React.FC<GuardianFieldsProps> = ({ prefix, required, locat
 
   return (
     <>
+      {benefactorCheck && (
+        <Form.Item name={[prefix, 'isBenefactor']} valuePropName="checked" style={{ marginBottom: 8 }}>
+          <Checkbox
+            onChange={event => {
+              // Only one person pays: checking this card unchecks the others.
+              if (event.target.checked) {
+                BENEFACTOR_CHECK_KEYS.filter(k => k !== prefix).forEach(k => form.setFieldValue([k, 'isBenefactor'], false));
+              }
+            }}
+          >
+            Es el benefactor (quien paga por el estudiante)
+          </Checkbox>
+        </Form.Item>
+      )}
       <Row gutter={12}>
         <Col span={12}>
-          <Form.Item name={[prefix, 'firstName']} label="Nombres" rules={required ? [{ required: true, message: 'Requerido' }] : []}>
+          <Form.Item name={[prefix, 'firstName']} label="Nombres" rules={identityRules}>
             <Input />
           </Form.Item>
         </Col>
         <Col span={12}>
-          <Form.Item name={[prefix, 'lastName']} label="Apellidos" rules={required ? [{ required: true, message: 'Requerido' }] : []}>
+          <Form.Item name={[prefix, 'lastName']} label="Apellidos" rules={identityRules}>
             <Input />
           </Form.Item>
         </Col>
@@ -160,8 +198,8 @@ const GuardianFields: React.FC<GuardianFieldsProps> = ({ prefix, required, locat
             typeName={[prefix, 'documentType']}
             numberName={[prefix, 'document']}
             typeOptions={GUARDIAN_DOCUMENT_TYPE_OPTIONS}
-            typeRules={required ? [{ required: true, message: 'Requerido' }] : []}
-            numberRules={required ? [{ required: true, message: 'Requerido' }] : []}
+            typeRules={identityRules}
+            numberRules={identityRules}
             allowClearType={!required}
           />
         </Col>
@@ -287,6 +325,7 @@ const EditStudentModal: React.FC<EditStudentModalProps> = ({
         mother: toGuardian(initialData.mother),
         father: toGuardian(initialData.father),
         representative: toGuardian(initialData.representative),
+        benefactor: toGuardian(initialData.benefactor),
       });
     }
   }, [visible, initialData, form]);
@@ -322,8 +361,14 @@ const EditStudentModal: React.FC<EditStudentModalProps> = ({
   };
 
   const handleSave = async () => {
+    let values: Record<string, any>;
     try {
-      const values = await form.validateFields();
+      values = await form.validateFields();
+    } catch {
+      // validation errors are shown by the form
+      return;
+    }
+    try {
       const fromGuardian = (g?: EditStudentGuardian | null): EditStudentGuardian | null | undefined =>
         g ? { ...g, birthdate: g.birthdate ? dayjs(g.birthdate as dayjs.ConfigType).format('YYYY-MM-DD') : null } : g;
       // The backend always links the generic `representative` payload as the
@@ -336,10 +381,17 @@ const EditStudentModal: React.FC<EditStudentModalProps> = ({
         mother: fromGuardian(values.mother),
         father: fromGuardian(values.father),
         representative: parentIsRep ? null : fromGuardian(values.representative),
+        benefactor: fromGuardian(values.benefactor),
       };
-      onSave(payload);
+      const flagged = (['mother', 'father', 'representative'] as const)
+        .filter(k => (k !== 'representative' || !parentIsRep) && values[k]?.isBenefactor === true);
+      if (flagged.length > 0 && hasIdentity(values.benefactor)) {
+        message.error('Solo puede haber un benefactor: desmarque la casilla o deje vacía la sección "Benefactor (otra persona)".');
+        return;
+      }
+      await onSave(payload);
     } catch {
-      // validation errors are shown by the form
+      // the parent reports the failure and keeps the modal open
     }
   };
 
@@ -541,18 +593,36 @@ const EditStudentModal: React.FC<EditStudentModalProps> = ({
                     <h4 style={{ color: '#d46b08', marginTop: 0, marginBottom: 16 }}>
                       {repCardTitle}{repTypeLabel && repBucket === 'representative' ? ` (${repTypeLabel})` : ''} (Obligatorio)
                     </h4>
-                    <GuardianFields prefix={repBucket} required locations={locations} />
+                    <GuardianFields prefix={repBucket} required locations={locations} benefactorCheck />
                   </div>
 
                   {/* The other parent stays editable in a closed accordion, like
                       enrollment. The generic "representative" bucket only exists
                       when the rep is a non-parent, so it never appears here. */}
+                  {/* forceRender: closed panels must still register their fields, or their values never reach the save. */}
                   <Collapse
-                    items={PARENT_KEYS.filter(k => k !== repBucket).map(k => ({
-                      key: k,
-                      label: `${k === 'mother' ? 'Datos de la Madre' : 'Datos del Padre'} (Opcional)`,
-                      children: <GuardianFields prefix={k} required={false} locations={locations} />,
-                    }))}
+                    items={[
+                      ...PARENT_KEYS.filter(k => k !== repBucket).map(k => ({
+                        key: k,
+                        forceRender: true,
+                        label: `${k === 'mother' ? 'Datos de la Madre' : 'Datos del Padre'} (Opcional)`,
+                        children: <GuardianFields prefix={k} required={false} locations={locations} benefactorCheck />,
+                      })),
+                      {
+                        key: 'benefactor',
+                        forceRender: true,
+                        label: 'Benefactor — otra persona que paga (Opcional)',
+                        children: (
+                          <>
+                            <p style={{ color: '#888', marginTop: 0 }}>
+                              Solo si quien paga no es ninguno de los anteriores. Al llenar estos datos, esta persona queda como benefactor
+                              y se comparten los pagos con los demás estudiantes que tenga.
+                            </p>
+                            <GuardianFields prefix="benefactor" required={false} locations={locations} />
+                          </>
+                        ),
+                      },
+                    ]}
                   />
                 </>
               ),

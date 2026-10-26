@@ -92,6 +92,8 @@ interface GuardianProfile {
   email?: string;
   occupation?: string;
   birthdate?: string | null;
+  /** Pays for the student (a flag of the guardian link, merged here for the edit form). */
+  isBenefactor?: boolean;
 }
 
 interface ContactInfo {
@@ -131,6 +133,7 @@ interface StudentGuardian {
   relationship: string;
   isRepresentative?: boolean | number | string;
   is_representative?: boolean | number | string;
+  isBenefactor?: boolean | number | string;
   profile?: GuardianProfile;
 }
 
@@ -193,6 +196,7 @@ interface TempData {
   mother?: GuardianProfile;
   father?: GuardianProfile;
   representative?: GuardianProfile;
+  benefactor?: GuardianProfile;
   representativeType: RepresentativeType;
   enrollmentAnswers: EnrollmentAnswersMap;
   address: string;
@@ -475,6 +479,11 @@ const MatriculationEnrollment: React.FC = () => {
             return profile;
           };
 
+          // Whether the link of a parent is flagged as the one who pays.
+          const isBenefactorLink = (relationship: string) => isTruthyRepresentative(
+            guardians.find((g: StudentGuardian) => normalizeRelationship(g.relationship) === normalizeRelationship(relationship))?.isBenefactor
+          );
+
           // Find the representative by the isRepresentative flag, not by relationship name.
           // The relationship could be 'mother', 'father', 'grandparent', 'sibling', etc.
           const findRepresentativeProfile = (): GuardianProfile => {
@@ -554,9 +563,10 @@ const MatriculationEnrollment: React.FC = () => {
               phone1: student.contact?.phone1,
               whatsapp: student.contact?.whatsapp,
               birthdate: parseDateLocal(student.birthdate),
-              mother: findGuardianProfile('mother'),
-              father: findGuardianProfile('father'),
-              representative: findRepresentativeProfile(),
+              mother: { ...findGuardianProfile('mother'), isBenefactor: isBenefactorLink('mother') },
+              father: { ...findGuardianProfile('father'), isBenefactor: isBenefactorLink('father') },
+              representative: { ...findRepresentativeProfile(), isBenefactor: !!representativeAssignment && isTruthyRepresentative(representativeAssignment.isBenefactor) },
+              benefactor: findGuardianProfile('benefactor'),
               representativeType,
               enrollmentAnswers,
               address: student.contact?.address || 'N/A',
@@ -642,9 +652,13 @@ const MatriculationEnrollment: React.FC = () => {
   }, [viewStatus]);
 
   // Save a single field change to the backend immediately (AG-Grid native editing)
-  const saveFieldChange = useCallback(async (rowId: number, changes: Record<string, unknown>) => {
+  const saveFieldChange = useCallback(async (
+    rowId: number,
+    changes: Record<string, unknown>,
+    options: { reloadOnError?: boolean } = {},
+  ): Promise<boolean> => {
     const row = matriculations.find(r => r.id === rowId);
-    if (!row) return;
+    if (!row) return false;
     // Matriculated rows keep using the inscription endpoint; pending/withdrawn
     // rows (and any row with a real matriculation id) use the matriculation one.
     const endpoint = (row.status === 'completed' && row.inscriptionId) || rowId < 0
@@ -652,10 +666,14 @@ const MatriculationEnrollment: React.FC = () => {
       : `/matriculations/${rowId}`;
     try {
       await api.patch(endpoint, changes);
+      return true;
     } catch (error) {
       console.error('Error saving field change:', error);
-      message.error('Error al guardar cambio');
-      await fetchData();
+      // Show the server's reason when it gave one (e.g. incomplete guardian data).
+      const reason = (error as { response?: { data?: { error?: string; message?: string } } })?.response?.data;
+      message.error(reason?.error || reason?.message || 'Error al guardar cambio');
+      if (options.reloadOnError !== false) await fetchData();
+      return false;
     }
   }, [matriculations, fetchData]);
 
@@ -1376,29 +1394,16 @@ const MatriculationEnrollment: React.FC = () => {
     setEditStudentModalVisible(true);
   }, []);
 
-  const handleEditStudentSave = useCallback((data: Partial<EditStudentData>) => {
-    if (editStudentRowId === null) return;
+  const handleEditStudentSave = useCallback(async (data: Partial<EditStudentData>): Promise<boolean> => {
+    if (editStudentRowId === null) return false;
     const rowId = editStudentRowId;
-
-    setMatriculations(prev => prev.map(row => {
-      if (row.id !== rowId) return row;
-      const updatedTempData = { ...row.tempData, ...data } as TempData;
-      return {
-        ...row,
-        tempData: updatedTempData,
-        documents: (data.documents as MatriculationRow['documents']) ?? row.documents,
-        student: data.email !== undefined
-          ? { ...row.student, contact: { ...row.student.contact, email: data.email } }
-          : row.student,
-      };
-    }));
 
     // Build payload for backend
     const payload: Record<string, unknown> = {};
     Object.entries(data).forEach(([k, v]) => {
       if (k === 'birthdate') {
         payload[k] = v ? (v as dayjs.Dayjs).format('YYYY-MM-DD') : null;
-      } else if (k === 'mother' || k === 'father' || k === 'representative') {
+      } else if (k === 'mother' || k === 'father' || k === 'representative' || k === 'benefactor') {
         // A guardian saved with an all-zeros document is a shared "pending"
         // placeholder profile — updating it by id would rewrite the same
         // profile for every student linked to it. Strip the id so a new
@@ -1429,11 +1434,29 @@ const MatriculationEnrollment: React.FC = () => {
         payload[k] = v;
       }
     });
-    saveFieldChange(rowId, payload);
+    // Wait for the server: if it rejects the data the modal stays open with everything typed.
+    const saved = await saveFieldChange(rowId, payload, { reloadOnError: false });
+    if (!saved) return false;
+
+    setMatriculations(prev => prev.map(row => {
+      if (row.id !== rowId) return row;
+      const updatedTempData = { ...row.tempData, ...data } as TempData;
+      return {
+        ...row,
+        tempData: updatedTempData,
+        documents: (data.documents as MatriculationRow['documents']) ?? row.documents,
+        student: data.email !== undefined
+          ? { ...row.student, contact: { ...row.student.contact, email: data.email } }
+          : row.student,
+      };
+    }));
     setEditStudentModalVisible(false);
     setEditStudentRowId(null);
     message.success('Datos del estudiante actualizados');
-  }, [editStudentRowId, saveFieldChange]);
+    // Guardian links (representative, benefactor…) are rebuilt by the server: reload them.
+    await fetchData();
+    return true;
+  }, [editStudentRowId, saveFieldChange, fetchData]);
 
   // Cerrar menú contextual con Escape o click fuera
   useEffect(() => {
@@ -2606,6 +2629,7 @@ const MatriculationEnrollment: React.FC = () => {
           mother: toModalGuardian(td.mother),
           father: toModalGuardian(td.father),
           representative: toModalGuardian(td.representative),
+          benefactor: toModalGuardian(td.benefactor),
           representativeType: td.representativeType,
         };
         return (

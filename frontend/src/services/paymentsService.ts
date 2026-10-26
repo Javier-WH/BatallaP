@@ -353,8 +353,10 @@ export async function calculateEnrollmentPlan(id: number, date?: string): Promis
 /** A guardian of a ledger student — contact data plus the other students they represent. */
 export interface LedgerGuardian {
   /** All relationships this person holds with the student (e.g. ['father', 'representative']). */
-  relationships: ('mother' | 'father' | 'sibling' | 'grandparent' | 'uncle_aunt' | 'representative')[];
+  relationships: ('mother' | 'father' | 'sibling' | 'grandparent' | 'uncle_aunt' | 'representative' | 'benefactor')[];
   isRepresentative: boolean;
+  /** Pays for the student (may differ from the legal representative). */
+  isBenefactor?: boolean;
   firstName: string;
   lastName: string;
   document: string | null;

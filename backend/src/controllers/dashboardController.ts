@@ -118,6 +118,22 @@ interface ContentSubjectProgress {
   subjectAbbreviation: string | null;
   order: number;
   hasContent: boolean;
+  /** What each pending teacher still lacks (empty when the subject is complete). */
+  missing: ContentMissing[];
+}
+
+/**
+ * Why a subject's content is not complete:
+ *  - no_teacher: nobody is assigned to it
+ *  - no_content: the teacher has not created any component
+ *  - no_contents: components exist but none has contents
+ *  - no_learnings: contents exist but none has expected learnings linked
+ * `count` = components / contents involved (0 when it does not apply).
+ */
+interface ContentMissing {
+  teacher: string | null;
+  code: 'no_teacher' | 'no_content' | 'no_contents' | 'no_learnings';
+  count: number;
 }
 
 interface ContentGradeProgress {
@@ -595,8 +611,11 @@ const buildAcademicSnapshot = async (schoolPeriodId?: number, isPrivileged = fal
   // Content is per teacher: a subject/year is complete only when every teacher
   // assigned to it has built their own chain.
   const pgsWithContent = new Set<number>();
+  const contentMissingByPgs = new Map<number, ContentMissing[]>();
   if (pgsIdsInPeriod.length > 0) {
-    const contentChain = await ThematicComponent.findAll({
+    // Everything each teacher has built (components → contents → learnings), so a
+    // pending subject can say exactly which piece is missing.
+    const components = await ThematicComponent.findAll({
       attributes: ['id', 'periodGradeSubjectId', 'teacherId'],
       where: {
         periodGradeSubjectId: { [Op.in]: pgsIdsInPeriod },
@@ -605,25 +624,52 @@ const buildAcademicSnapshot = async (schoolPeriodId?: number, isPrivileged = fal
       include: [{
         association: 'contents',
         attributes: ['id'],
-        required: true,
+        required: false,
         include: [{
           association: 'learnings',
           attributes: ['id'],
-          required: true,
+          required: false,
           through: { attributes: [] },
         }],
       }],
     });
-    const teacherHasContent = new Set(contentChain.map(comp => `${comp.periodGradeSubjectId}:${comp.teacherId}`));
-    const teachersByPgs = new Map<number, Set<number>>();
+    const statsByTeacher = new Map<string, { components: number; contents: number; withLearnings: number }>();
+    for (const comp of components as any[]) {
+      const key = `${comp.periodGradeSubjectId}:${comp.teacherId}`;
+      const stats = statsByTeacher.get(key) ?? { components: 0, contents: 0, withLearnings: 0 };
+      stats.components += 1;
+      for (const content of comp.contents ?? []) {
+        stats.contents += 1;
+        if ((content.learnings ?? []).length > 0) stats.withLearnings += 1;
+      }
+      statsByTeacher.set(key, stats);
+    }
+    const teachersByPgs = new Map<number, Map<number, string>>();
     assignments.forEach(a => {
       if (!a.periodGradeSubjectId || !a.teacherId) return;
-      if (!teachersByPgs.has(a.periodGradeSubjectId)) teachersByPgs.set(a.periodGradeSubjectId, new Set());
-      teachersByPgs.get(a.periodGradeSubjectId)!.add(a.teacherId);
+      if (!teachersByPgs.has(a.periodGradeSubjectId)) teachersByPgs.set(a.periodGradeSubjectId, new Map());
+      teachersByPgs.get(a.periodGradeSubjectId)!.set(
+        a.teacherId,
+        a.teacher ? `${a.teacher.firstName} ${a.teacher.lastName}` : 'Profesor sin nombre',
+      );
     });
-    teachersByPgs.forEach((teacherIds, pgsId) => {
-      if ([...teacherIds].every(tId => teacherHasContent.has(`${pgsId}:${tId}`))) pgsWithContent.add(pgsId);
-    });
+    for (const pgsId of pgsIdsInPeriod) {
+      const teachers = teachersByPgs.get(pgsId);
+      if (!teachers || teachers.size === 0) {
+        contentMissingByPgs.set(pgsId, [{ teacher: null, code: 'no_teacher', count: 0 }]);
+        continue;
+      }
+      const missing: ContentMissing[] = [];
+      teachers.forEach((name, teacherId) => {
+        const stats = statsByTeacher.get(`${pgsId}:${teacherId}`);
+        if (stats && stats.withLearnings > 0) return;
+        if (!stats) missing.push({ teacher: name, code: 'no_content', count: 0 });
+        else if (stats.contents === 0) missing.push({ teacher: name, code: 'no_contents', count: stats.components });
+        else missing.push({ teacher: name, code: 'no_learnings', count: stats.contents });
+      });
+      if (missing.length === 0) pgsWithContent.add(pgsId);
+      else contentMissingByPgs.set(pgsId, missing);
+    }
   }
 
   // Build pgsId → grade/subject info map from assignments
@@ -671,6 +717,7 @@ const buildAcademicSnapshot = async (schoolPeriodId?: number, isPrivileged = fal
       subjectAbbreviation: info.subjectAbbreviation,
       order: info.order,
       hasContent: pgsWithContent.has(pgsId),
+      missing: contentMissingByPgs.get(pgsId) ?? [],
     });
   });
 

@@ -8,7 +8,7 @@
 | Service | Propósito | Controller(s) que lo usa |
 |---------|-----------|--------------------------|
 | `studentEnrollmentService` | Crea Persona + Contact + Residence + Inscription + subjects + representantes en una transacción. | `inscriptionController` |
-| `studentGuardianService` | Helpers para asignar/demote/destroy en `StudentGuardian`. | `userController`, `studentEnrollmentService` |
+| `studentGuardianService` | `assignGuardians` (reemplaza los vínculos y **conserva el benefactor** si no se indica lo contrario) y `buildEditGuardianAssignments` (tarjetas del formulario de edición: una sección sin nombres ni documento se ignora; si trae algo, exige nombres, apellidos, tipo y número de documento y responde 400 `GuardianInputError`; teléfono/dirección/residencia pueden quedar vacíos; un solo benefactor). | `userController`, `studentEnrollmentService` |
 | `guardianProfileService` | `findOrCreateGuardianProfile(document)` – fuente de verdad del ID correcto. | `guardianController`, `userController`, `studentEnrollmentService` |
 | `bulkEnrollmentService` | Generación de plantilla Excel con named ranges, parsing, validación y ejecución masiva. | `bulkEnrollmentController` |
 | `enrollmentAnswerService` | Guardado/lectura de respuestas del formulario de inscripción. | `enrollmentAnswerController` |

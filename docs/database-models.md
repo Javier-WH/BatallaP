@@ -22,7 +22,7 @@
 | `Role` | Rol del sistema (`Master`, `Administrador`, `Control de Estudios`, `Profesor`, `Representante`, `Alumno`). |
 | `PersonRole` | Tabla pivot `Person` ↔ `Role` (M:N). |
 | `GuardianProfile` | Perfil reutilizable de representante, identificado por documento. Permite que un mismo tutor represente a varios estudiantes sin duplicar datos. |
-| `StudentGuardian` | Relación estudiante ↔ representante con `relationship` (`mother`/`father`/`representative`) y flag `isRepresentative`. |
+| `StudentGuardian` | Relación estudiante ↔ representante con `relationship` (`mother`/`father`/`sibling`/`grandparent`/`uncle_aunt`/`representative`/`benefactor`), flag `isRepresentative` y flag `isBenefactor` (quien paga por el estudiante: un padre/representante marcado, o un tercero con `relationship='benefactor'`; máximo uno por estudiante). Los pagos compartidos enlazan a estudiantes que comparten cualquier persona asociada, benefactor incluido. |
 | `StudentPreviousSchool` | Escuelas previas cursadas por el estudiante. |
 
 ### 🎓 Estructura educativa
