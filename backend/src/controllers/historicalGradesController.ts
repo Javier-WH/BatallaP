@@ -24,6 +24,7 @@ import { roundFinalGrade, roundGrade, isPassingGrade } from '@/services/gradeEva
 import { resolveGradeDate } from '@/services/gradeDateResolver';
 import { formatDateInCaracas } from '@/services/councilDateResolver';
 import { GradeCalculationService } from '@/services/gradeCalculationService';
+import { pickGroupSubjectForTerm } from '@/services/subjectGroupService';
 import { logGradeChange } from '@/services/gradeChangeLogService';
 
 /**
@@ -561,9 +562,12 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
           .filter(choice => choice.inscriptionId === inscription.id && choice.subjectGroupId === groupId);
         if (choicesForGroup.length === 0) continue;
 
+        const lastChoice = [...choicesForGroup].sort(
+          (a, b) => Number(b.term?.order || 0) - Number(a.term?.order || 0)
+        )[0];
         const lapsos = periodTerms.map(term => {
           const choice = choicesForGroup.find(item => item.termId === term.id);
-          const selectedSubject = groupSubjects.find(item => item.subjectId === choice?.subjectId);
+          const selectedSubject = pickGroupSubjectForTerm(groupSubjects, term.id, choice?.subjectId, lastChoice?.subjectId);
           const termGrade = selectedSubject?.termGrades?.find((grade: any) => grade.termId === term.id);
           return {
             termId: term.id,
@@ -571,9 +575,6 @@ export const getHistoricalGradesBySection = async (req: Request, res: Response) 
           };
         });
         const definitive = GradeCalculationService.calculateFinalScore(lapsos, null);
-        const lastChoice = [...choicesForGroup].sort(
-          (a, b) => Number(b.term?.order || 0) - Number(a.term?.order || 0)
-        )[0];
         const selectedLatestGrade = gradesMap.find((grade: any) =>
           grade.personId === inscription.personId
           && grade.schoolPeriodId === inscription.schoolPeriodId

@@ -161,6 +161,33 @@ export async function filterActiveGroupSubjectsForTerm<
 }
 
 /**
+ * For ONE term, picks which of a student's group subjects (InscriptionSubject-like
+ * rows carrying `termGrades`) is the one he took. Annual reports rebuild a group's
+ * definitive from the per-term grades of this subject.
+ *
+ * Order: the explicit choice of that term; else the subject that holds a grade for
+ * that term (data predating per-term choices — a student whose only choice row is
+ * the last lapso still has marks in the earlier ones); among several, the
+ * latest-chosen one; else the latest choice; else the first row.
+ * Without the fallback, the lapsos before the first choice row were dropped and the
+ * "definitive" collapsed to the last lapso alone.
+ */
+export function pickGroupSubjectForTerm<T extends { subjectId: number; termGrades?: { termId: number }[] | null }>(
+  groupSubjects: T[],
+  termId: number,
+  choiceSubjectId?: number | null,
+  latestChoiceSubjectId?: number | null,
+): T | undefined {
+  const explicit = choiceSubjectId != null ? groupSubjects.find(s => s.subjectId === choiceSubjectId) : undefined;
+  if (explicit) return explicit;
+  const withGrade = groupSubjects.filter(s => (s.termGrades ?? []).some(tg => tg.termId === termId));
+  if (withGrade.length > 0) {
+    return withGrade.find(s => s.subjectId === latestChoiceSubjectId) ?? withGrade[0];
+  }
+  return groupSubjects.find(s => s.subjectId === latestChoiceSubjectId) ?? groupSubjects[0];
+}
+
+/**
  * Resolves, per inscription, the single subject the student is actually taking
  * inside a SubjectGroup for a given term.
  *

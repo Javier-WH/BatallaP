@@ -31,7 +31,7 @@ import {
   getSubjectOrderMap,
   sortSubjectsByOrder,
 } from '@/services/subjectOrderService';
-import { filterActiveGroupSubjects } from '@/services/subjectGroupService';
+import { filterActiveGroupSubjects, pickGroupSubjectForTerm } from '@/services/subjectGroupService';
 import { roundGrade, roundFinalGrade, isPassingGrade } from '@/services/gradeEvaluationService';
 import { GradeCalculationService } from '@/services/gradeCalculationService';
 import { readTemplateNamedRanges } from '@/services/templateNamedRanges';
@@ -988,8 +988,8 @@ async function buildCertifiedWorkbook(personId: number, templateName: string): P
               );
               const lapsos = periodTerms.map((periodTerm: any) => {
                 const choice = groupChoices.find((item: any) => item.termId === periodTerm.id);
-                const selectedSubject = inscriptionSubjectsForStudent.find(
-                  (item: any) => item.subjectId === choice?.subjectId
+                const selectedSubject = pickGroupSubjectForTerm(
+                  inscriptionSubjectsForStudent as any[], periodTerm.id, choice?.subjectId, selectedMemberId,
                 );
                 const termGrade = (selectedSubject as any)?.termGrades?.find(
                   (item: any) => item.termId === periodTerm.id
