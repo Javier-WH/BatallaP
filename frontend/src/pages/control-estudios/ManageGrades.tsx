@@ -148,6 +148,8 @@ interface StudentEnrollment {
   gradeId?: number | null;
   sectionId?: number | null;
   withdrawnAt?: string | null;
+  /** Position in the section's nómina (null for withdrawn students). */
+  rosterNumber?: number | null;
   student: { firstName: string; lastName: string; document: string };
   inscriptionSubjects: Array<{
     id: number;
@@ -1385,6 +1387,7 @@ const ManageGrades: React.FC = () => {
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, border: '1px solid rgba(15, 23, 42, 0.08)' }}>
                         <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                           <tr>
+                            <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)', width: 36 }} title="Número de lista">N°</th>
                             <th style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Cédula</th>
                             <th className="ce-mobile-sticky-student" style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'left', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Estudiante</th>
                             {evaluationPlan.map((item, colIndex) => {
@@ -1460,6 +1463,9 @@ const ManageGrades: React.FC = () => {
 
                               return (
                                 <tr key={enrollment.id} className="grading-row">
+                                  <td style={{ padding: '2px 4px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)' }}>
+                                    {enrollment.rosterNumber != null ? String(enrollment.rosterNumber).padStart(2, '0') : '—'}
+                                  </td>
                                   <td style={{ padding: '2px 4px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontSize: 11, fontWeight: 500 }}>
                                     {enrollment.student?.document || '-'}
                                   </td>

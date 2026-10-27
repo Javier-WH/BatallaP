@@ -82,6 +82,7 @@ const createCriteria = async (evaluationPlanId: number, criteria: CriterionInput
 import { TermSectionClosureService } from '@/services/termSectionClosureService';
 import { TermGradeSyncService } from '@/services/termGradeSyncService';
 import { sortInscriptions, fieldExpr, quoteQualified } from '@/services/studentSortService';
+import { alignSubjectSections } from '@/services/inscriptionSubjectSectionService';
 import { logGradeChange } from '@/services/gradeChangeLogService';
 
 export const getMyAssignments = async (req: Request, res: Response) => {
@@ -540,6 +541,9 @@ export const getStudentsForAssignment = async (req: Request, res: Response) => {
       sectionId,
       pg.gradeId
     );
+
+    // The list matches the marks through the subjects' own section: make sure none is out of step with the nómina.
+    await alignSubjectSections({ schoolPeriodId: pg.schoolPeriodId, gradeId: pg.gradeId, sectionId });
 
     const inscriptions = await Inscription.findAll({
       where: {
@@ -2110,6 +2114,8 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
       ? await TermSectionClosureService.getTermFinishTimestamp(termId, assignment.sectionId, pg.gradeId)
       : await TermSectionClosureService.getEarliestTermFinishTimestamp(pg.schoolPeriodId, assignment.sectionId, pg.gradeId);
 
+    await alignSubjectSections({ schoolPeriodId: pg.schoolPeriodId, gradeId: pg.gradeId, sectionId: assignment.sectionId });
+
     const inscriptions = await Inscription.findAll({
       where: {
         schoolPeriodId: pg.schoolPeriodId,
@@ -2362,6 +2368,7 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
     const isFilled = filled !== 'false';
     const firstDataRow = 9;
     const minRows = Math.max(inscriptions.length, 35);
+    const lastRosterNumber = Math.max(0, ...(inscriptions as any[]).map(x => x.rosterNumber ?? 0));
 
     const evaluationStats = evaluationPlans.map(() => ({ approved: 0, failed: 0, absent: 0 }));
     const finalStats = { approved: 0, failed: 0, absent: 0 };
@@ -2375,9 +2382,12 @@ export const exportGradesExcelOficial = async (req: Request, res: Response) => {
         ? { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: ZEBRA } }
         : undefined;
 
-      // Column #: sequential number (also for empty rows, as in the model)
+      // Column #: the student's roster number (same as the nómina); empty rows keep counting.
+      // A withdrawn student has no roster number, so his cell stays blank.
       const numCell = row.getCell(1);
-      numCell.value = String(i + 1).padStart(2, '0');
+      numCell.value = inscription
+        ? (inscription.rosterNumber != null ? String(inscription.rosterNumber).padStart(2, '0') : '')
+        : String(lastRosterNumber + (i - inscriptions.length) + 1).padStart(2, '0');
       numCell.font = { bold: true, size: 9 };
       numCell.alignment = { horizontal: 'center', vertical: 'middle' };
       numCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } };
@@ -2664,6 +2674,8 @@ export const exportGradesExcel = async (req: Request, res: Response) => {
     const exportLapsoFinishedAt = termId
       ? await TermSectionClosureService.getTermFinishTimestamp(termId, assignment.sectionId, pg.gradeId)
       : await TermSectionClosureService.getEarliestTermFinishTimestamp(pg.schoolPeriodId, assignment.sectionId, pg.gradeId);
+
+    await alignSubjectSections({ schoolPeriodId: pg.schoolPeriodId, gradeId: pg.gradeId, sectionId: assignment.sectionId });
 
     const inscriptions = await Inscription.findAll({
       where: {

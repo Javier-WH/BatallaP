@@ -137,6 +137,8 @@ interface StudentEnrollment {
   gradeId?: number | null;
   sectionId?: number | null;
   withdrawnAt?: string | null;
+  /** Position in the section's nómina (null for withdrawn students). */
+  rosterNumber?: number | null;
   student: Student;
   inscriptionSubjects: InscriptionSubject[];
 }
@@ -2635,7 +2637,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, border: '1px solid rgba(15, 23, 42, 0.08)' }}>
                     <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                       <tr>
-                        <th className="grading-col-num" style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)', width: 36 }}>#</th>
+                        <th className="grading-col-num" title="Número de lista" style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)', width: 36 }}>N°</th>
                         <th className="grading-col-doc" style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'center', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)' }}>Cédula</th>
                         <th className="grading-col-student" style={{ padding: '4px 6px', border: '1px solid rgba(15, 23, 42, 0.08)', textAlign: 'left', backgroundColor: 'color-mix(in srgb, var(--color-text-main) 6%, var(--color-content-bg))', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap', color: 'var(--color-text-main)', position: 'sticky', left: 0, zIndex: 15, boxShadow: '2px 0 4px rgba(15,23,42,0.06)' }}>Estudiante</th>
                         {evaluationPlan.map((item, colIndex) => {
@@ -2693,7 +2695,7 @@ const totalPercentage = evaluationPlan?.reduce((acc, curr) => acc + Number(curr?
                           return (
                             <tr key={enrollment.id} className="grading-row">
                               <td className="grading-col-num" style={{ padding: '2px 4px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)' }}>
-                                {rowIndex + 1}
+                                {enrollment.rosterNumber != null ? String(enrollment.rosterNumber).padStart(2, '0') : '—'}
                               </td>
                               <td className="grading-col-doc" style={{ padding: '2px 4px', border: '1px solid var(--color-text-muted)', textAlign: 'center', background: rowIndex % 2 === 0 ? 'var(--color-content-bg)' : 'color-mix(in srgb, var(--color-text-main) 2%, var(--color-content-bg))', fontSize: 11, fontWeight: 500 }}>
                                 {enrollment.student?.document || '-'}

@@ -11,6 +11,7 @@ import { saveEnrollmentAnswers } from '@/services/enrollmentAnswerService';
 import { GuardianDocumentType } from '@/models/GuardianProfile';
 import { GuardianRelationship } from '@/models/StudentGuardian';
 import { GuardianProfilePayload } from '@/services/guardianProfileService';
+import { alignSubjectSections } from '@/services/inscriptionSubjectSectionService';
 import { assignGuardians, buildEditGuardianAssignments, GuardianAssignment, GuardianInputError } from '@/services/studentGuardianService';
 import { EscolaridadStatus } from '@/types/enrollment';
 import { registerAndEnrollStudent, EnrollmentValidationError, GUARDIAN_FIELD_LABELS } from '@/services/studentEnrollmentService';
@@ -1567,6 +1568,8 @@ export const updateInscription = async (req: Request, res: Response) => {
     if (sectionId !== undefined) inscription.sectionId = sectionId;
 
     await inscription.save({ transaction: t });
+    // Grade lists and actas find the marks through the subjects' own section: move them along.
+    if (sectionId !== undefined) await alignSubjectSections({ inscriptionId: inscription.id }, t);
 
     // If grade changed, we MUST sync subjects
     if (gradeId !== undefined && Number(gradeId) !== Number(oldGradeId)) {
@@ -2005,6 +2008,7 @@ export const updateMatriculation = async (req: Request, res: Response) => {
       if (sectionId !== undefined) inscription.sectionId = sectionId;
 
       await inscription.save({ transaction: t });
+      if (sectionId !== undefined) await alignSubjectSections({ inscriptionId: inscription.id }, t);
 
       // If grade changed, sync subjects
       if (gradeId !== undefined && Number(gradeId) !== Number(oldGradeId)) {
