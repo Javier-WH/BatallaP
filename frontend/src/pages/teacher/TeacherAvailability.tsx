@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Button, message, Spin, Tabs, Tag, Empty, DatePicker, Input, Alert, List, Tooltip, Popconfirm } from 'antd';
 import { SaveOutlined, DeleteOutlined, ScheduleOutlined, HomeOutlined, PlusOutlined } from '@ant-design/icons';
 import api from '@/services/api';
+import { emitRoomBookingsChanged } from '@/services/roomBookingRequests';
 import { useAuth } from '@/context/AuthContext';
 import { useSchool } from '@/context/SchoolContext';
 import ClassroomDistribution from '@/pages/control-estudios/ClassroomDistribution';
@@ -389,6 +390,7 @@ export default function TeacherAvailability() {
           schoolPeriodId: activePeriod?.id,
         });
       }
+      emitRoomBookingsChanged();
       message.success('Solicitud enviada. Pendiente de aprobación por Control de Estudios.');
       setRequestDate(null);
       setRequestSubject('');

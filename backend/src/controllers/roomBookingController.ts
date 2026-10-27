@@ -37,6 +37,20 @@ export const listBookings = async (req: Request, res: Response) => {
   }
 };
 
+// GET /api/room-bookings/pending/count?schoolPeriodId= — lightweight badge counter
+export const getPendingBookingCount = async (req: Request, res: Response) => {
+  try {
+    const { schoolPeriodId } = req.query;
+    const where: any = { status: 'pending' };
+    if (schoolPeriodId) where.schoolPeriodId = Number(schoolPeriodId);
+    const count = await RoomBooking.count({ where });
+    return res.json({ count });
+  } catch (error) {
+    console.error('[getPendingBookingCount] Error:', error);
+    return res.status(500).json({ message: 'Error al contar solicitudes de aulas' });
+  }
+};
+
 // POST /api/room-bookings
 export const createBooking = async (req: Request, res: Response) => {
   try {

@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Button, Tooltip, Dropdown, Badge } from 'antd';
 import type { MenuProps } from 'antd';
 import { DashboardOutlined, SettingOutlined, UserAddOutlined, CheckCircleFilled, ProjectOutlined, EditOutlined, DownOutlined, FileExcelOutlined, ToolOutlined, TrophyOutlined, AlertOutlined, HistoryOutlined, CalendarOutlined, FlagOutlined, FileProtectOutlined, ClockCircleOutlined, AuditOutlined } from '@ant-design/icons';
-import api from '@/services/api';
+import { usePendingRoomBookingCount } from '@/services/roomBookingRequests';
+import { usePendingGradeEditCount } from '@/services/gradeEditRequestCount';
 
 const NavButton: React.FC<{
   icon: React.ReactNode;
@@ -11,11 +12,12 @@ const NavButton: React.FC<{
   tooltip: string;
   active: boolean;
   onClick: () => void;
-}> = ({ icon, label, tooltip, active, onClick }) => (
+  badge?: number;
+}> = ({ icon, label, tooltip, active, onClick, badge }) => (
   <Tooltip title={tooltip} placement="bottom">
     <Button
       type="text"
-      icon={icon}
+      icon={badge ? <Badge count={badge} size="small" offset={[2, -2]}>{icon}</Badge> : icon}
       onClick={onClick}
       className={`
         h-10 px-4 flex items-center gap-2 rounded-xl transition-all font-semibold
@@ -33,22 +35,8 @@ const NavButton: React.FC<{
 const ControlEstudiosLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const [pendingEditCount, setPendingEditCount] = useState(0);
-
-  const fetchPendingCount = useCallback(async () => {
-    try {
-      const res = await api.get('/evaluation/grade-edit-requests/pending/count');
-      setPendingEditCount(res.data?.count || 0);
-    } catch {
-      // silent
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchPendingCount();
-    const interval = setInterval(fetchPendingCount, 30000);
-    return () => clearInterval(interval);
-  }, [fetchPendingCount, location.pathname]);
+  const pendingEditCount = usePendingGradeEditCount();
+  const pendingRoomBookings = usePendingRoomBookingCount();
 
   const navRef = useRef<HTMLDivElement>(null);
 
@@ -127,6 +115,7 @@ const ControlEstudiosLayout: React.FC = () => {
             <NavButton
               key={tool.path}
               {...tool}
+              badge={tool.path === '/control-estudios/horarios' ? pendingRoomBookings : undefined}
               active={tool.exact ? isExact(tool.path) : matchesPath(tool.path)}
               onClick={() => navigate(tool.path)}
             />

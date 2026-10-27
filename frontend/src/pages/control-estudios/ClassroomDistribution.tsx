@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Button, Empty, Spin, Tag, Tooltip, Modal, Select, message, Alert, DatePicker, Input, List } from 'antd';
+import { Button, Empty, Spin, Tag, Tooltip, Modal, Select, message, Alert, DatePicker, Input, List, Badge } from 'antd';
 import { DeleteOutlined, ClearOutlined, ThunderboltOutlined, HighlightOutlined, PlusOutlined, InboxOutlined, FileExcelOutlined } from '@ant-design/icons';
 import api from '@/services/api';
+import { emitRoomBookingsChanged, usePendingRoomBookingCount } from '@/services/roomBookingRequests';
 import dayjs from 'dayjs';
 import { generateClassroomDistribution } from '@/utils/generateHorario';
 
@@ -252,9 +253,12 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({
     }
   }, [schoolPeriodId]);
 
+  const pendingCount = usePendingRoomBookingCount(!readOnly);
+
   const handleApproveRequest = async (id: number) => {
     try {
       await api.put(`/room-bookings/${id}`, { status: 'approved' });
+      emitRoomBookingsChanged();
       message.success('Solicitud aprobada. Solicitudes en conflicto rechazadas automáticamente.');
       loadPendingRequests();
       if (viewDate) loadBookingsForDate(viewDate);
@@ -270,6 +274,7 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({
   const handleRejectRequest = async (id: number) => {
     try {
       await api.put(`/room-bookings/${id}`, { status: 'rejected' });
+      emitRoomBookingsChanged();
       message.success('Solicitud rechazada');
       loadPendingRequests();
     } catch {
@@ -790,15 +795,18 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({
           )}
           <Button size="small" icon={<ThunderboltOutlined />} onClick={handleOpenAutoModal}>Distribución automática</Button>
           <Button size="small" icon={<ClearOutlined />} onClick={clearAll}>Limpiar todo</Button>
+          </>)}
           <Button
             size="small"
-            icon={<InboxOutlined />}
+            icon={
+              <Badge count={pendingCount} size="small" offset={[2, -2]}>
+                <InboxOutlined />
+              </Badge>
+            }
             onClick={() => { loadPendingRequests(); setRequestsModalOpen(true); }}
           >
             Solicitudes
-            {pendingRequests.length > 0 && <Tag color="orange" style={{ marginLeft: 4 }}>{pendingRequests.length}</Tag>}
           </Button>
-          </>)}
           <span className="flex-1" />
           <Button
             size="small"
@@ -862,7 +870,7 @@ const ClassroomDistribution: React.FC<ClassroomDistributionProps> = ({
 
       {/* Grid */}
       <div className="ce-matrix-viewport overflow-x-auto">
-        <table className="border-collapse text-sm" style={{ width: '100%', tableLayout: 'fixed' }}>
+        <table className="border-collapse text-sm" style={{ width: '100%', minWidth: 28 + 110 + rooms.length * 96, tableLayout: 'fixed' }}>
           <colgroup>
             <col style={{ width: '28px' }} />
             <col style={{ width: '110px' }} />

@@ -27,6 +27,8 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useSchool } from '@/context/SchoolContext';
 import api from '@/services/api';
+import { usePendingRoomBookingCount } from '@/services/roomBookingRequests';
+import { usePendingGradeEditCount } from '@/services/gradeEditRequestCount';
 import ExchangeRateBar from '@/components/ExchangeRateBar';
 
 const { Header, Sider, Content } = Layout;
@@ -41,6 +43,10 @@ const MainLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
+
+  const isControlEstudios = !!user?.roles?.includes('Control de Estudios');
+  const pendingRoomBookings = usePendingRoomBookingCount(isControlEstudios);
+  const pendingGradeEdits = usePendingGradeEditCount(isControlEstudios);
 
   const canSeePreinscripcion = user?.roles?.some(r => r === 'Master' || r === 'Administrador');
   const visiblePeriods = allPeriods.filter(p => p.status !== 'preinscripcion' || canSeePreinscripcion);
@@ -245,13 +251,16 @@ const MainLayout: React.FC = () => {
           <div className="flex-1 overflow-y-auto py-4">
             {menuItems.map(item => {
               const isActive = location.pathname.startsWith(item.path);
+              const badgeCount = item.key === 'control-estudios-module' ? pendingRoomBookings + pendingGradeEdits : 0;
               return (
                 <div
                   key={item.key}
                   onClick={() => { navigate(item.path); setMobileSidebarOpen(false); }}
                   className={isActive ? 'nav-item-active' : 'nav-item'}
                 >
-                  <span className="text-lg flex shrink-0 items-center justify-center">{item.icon}</span>
+                  <Badge count={badgeCount} size="small" offset={[2, -2]} className="flex items-center">
+                    <span className="text-lg flex shrink-0 items-center justify-center">{item.icon}</span>
+                  </Badge>
                   {!collapsed && <span className="font-semibold text-sm">{item.label}</span>}
                 </div>
               );

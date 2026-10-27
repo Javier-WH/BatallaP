@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Tabs, Select, Card, Spin, message, Button, Tag, Empty, Modal, Switch, InputNumber, Alert, Popconfirm, DatePicker, Input, Checkbox, Tooltip } from 'antd';
+import { Tabs, Select, Card, Spin, message, Button, Tag, Empty, Modal, Switch, InputNumber, Alert, Popconfirm, DatePicker, Input, Checkbox, Tooltip, Badge } from 'antd';
 import { TableOutlined, UserOutlined, ReloadOutlined, EditOutlined, SaveOutlined, CloseOutlined, DeleteOutlined, WarningOutlined, ThunderboltOutlined, ScheduleOutlined, SettingOutlined, PlusOutlined, HomeOutlined, FileExcelOutlined, PrinterOutlined, LockOutlined } from '@ant-design/icons';
 import {
   DndContext,
@@ -16,6 +16,7 @@ import dayjs from 'dayjs';
 import { generateHorario, generateHorarioBatch, generateHorarioBatchTeachers } from '@/utils/generateHorario';
 import type { HorarioBatchItem, HorarioTeacherBatchItem } from '@/utils/generateHorario';
 import ClassroomDistribution from './ClassroomDistribution';
+import { usePendingRoomBookingCount } from '@/services/roomBookingRequests';
 
 const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
 
@@ -915,6 +916,7 @@ const TeacherAvailabilityPanel: React.FC<TeacherAvailabilityPanelProps> = ({ tea
 // ── Main Component ──
 const ScheduleManagement: React.FC = () => {
   const { viewPeriod, isReadOnly } = useSchool();
+  const pendingRoomBookings = usePendingRoomBookingCount();
   const [activeTab, setActiveTab] = useState('sections');
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -2572,7 +2574,13 @@ const ScheduleManagement: React.FC = () => {
           },
           {
             key: 'classrooms',
-            label: <span><HomeOutlined /> Distribución de Aulas</span>,
+            label: (
+              <span>
+                <Badge count={pendingRoomBookings} size="small" offset={[2, -2]}>
+                  <HomeOutlined />
+                </Badge>{' '}Distribución de Aulas
+              </span>
+            ),
             children: (
               <ClassroomDistribution settings={settings} sectionsList={sectionsList} subjectsList={structureSubjects} schoolPeriodId={viewPeriod?.id} schoolPeriodName={viewPeriod?.name} gradesList={sectionsList.filter((s: any, i: number, arr: any[]) => arr.findIndex(x => x.gradeId === s.gradeId) === i).map((s: any) => ({ id: s.gradeId, name: s.gradeName }))} readOnly={isReadOnly} locked={scheduleLocked} />
             ),
