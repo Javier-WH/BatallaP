@@ -40,6 +40,7 @@ import TeacherAvailability from '@/pages/teacher/TeacherAvailability';
 import AdminDashboard from '@/pages/admin/Dashboard';
 import StudentDetail from '@/pages/student/StudentDetail';
 import SettingsManagement from '@/pages/master/SettingsManagement';
+import BankVerification from '@/pages/master/BankVerification';
 import GeneralDashboard from '@/pages/GeneralDashboard';
 import type { JSX } from 'react';
 import NotFound from '@/pages/NotFound';
@@ -246,6 +247,7 @@ function AppRoutes() {
           <Route path="directorio" element={<SearchUsers />} />
           <Route path="edit/:id" element={<EditUser />} />
           <Route path="settings" element={<SettingsManagement />} />
+          <Route path="verificacion" element={<BankVerification />} />
         </Route>
 
         {/* Nested Admin Module */}

@@ -6,7 +6,8 @@ import {
   UserAddOutlined,
   SettingOutlined,
   SecurityScanOutlined,
-  SearchOutlined
+  SearchOutlined,
+  SafetyOutlined
 } from '@ant-design/icons';
 
 const NavButton: React.FC<{
@@ -45,6 +46,7 @@ const MasterLayout: React.FC = () => {
     { path: '/master/register', icon: <UserAddOutlined />, label: 'Inscribir Personal', tooltip: 'Inscripción de Usuarios Administrativos' },
     { path: '/master/directorio', icon: <SearchOutlined />, label: 'Directorio', tooltip: 'Búsqueda y Gestión de Usuarios' },
     { path: '/master/settings', icon: <SettingOutlined />, label: 'Institución', tooltip: 'Configuración de Identidad Institucional' },
+    { path: '/master/verificacion', icon: <SafetyOutlined />, label: 'Verificación', tooltip: 'Verificación de Pagos Bancarios' },
   ];
 
   return (
