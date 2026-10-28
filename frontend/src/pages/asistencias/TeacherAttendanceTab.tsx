@@ -14,8 +14,8 @@ import { getSubjectVisual } from '@/utils/subjectVisuals';
 import { STATUS_LABELS } from './types';
 import type { AttendanceSessionView, RosterEntry, AttendanceStatus, ClearanceReason } from './types';
 import {
-  NET_TIMEOUT_MS, QUEUE_EVENT, applyPending, cacheRoster, enqueue, findPending, isNetworkError, loadQueue,
-  offlineRoster, offlineSessionsFor, periodLabelOf, refreshTemplate, removePending, sessionKey, syncPending,
+  NET_TIMEOUT_MS, QUEUE_EVENT, applyPending, cacheRoster, enqueue, findPending, isNetworkError, loadClearanceReasons, loadQueue,
+  offlineRoster, offlineSessionsFor, periodLabelOf, refreshClearanceReasons, refreshTemplate, removePending, sessionKey, syncPending,
 } from './offlineAttendance';
 import type { PendingSubmission, SyncOutcome, SyncReport } from './offlineAttendance';
 
@@ -323,6 +323,7 @@ const TeacherAttendanceTab: React.FC<{ onExit?: () => void; fill?: boolean }> = 
     try {
       // Refresh the offline copy of the timetable whenever there is signal.
       await refreshTemplate(personId).catch(() => undefined);
+      await refreshClearanceReasons().catch(() => undefined);
       const outcome: SyncOutcome = await syncPending(personId);
       setOffline(outcome.offline);
       if (outcome.synced > 0) {
@@ -1483,13 +1484,20 @@ function ClearancePanel({
 }) {
   const [code, setCode] = useState<string | null>(null);
   const [note, setNote] = useState('');
-  const [reasons, setReasons] = useState<ClearanceReason[]>([]);
+  const [reasons, setReasons] = useState<ClearanceReason[]>(loadClearanceReasons);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
 
-  useEffect(() => {
-    api.get('/attendance/clearance-reasons', { timeout: NET_TIMEOUT_MS })
-      .then(res => setReasons(res.data ?? []))
-      .catch(() => setReasons([]));
+  const loadReasons = useCallback(() => {
+    setLoading(true);
+    setFailed(false);
+    refreshClearanceReasons()
+      .then(list => { setReasons(list); setFailed(list.length === 0); })
+      .catch(() => setFailed(true))
+      .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { loadReasons(); }, [loadReasons]);
 
   const selected = reasons.find(r => r.code === code);
   const needsNote = selected?.requiresNote === true;
@@ -1498,6 +1506,21 @@ function ClearancePanel({
   return (
     <div className="mt-2.5 pt-2.5 border-t border-amber-200">
       <p className="text-[11px] text-amber-700 att-font-body mb-1.5">Motivo para desbloquear</p>
+      {reasons.length === 0 && (
+        <div className="mb-2 text-[11px] att-font-body text-amber-800">
+          {loading ? 'Cargando motivos…' : (
+            <>
+              No se pudieron cargar los motivos. Se necesita conexión para desbloquear.{' '}
+              <button type="button" onClick={loadReasons} className="underline font-medium">Reintentar</button>
+            </>
+          )}
+        </div>
+      )}
+      {reasons.length > 0 && failed && !loading && (
+        <div className="mb-2 text-[11px] att-font-body text-amber-700">
+          Mostrando los motivos guardados; sin conexión no se podrá confirmar el desbloqueo.
+        </div>
+      )}
       <div className="flex flex-wrap gap-1.5 mb-2">
         {reasons.map(r => (
           <button

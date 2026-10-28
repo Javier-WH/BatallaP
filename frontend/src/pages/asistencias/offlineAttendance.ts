@@ -13,7 +13,7 @@
 import axios from 'axios';
 import dayjs from 'dayjs';
 import api from '@/services/api';
-import type { AttendanceSessionView, AttendanceStatus, RosterEntry } from './types';
+import type { AttendanceSessionView, AttendanceStatus, ClearanceReason, RosterEntry } from './types';
 
 export interface TemplateRosterEntry {
   inscriptionId: number;
@@ -126,6 +126,20 @@ export async function refreshTemplate(personId: number): Promise<void> {
     timeout: NET_TIMEOUT_MS,
   });
   writeJson(templateKey(personId), res.data);
+}
+
+/* ---------------- Unblock reasons (shared catalog) ---------------- */
+
+const reasonsKey = 'att:clearance-reasons';
+
+/** Last catalog fetched while online; lets the unblock panel render with a weak signal. */
+export const loadClearanceReasons = (): ClearanceReason[] => readJson(reasonsKey, []);
+
+export async function refreshClearanceReasons(): Promise<ClearanceReason[]> {
+  const res = await api.get<ClearanceReason[]>('/attendance/clearance-reasons', { timeout: NET_TIMEOUT_MS });
+  const list = res.data ?? [];
+  if (list.length > 0) writeJson(reasonsKey, list);
+  return list;
 }
 
 const findTemplateBlock = (personId: number, scheduleEntryId: number, date: string): TemplateBlock | null =>
