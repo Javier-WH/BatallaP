@@ -14,6 +14,11 @@ import puppeteer, { Browser, Page } from 'puppeteer';
 const VOL_URL = 'https://vol.venezolano.com';
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+/** Banks with a verification flow. 'natural' = web scraping; 'juridica' = bank API (future). */
+export const BANK_PROVIDERS = [
+  { key: 'bvc_natural', name: 'Banco Venezolano de Crédito', accountType: 'natural' as const, needsCredentials: true },
+];
+
 export interface BankMovement {
   raw: string;
   description: string;
@@ -53,10 +58,11 @@ let session: { browser: Browser; page: Page } | null = null;
 const isLoginPage = async (page: Page): Promise<boolean> =>
   !!(await page.$('#datoLogin').catch(() => null));
 
+let credentials: { user: string; pass: string } | null = null;
+
 async function login(page: Page): Promise<void> {
-  const user = process.env.BVC_USER;
-  const pass = process.env.BVC_PASS;
-  if (!user || !pass) throw new Error('faltan credenciales BVC_USER/BVC_PASS en el servidor');
+  if (!credentials) throw new Error('la conexión bancaria no tiene credenciales');
+  const { user, pass } = credentials;
   await page.goto(VOL_URL, { waitUntil: 'networkidle2' });
   await page.waitForSelector('#datoLogin', { timeout: 20000 });
   await page.type('#datoLogin', user);
@@ -184,8 +190,13 @@ async function gotoMovements(page: Page): Promise<void> {
 
 /* ---------------- Verification ---------------- */
 
-async function runVerification(input: PaymentCheckInput): Promise<PaymentCheckResult> {
+async function runVerification(input: PaymentCheckInput, creds: { user: string; pass: string }): Promise<PaymentCheckResult> {
   try {
+    // Credentials belong to one bank account; if they changed, start a fresh session.
+    if (!credentials || credentials.user !== creds.user || credentials.pass !== creds.pass) {
+      await closeSession();
+      credentials = creds;
+    }
     const page = await ensureSession();
 
     const digits = (s: string) => s.replace(/\D/g, '');
@@ -193,23 +204,46 @@ async function runVerification(input: PaymentCheckInput): Promise<PaymentCheckRe
     const wantLast4 = digits(input.last4);
     const wantDate = input.date || null;
     const todayStr = new Date().toISOString().slice(0, 10);
+    // The payer's bank posting date can differ ±1 business day from what the
+    // receiving bank shows (cutoff/timezone), so tolerate adjacent dates.
+    const dateOk = (rowDate: string) => {
+      if (!wantDate || rowDate === wantDate) return true;
+      const diff = Math.abs(new Date(rowDate).getTime() - new Date(wantDate).getTime());
+      return diff <= 86400000;
+    };
     const matches = (m: BankMovement) =>
       (m.reference?.endsWith(wantLast4) ?? false)
       && m.cedula === wantCedula
       && (!input.bankCode || m.bankCode === input.bankCode)
-      && (!m.date || m.date === wantDate);
+      // Rows in "Movimientos del día" carry no date — the bank keeps recent
+      // movements there across business days, so they count for any requested
+      // date. Historical rows tolerate a ±1 day posting difference.
+      && (m.date == null || dateOk(m.date));
 
     // First pass with the current movements; if not found, reload once —
     // the bank caches the "movimientos del día" view per session visit.
     let pool: BankMovement[] = [];
+    let sawHistorical = false;
     let lastError: string | null = null;
     for (let pass = 0; pass < 2; pass++) {
       try {
         await gotoMovements(page);
         const { today, historical } = await scrapeMovements(page);
-        pool = wantDate && wantDate !== todayStr ? historical : today;
+        sawHistorical = sawHistorical || historical.length > 0;
+        pool = [...today, ...historical];
         const hit = pool.find(matches);
-        if (hit) return { found: true, movement: hit };
+        if (hit) {
+          // Enrich: a "del día" hit has no date — recover it if the same
+          // reference already rolled into Movimientos Históricos.
+          if (!hit.date && hit.reference) {
+            const dated = historical.find(h => h.reference === hit.reference);
+            if (dated?.date) hit.date = dated.date;
+          }
+          return {
+            found: true, movement: hit,
+            message: hit.date ? undefined : 'Encontrado en movimientos del día (el banco no muestra la fecha de esta fila).',
+          };
+        }
       } catch (e: any) {
         lastError = e.message;
         if (await isLoginPage(page).catch(() => false)) await login(page).catch(() => {});
@@ -220,16 +254,16 @@ async function runVerification(input: PaymentCheckInput): Promise<PaymentCheckRe
       return { found: false, message: `No se pudo consultar la banca en línea: ${lastError}` };
     }
 
-    const byRef = pool.find(m => m.reference?.endsWith(wantLast4));
+    const byRef = pool.find(m => m.reference?.endsWith(wantLast4) && m.cedula === wantCedula);
     if (byRef) {
       const why = byRef.cedula !== wantCedula ? 'la cédula no coincide' : 'el banco emisor no coincide';
       return { found: false, message: `Hay un movimiento con esa referencia, pero ${why}.` };
     }
     return {
       found: false,
-      message: wantDate && wantDate !== todayStr
-        ? 'No aparece en los movimientos históricos visibles (el banco solo muestra los más recientes).'
-        : 'No aparece en los movimientos del día.',
+      message: wantDate && wantDate !== todayStr && !sawHistorical
+        ? 'No aparece en los movimientos consultados (el banco solo muestra los más recientes).'
+        : 'No aparece en los movimientos del día ni en los históricos visibles.',
     };
   } catch (e: any) {
     await closeSession();
@@ -237,5 +271,5 @@ async function runVerification(input: PaymentCheckInput): Promise<PaymentCheckRe
   }
 }
 
-export const verifyBankPayment = (input: PaymentCheckInput): Promise<PaymentCheckResult> =>
-  enqueue(() => runVerification(input));
+export const verifyBankPayment = (input: PaymentCheckInput, creds: { user: string; pass: string }): Promise<PaymentCheckResult> =>
+  enqueue(() => runVerification(input, creds));

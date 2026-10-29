@@ -160,6 +160,7 @@ import DiscountReason from './DiscountReason';
 import InscriptionDiscount from './InscriptionDiscount';
 import CurrencyDiscount from './CurrencyDiscount';
 import Bank from './Bank';
+import BankConnection from './BankConnection';
 import ConstanciaTemplate from './ConstanciaTemplate';
 import TeacherAvailability from './TeacherAvailability';
 import TeacherAdminHour from './TeacherAdminHour';
@@ -797,6 +798,7 @@ export {
   InscriptionDiscount,
   CurrencyDiscount,
   Bank,
+  BankConnection,
   ConstanciaTemplate,
   TeacherAvailability,
   TeacherAdminHour,
