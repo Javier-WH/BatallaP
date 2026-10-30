@@ -289,6 +289,67 @@ export async function releaseOverpaidAllocations(inscriptionId: number, transact
   }
 }
 
+/**
+ * Inverse of `releaseOverpaidAllocations`: after a discount is removed or reduced, an academic debt
+ * (enrollment package / mensualidad) may owe money while LATER academic debts hold payments.
+ * Money is pulled back, starting from the nearest later debt (latest payment first), and re-applied
+ * to the earliest pending academic debts. Items and 'otro' debts, and payments registered for a
+ * sellable item, are never touched. Money no debt can absorb returns to where it came from.
+ */
+export async function fillUnderpaidAllocations(inscriptionId: number, transaction?: Transaction): Promise<void> {
+  const resolver = makeRateResolver(transaction);
+  const skipped = new Set<string>();
+  for (let guard = 0; guard < 500; guard++) {
+    const ctx = await orderedContext(inscriptionId, -1, transaction);
+    if (!ctx) return;
+    const academic = ctx.ordered.filter(o => !EXTRA_TYPES.has(o.charge.type ?? ''));
+    const gapIdx = academic.findIndex(o => (ctx.remaining.get(o.charge.id) ?? 0) > EPS);
+    if (gapIdx === -1) return;
+    const donors = academic.slice(gapIdx + 1);
+    if (donors.length === 0) return;
+    const rank = new Map(donors.map((o, i) => [o.charge.id, i]));
+    const allocs = await PaymentAllocation.findAll({
+      where: { chargeId: [...rank.keys()] }, include: [{ model: Payment, as: 'payment' }], transaction,
+    }) as any[];
+    const movable = allocs
+      .filter(a => !a.payment.sellableItemId && Number(a.amount) > EPS && !skipped.has(`${a.paymentId}:${a.chargeId}`))
+      .sort((a, b) => (rank.get(a.chargeId)! - rank.get(b.chargeId)!)
+        || (new Date(b.payment.paymentDate).getTime() - new Date(a.payment.paymentDate).getTime()) || (b.id - a.id));
+    const a = movable[0];
+    if (!a) return;
+
+    const charge = donors[rank.get(a.chargeId)!].charge;
+    const payment: Payment = a.payment;
+    const amount = Number(a.amount);
+    const ratio = amount > 0 ? Number(a.amountVES) / amount : 0;
+    const par = appliesAtPar(payment.currency, charge.currency, !!ctx.periodById.get(charge.schoolPeriodId)?.usdAtPar);
+    const payRate = (await resolver.vesPerUnit(payment.currency, payment.paymentDate)) ?? 1;
+    const units = payment.currency === charge.currency || par ? amount : (amount * ratio) / payRate;
+    const bonus = Number(a.bonus);
+    const discountId = a.currencyDiscountId ?? null;
+    await a.destroy({ transaction });
+
+    const out = { leftover: 0 };
+    await distributePayment(payment, { kind: 'tuition' }, { transaction, units, keepExisting: true, noExcess: true, out });
+    if (out.leftover > EPS) {
+      // Nothing could take (all of) it: give it back to the charge it came from.
+      const used = Math.min(out.leftover, units);
+      const chargeAmount = round2(amount * (used / units));
+      const bonusBack = round2(bonus * (used / units));
+      const row = await PaymentAllocation.findOne({ where: { paymentId: payment.id, chargeId: charge.id }, transaction });
+      if (row) await row.update({ amount: round2(Number(row.amount) + chargeAmount), amountVES: round2(Number(row.amountVES) + chargeAmount * ratio), bonus: round2(Number(row.bonus) + bonusBack), currencyDiscountId: discountId ?? row.currencyDiscountId }, { transaction });
+      else await PaymentAllocation.create({ paymentId: payment.id, chargeId: charge.id, amount: chargeAmount, amountVES: round2(chargeAmount * ratio), bonus: bonusBack, currencyDiscountId: discountId }, { transaction });
+      skipped.add(`${payment.id}:${charge.id}`);
+    }
+  }
+}
+
+/** Re-balances an inscription's payments after a discount changed: spill surplus forward, refill gaps from later debts. */
+export async function rebalanceAllocations(inscriptionId: number, transaction?: Transaction): Promise<void> {
+  await releaseOverpaidAllocations(inscriptionId, transaction);
+  await fillUnderpaidAllocations(inscriptionId, transaction);
+}
+
 export interface SharedPortion {
   inscriptionId: number;
   /** Share of the payment, in the payment's own currency. */

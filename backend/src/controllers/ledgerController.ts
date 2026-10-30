@@ -8,7 +8,7 @@ import {
 } from '@/models/index';
 import { DISCOUNT_KINDS, DISCOUNT_SCOPES } from '@/models/InscriptionDiscount';
 import { appliesAtPar, buildDedupeKey, normalizePaymentFields } from '@/services/paymentRulesService';
-import { distributePayment, checkTargetOrder, pendingByCharge, planSharedPayment, releaseOverpaidAllocations, AllocationPart, AllocationTarget } from '@/services/paymentAllocationService';
+import { distributePayment, checkTargetOrder, pendingByCharge, planSharedPayment, releaseOverpaidAllocations, rebalanceAllocations, AllocationPart, AllocationTarget } from '@/services/paymentAllocationService';
 import { randomUUID } from 'crypto';
 import { applyDiscountsToCharges, DiscountRule } from '@/services/discountService';
 import { getBillingMonths, monthCodeFromDate, resolveEntryMonth } from '@/services/billingCalendarService';
@@ -739,6 +739,18 @@ const validateDiscount = async (
   return null;
 };
 
+/** Redistributes the inscription's payments after a discount was added, changed or removed (atomic). */
+const rebalanceAfterDiscount = async (inscriptionId: number) => {
+  const t = await sequelize.transaction();
+  try {
+    await rebalanceAllocations(inscriptionId, t);
+    await t.commit();
+  } catch (e) {
+    await t.rollback();
+    throw e;
+  }
+};
+
 export const listInscriptionDiscounts = async (req: Request, res: Response) => {
   try {
     const rows = await InscriptionDiscount.findAll({
@@ -775,7 +787,7 @@ export const createInscriptionDiscount = async (req: Request, res: Response) => 
       createdByPersonId: (req.session as any)?.user?.personId ?? null,
     });
     // Payments that already covered the now-discounted amount spill into the next debts.
-    await releaseOverpaidAllocations(inscription.id);
+    await rebalanceAfterDiscount(inscription.id);
     return res.status(201).json(discountView(created));
   } catch (error) {
     console.error('[createInscriptionDiscount] Error:', error);
@@ -810,7 +822,7 @@ export const updateInscriptionDiscount = async (req: Request, res: Response) => 
       note: body.note !== undefined ? body.note || null : discount.note,
       active: body.active ?? discount.active,
     });
-    await releaseOverpaidAllocations(discount.inscriptionId);
+    await rebalanceAfterDiscount(discount.inscriptionId);
     return res.json(discountView(discount));
   } catch (error) {
     console.error('[updateInscriptionDiscount] Error:', error);
@@ -823,7 +835,7 @@ export const deleteInscriptionDiscount = async (req: Request, res: Response) => 
     const discount = await InscriptionDiscount.findByPk(Number(req.params.id));
     if (!discount) return res.status(404).json({ message: 'Descuento no encontrado' });
     await discount.destroy();
-    await releaseOverpaidAllocations(discount.inscriptionId);
+    await rebalanceAfterDiscount(discount.inscriptionId);
     return res.json({ message: 'Descuento eliminado' });
   } catch (error) {
     console.error('[deleteInscriptionDiscount] Error:', error);

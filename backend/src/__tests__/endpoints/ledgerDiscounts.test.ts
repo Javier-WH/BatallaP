@@ -277,6 +277,52 @@ describe('A discount granted after the payment', () => {
     expect(await allocationsOf(insc.id)).toEqual([60, 50]); // both months settled at net 50; the extra 10 stays as credit
   });
 
+  it('removing the discount pulls the money back from the later debts', async () => {
+    const { agent } = await login();
+    const { insc, reason, period } = await setup();
+    await monthlyCharge(insc.id, period.id, 'Oct');
+    await monthlyCharge(insc.id, period.id, 'Nov');
+    await pay(agent, insc.id, period.id, 100);
+    const created = await agent.post(`/api/ledger/inscriptions/${insc.id}/discounts`)
+      .send({ reasonId: reason.id, kind: 'percent', value: 50, appliesTo: 'mensualidad' }).expect(201);
+    expect(await allocationsOf(insc.id)).toEqual([50, 50]);
+
+    await agent.delete(`/api/ledger/discounts/${created.body.id}`).expect(200);
+    expect(await allocationsOf(insc.id)).toEqual([100, 0]);
+  });
+
+  it('reducing a discount to a single month refills only that gap, taking from the nearest later debt', async () => {
+    const { agent } = await login();
+    const { insc, reason, period } = await setup();
+    await monthlyCharge(insc.id, period.id, 'Oct');
+    await monthlyCharge(insc.id, period.id, 'Nov');
+    await monthlyCharge(insc.id, period.id, 'Dic');
+    await pay(agent, insc.id, period.id, 150);
+    const created = await agent.post(`/api/ledger/inscriptions/${insc.id}/discounts`)
+      .send({ reasonId: reason.id, kind: 'percent', value: 50, appliesTo: 'mensualidad' }).expect(201);
+    expect(await allocationsOf(insc.id)).toEqual([50, 50, 50]);
+
+    await agent.put(`/api/ledger/discounts/${created.body.id}`).send({ active: false }).expect(200);
+    expect(await allocationsOf(insc.id)).toEqual([100, 50, 0]);
+  });
+
+  it('removing an enrollment discount rolls every later payment back, leaving the gap at the end', async () => {
+    const { agent } = await login();
+    const { insc, reason, period } = await setup();
+    await Charge.create({ inscriptionId: insc.id, schoolPeriodId: period.id, type: 'matricula', description: 'Matrícula', amount: 100, currency: 'USD' } as any);
+    await monthlyCharge(insc.id, period.id, 'Oct');
+    await monthlyCharge(insc.id, period.id, 'Nov');
+    const created = await agent.post(`/api/ledger/inscriptions/${insc.id}/discounts`)
+      .send({ reasonId: reason.id, kind: 'percent', value: 50, appliesTo: 'matricula' }).expect(201);
+    await pay(agent, insc.id, period.id, 50);
+    await pay(agent, insc.id, period.id, 100);
+    await pay(agent, insc.id, period.id, 100);
+    expect(await allocationsOf(insc.id)).toEqual([50, 100, 100]);
+
+    await agent.delete(`/api/ledger/discounts/${created.body.id}`).expect(200);
+    expect(await allocationsOf(insc.id)).toEqual([100, 100, 50]);
+  });
+
   it('keeps the excess as credit when there is no other debt to take it', async () => {
     const { agent } = await login();
     const { insc, reason, period } = await setup();

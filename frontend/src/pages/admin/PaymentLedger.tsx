@@ -170,8 +170,26 @@ function MonthCell({ paid, charged, month, months, onClick, isOpen, forceStatus,
   );
 }
 
-function TransactionRow({ txn, index, onCorrect }: { txn: any; index: number; onCorrect?: (mode: CorrectionMode) => void }) {
+function TransactionRow({ txn, index, onCorrect, bucketChargeIds }: {
+  txn: any; index: number; onCorrect?: (mode: CorrectionMode) => void;
+  /** Charges shown in the enclosing block: allocations outside it are flagged as "also covered other debts". */
+  bucketChargeIds?: Set<number>;
+}) {
   const Icon = METHOD_ICON[txn.method] || Hash;
+  const allocs: any[] = txn.allocations ?? [];
+  const isOutside = (a: any) => !!bucketChargeIds && bucketChargeIds.size > 0 && !bucketChargeIds.has(a.chargeId);
+  const ownAllocs = allocs.filter(a => !isOutside(a));
+  const otherAllocs = allocs.filter(isOutside);
+  const renderAlloc = (a: any, i: number) => (
+    <span key={i} className="block truncate">
+      → {Number(a.amount).toFixed(2)} {a.charge?.currency ?? '—'}
+      {a.charge?.description ? ` · ${a.charge.description}` : ''}
+      {a.atPar ? ' · a la par' : ''}
+      {Number(a.bonus) > 0.005 && (
+        <span className="text-[#0F7A45]"> · incl. {Number(a.bonus).toFixed(2)} {a.charge?.currency ?? ''} de descuento{a.currencyDiscount?.name ? ` (${a.currencyDiscount.name})` : ''}</span>
+      )}
+    </span>
+  );
   return (
     <div className={`group flex flex-wrap items-stretch text-sm ${index % 2 === 1 ? 'bg-[#F4F5F8]' : 'bg-white'}`}>
       <div className="w-9 shrink-0 border-r border-[#E4E6EB] flex items-center justify-center py-2">
@@ -236,18 +254,17 @@ function TransactionRow({ txn, index, onCorrect }: { txn: any; index: number; on
             )}
           </>
         )}
-        {txn.allocations?.length > 0 && (
+        {allocs.length > 0 && (
           <span className="text-[10px] font-normal text-[#5B6472] tabular-nums leading-tight" title="Reparto del pago entre las deudas">
-            {txn.allocations.map((a: any, i: number) => (
-              <span key={i} className="block truncate">
-                → {Number(a.amount).toFixed(2)} {a.charge?.currency ?? '—'}
-                {a.charge?.description ? ` · ${a.charge.description}` : ''}
-                {a.atPar ? ' · a la par' : ''}
-                {Number(a.bonus) > 0.005 && (
-                  <span className="text-[#0F7A45]"> · incl. {Number(a.bonus).toFixed(2)} {a.charge?.currency ?? ''} de descuento{a.currencyDiscount?.name ? ` (${a.currencyDiscount.name})` : ''}</span>
-                )}
+            {ownAllocs.map(renderAlloc)}
+            {otherAllocs.length > 0 && (
+              <span className="block mt-0.5 pt-0.5 border-t border-dashed border-[#C9CED6]">
+                <span className="block font-semibold text-[#8A5A00] whitespace-normal">
+                  Este pago también cubrió otras deudas (en otro bloque):
+                </span>
+                <span className="block text-[#8B909A]">{otherAllocs.map(renderAlloc)}</span>
               </span>
-            ))}
+            )}
           </span>
         )}
       </div>
@@ -373,6 +390,36 @@ function GuardianPanel({ guardians, ownPending }: { guardians: LedgerGuardian[];
   );
 }
 
+/** Unpaid amount of a bucket (summed over its debt currencies, never negative per currency). */
+function pendingOf(data?: { totalCharged?: number; totalPaid?: number; byCurrency?: Record<string, { charged: number; paid: number }> } | null): number {
+  if (!data) return 0;
+  return data.byCurrency && Object.keys(data.byCurrency).length
+    ? Object.values(data.byCurrency).reduce((s, v) => s + Math.max(v.charged - v.paid, 0), 0)
+    : Math.max((data.totalCharged ?? 0) - (data.totalPaid ?? 0), 0);
+}
+
+/** PENDIENTE / SALDADO tag shown on every debt section header. */
+function StateChip({ pending, charged }: { pending: number; charged: number }) {
+  if (pending > 0.005) {
+    return <span className="text-[10px] font-bold tracking-wide px-1.5 py-0.5 bg-[#B42318] text-white">PENDIENTE</span>;
+  }
+  return charged > 0
+    ? <span className="text-[10px] font-bold tracking-wide px-1.5 py-0.5 bg-[#0F7A45] text-white">SALDADO</span>
+    : null;
+}
+
+/** Emphasized "Falta X" amount: the one number the user is looking for. */
+const MISSING_CLS = 'text-sm text-[#B42318] bg-[#FDECEA] border border-[#F2B8B2] px-2 py-0.5';
+
+/** Sub-section divider inside a debt block ("Deudas" / "Pagos registrados"). */
+function SubsectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#5B6472] bg-[#EEF0F4] border-y border-[#DBDEE4]">
+      {children}
+    </div>
+  );
+}
+
 function MonthDetail({ month, data, monthlyFee, onAddPayment, onCorrectPayment, onChanged, label }: {
   month: string;
   data: { charges: any[]; payments: any[]; currency?: string | null; totalCharged: number; totalPaid: number; grossCharged?: number; totalDiscount?: number; byCurrency?: Record<string, { charged: number; paid: number }> } | undefined;
@@ -395,10 +442,14 @@ function MonthDetail({ month, data, monthlyFee, onAddPayment, onCorrectPayment, 
     ?? data?.currency ?? monthlyFee?.currency ?? 'USD';
   const title = label ?? (month === OTHER ? 'Inscripción y otros' : MONTH_FULL[month]);
 
+  const pendingTotal = pendingOf(data);
+  const hasPending = pendingTotal > 0.005;
+
   return (
-    <div className="border-b-2 border-[#B9BEC7] bg-[#FAFBFC]">
-      <div className="flex items-center gap-4 px-3 py-2 border-b border-[#E4E6EB] flex-wrap">
-        <span className="text-xs font-semibold text-[#14181F] uppercase tracking-wide">{title}</span>
+    <div className={`border-b-4 border-[#B9BEC7] border-l-4 bg-[#FAFBFC] ${hasPending ? 'border-l-[#B42318]' : charged > 0 ? 'border-l-[#0F7A45]' : 'border-l-[#B9BEC7]'}`}>
+      <div className={`flex items-center gap-4 px-3 py-2 border-b border-[#E4E6EB] flex-wrap ${hasPending ? 'bg-[#FFF6F4]' : charged > 0 ? 'bg-[#F1F8F3]' : ''}`}>
+        <span className="text-sm font-bold text-[#14181F] uppercase tracking-wide">{title}</span>
+        <StateChip pending={pendingTotal} charged={charged} />
         {charged > 0 && (
           <span className="text-xs text-[#6B7280]">{month === OTHER ? 'Total' : 'Cuota'} <b className="text-[#14181F] font-semibold">{charged.toFixed(2)} {feeCurrency}</b></span>
         )}
@@ -412,13 +463,13 @@ function MonthDetail({ month, data, monthlyFee, onAddPayment, onCorrectPayment, 
             </b></span>
             {Object.entries(data!.byCurrency!).map(([c, v]) => {
               const r = Math.max(v.charged - v.paid, 0);
-              return r > 0.005 ? <span key={c} className="text-xs text-[#8A5A00]">Falta <b className="font-semibold">{r.toFixed(2)} {c}</b></span> : null;
+              return r > 0.005 ? <span key={c} className={MISSING_CLS}>Falta <b className="font-bold">{r.toFixed(2)} {c}</b></span> : null;
             })}
           </>
         ) : (
           <>
             <span className="text-xs text-[#0F7A45]">Pagado <b className="font-semibold">{paid.toFixed(2)} {feeCurrency}</b></span>
-            {remaining > 0 && <span className="text-xs text-[#8A5A00]">Falta <b className="font-semibold">{remaining.toFixed(2)} {feeCurrency}</b></span>}
+            {remaining > 0 && <span className={MISSING_CLS}>Falta <b className="font-bold">{remaining.toFixed(2)} {feeCurrency}</b></span>}
             {overflow > 0 && <span className="text-xs text-[#2F5EA8]">Excedente <b className="font-semibold">{overflow.toFixed(2)} {feeCurrency}</b></span>}
           </>
         )}
@@ -437,12 +488,13 @@ function MonthDetail({ month, data, monthlyFee, onAddPayment, onCorrectPayment, 
       </div>
       {data?.charges?.length ? (
         <div className="border-b border-[#E4E6EB] bg-white">
+          <SubsectionLabel>Deudas</SubsectionLabel>
           {(() => { const paidBy = chargePaidBy(data); return data.charges.map((c: any) => {
             const net = Math.round((Number(c.amount) - Number(c.discountAmount ?? 0)) * 100) / 100;
             const paid = Math.min(paidBy.get(c.id) ?? 0, net);
             const pending = Math.max(net - paid, 0);
             return (
-            <div key={c.id} className="px-3 py-1.5 text-xs border-b border-[#F0F1F4] last:border-b-0">
+            <div key={c.id} className={`px-3 py-1.5 text-xs border-b border-[#F0F1F4] last:border-b-0 ${pending > 0.005 ? 'bg-[#FFFBFA]' : ''}`}>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
                 <span className="flex-1 basis-48 min-w-0 break-words">{c.description}</span>
                 <span className="tabular-nums text-[#6B7280]">
@@ -452,7 +504,7 @@ function MonthDetail({ month, data, monthlyFee, onAddPayment, onCorrectPayment, 
                 <span className="tabular-nums text-[#0F7A45] min-w-24 text-right">
                   {paid > 0.005 ? `Pagado ${paid.toFixed(2)}` : ''}
                 </span>
-                <span className="tabular-nums text-[#8A5A00] min-w-24 text-right">
+                <span className="tabular-nums text-[#B42318] font-bold min-w-24 text-right">
                   {pending > 0.005 ? `Falta ${pending.toFixed(2)}` : ''}
                 </span>
                 <DeleteChargeButton charge={c} paid={paid} onChanged={onChanged} />
@@ -465,6 +517,7 @@ function MonthDetail({ month, data, monthlyFee, onAddPayment, onCorrectPayment, 
       ) : null}
       {data?.payments?.length ? (
         <div>
+          <SubsectionLabel>Pagos registrados ({data.payments.length})</SubsectionLabel>
           <div className="hidden @[800px]:flex items-stretch text-[10px] font-semibold text-[#8B909A] uppercase tracking-wide bg-[#EDEEF1] border-b border-[#DBDEE4]">
             <div className="w-9 shrink-0 border-r border-[#DBDEE4] py-1.5" />
             <div className="w-24 shrink-0 border-r border-[#DBDEE4] px-2.5 py-1.5">Fecha</div>
@@ -475,7 +528,8 @@ function MonthDetail({ month, data, monthlyFee, onAddPayment, onCorrectPayment, 
             <div className="flex-1 px-2.5 py-1.5">ID</div>
           </div>
           {data.payments.map((t, i) => (
-            <TransactionRow key={t.id} txn={t} index={i} onCorrect={(mode) => onCorrectPayment(t, mode)} />
+            <TransactionRow key={t.id} txn={t} index={i} onCorrect={(mode) => onCorrectPayment(t, mode)}
+              bucketChargeIds={new Set((data.charges ?? []).map((c: any) => c.id))} />
           ))}
         </div>
       ) : (
@@ -833,17 +887,30 @@ function PriorPeriodDetail({ group, onAddPayment, onCorrectPayment, onChanged }:
     ...group.billingMonths.filter(m => group.months[m]).map(m => ({ key: m, data: group.months[m] })),
     ...(flat.charges.length || flat.payments.length ? [{ key: OTHER, data: flat }] : []),
   ];
+  const groupPending = ordered.reduce((s, o) => s + pendingOf(o.data), 0);
+  const groupCharged = ordered.reduce((s, o) => s + (o.data.totalCharged ?? 0), 0);
+  const settled = groupPending <= 0.005;
+  // A settled old debt is just context: collapsed by default so the pending debt is what the user sees.
+  const [expanded, setExpanded] = useState(!settled);
   return (
-    <div className="border-b-2 border-[#B9BEC7] bg-[#FAFBFC]">
-      <div className="px-3 py-1.5 border-b border-[#E4E6EB] text-[10px] font-bold uppercase tracking-wide text-[#8A5A00] bg-[#FDF6E5]">
-        Deuda del período {group.periodName}
-      </div>
-      {ordered.map(({ key, data }) => (
+    <div className={`border-b-4 border-[#B9BEC7] border-l-4 bg-[#FAFBFC] ${settled ? 'border-l-[#0F7A45]' : 'border-l-[#B42318]'}`}>
+      <button
+        type="button"
+        onClick={() => setExpanded(e => !e)}
+        className={`w-full flex items-center gap-3 px-3 py-1.5 border-b border-[#E4E6EB] text-left ${settled ? 'bg-[#F1F8F3]' : 'bg-[#FFF6F4]'}`}
+      >
+        <ChevronDown size={13} className={`shrink-0 transition-transform ${expanded ? '' : '-rotate-90'}`} />
+        <span className="text-[11px] font-bold uppercase tracking-wide text-[#14181F]">Deuda del período {group.periodName}</span>
+        <StateChip pending={groupPending} charged={groupCharged} />
+        {!expanded && <span className="text-[10px] text-[#6B7280]">Ver detalle</span>}
+      </button>
+      {expanded && [...ordered].sort((a, b) => Number(pendingOf(b.data) > 0.005) - Number(pendingOf(a.data) > 0.005)).map(({ key, data }) => (
         <div key={key} className="border-b border-[#E4E6EB] last:border-b-0">
           <div className="flex items-center gap-4 px-3 py-1.5 flex-wrap">
-            <span className="text-xs font-semibold text-[#14181F] uppercase tracking-wide">
+            <span className="text-xs font-bold text-[#14181F] uppercase tracking-wide">
               {key === OTHER ? 'Otras deudas' : MONTH_FULL[key]}
             </span>
+            <StateChip pending={pendingOf(data)} charged={data.totalCharged ?? 0} />
             {data.byCurrency && Object.keys(data.byCurrency).length > 1 ? (
               <>
                 <span className="text-xs text-[#6B7280]">Cargado <b className="text-[#14181F] font-semibold">
@@ -854,7 +921,7 @@ function PriorPeriodDetail({ group, onAddPayment, onCorrectPayment, onChanged }:
                 </b></span>
                 {Object.entries(data.byCurrency).map(([c, v]) => {
                   const r = Math.max(v.charged - v.paid, 0);
-                  return r > 0.005 ? <span key={c} className="text-xs text-[#8A5A00]">Falta <b className="font-semibold">{r.toFixed(2)} {c}</b></span> : null;
+                  return r > 0.005 ? <span key={c} className={MISSING_CLS}>Falta <b className="font-bold">{r.toFixed(2)} {c}</b></span> : null;
                 })}
               </>
             ) : (
@@ -862,7 +929,7 @@ function PriorPeriodDetail({ group, onAddPayment, onCorrectPayment, onChanged }:
                 <span className="text-xs text-[#6B7280]">Cargado <b className="text-[#14181F] font-semibold">{(data.totalCharged ?? 0).toFixed(2)} {data.currency ?? ''}</b></span>
                 <span className="text-xs text-[#0F7A45]">Pagado <b className="font-semibold">{(data.totalPaid ?? 0).toFixed(2)} {data.currency ?? ''}</b></span>
                 {Math.max((data.totalCharged ?? 0) - (data.totalPaid ?? 0), 0) > 0 && (
-                  <span className="text-xs text-[#8A5A00]">Falta <b className="font-semibold">{((data.totalCharged ?? 0) - (data.totalPaid ?? 0)).toFixed(2)} {data.currency ?? ''}</b></span>
+                  <span className={MISSING_CLS}>Falta <b className="font-bold">{((data.totalCharged ?? 0) - (data.totalPaid ?? 0)).toFixed(2)} {data.currency ?? ''}</b></span>
                 )}
               </>
             )}
@@ -874,7 +941,8 @@ function PriorPeriodDetail({ group, onAddPayment, onCorrectPayment, onChanged }:
             </button>
           </div>
           {data.charges?.length ? (
-            <div className="bg-white border-t border-[#F0F1F4]">
+            <div className="bg-white">
+              <SubsectionLabel>Deudas</SubsectionLabel>
               {(() => { const paidBy = chargePaidBy(data); return data.charges.map((c: any) => {
                 const net = Math.round((Number(c.amount) - Number(c.discountAmount ?? 0)) * 100) / 100;
                 const paid = Math.min(paidBy.get(c.id) ?? 0, net);
@@ -890,7 +958,7 @@ function PriorPeriodDetail({ group, onAddPayment, onCorrectPayment, onChanged }:
                     <span className="tabular-nums text-[#0F7A45] min-w-24 text-right">
                       {paid > 0.005 ? `Pagado ${paid.toFixed(2)}` : ''}
                     </span>
-                    <span className="tabular-nums text-[#8A5A00] min-w-24 text-right">
+                    <span className="tabular-nums text-[#B42318] font-bold min-w-24 text-right">
                       {pending > 0.005 ? `Falta ${pending.toFixed(2)}` : ''}
                     </span>
                     <DeleteChargeButton charge={c} paid={paid} onChanged={onChanged} />
@@ -903,8 +971,10 @@ function PriorPeriodDetail({ group, onAddPayment, onCorrectPayment, onChanged }:
           ) : null}
           {data.payments?.length ? (
             <div>
+              <SubsectionLabel>Pagos registrados ({data.payments.length})</SubsectionLabel>
               {data.payments.map((t: any, i: number) => (
-                <TransactionRow key={t.id} txn={t} index={i} onCorrect={(mode) => onCorrectPayment(t, mode)} />
+                <TransactionRow key={t.id} txn={t} index={i} onCorrect={(mode) => onCorrectPayment(t, mode)}
+                  bucketChargeIds={new Set((data.charges ?? []).map((c: any) => c.id))} />
               ))}
             </div>
           ) : null}
@@ -2547,36 +2617,55 @@ export default function PaymentLedger() {
                               />
                             ) : openMonth === entryMonthOf(student) ? (
                               <>
-                                {(student.priorPeriods ?? []).map(g => (
-                                  <PriorPeriodDetail
-                                    key={g.periodId}
-                                    group={g}
-                                    onAddPayment={() => setPaymentModal({ studentId: student.inscriptionId })}
-                                    onCorrectPayment={handleCorrectPayment}
-                                    onChanged={loadLedger}
-                                  />
-                                ))}
-                                {(student.enrollment?.charges?.length || student.enrollment?.payments?.length) ? (
-                                  <MonthDetail
-                                    label="Inscripción"
-                                    month={OTHER}
-                                    data={student.enrollment}
-                                    monthlyFee={monthlyFee ? { amount: 0, currency: monthlyFee.currency } : null}
-                                    onAddPayment={() => setPaymentModal({ studentId: student.inscriptionId })}
-                                    onCorrectPayment={handleCorrectPayment}
-                                    onChanged={loadLedger}
-                                  />
-                                ) : null}
-                                {student.months[openMonth] ? (
-                                  <MonthDetail
-                                    month={openMonth}
-                                    data={student.months[openMonth]}
-                                    monthlyFee={monthlyFeeByMonth[openMonth] ?? monthlyFee}
-                                    onAddPayment={() => setPaymentModal({ studentId: student.inscriptionId })}
-                                    onCorrectPayment={handleCorrectPayment}
-                                    onChanged={loadLedger}
-                                  />
-                                ) : null}
+                                {/* Pending debt first (old or current); settled blocks follow in their natural order. */}
+                                {[
+                                  ...(student.priorPeriods ?? []).map(g => ({
+                                    key: `prior-${g.periodId}`,
+                                    pending: priorBucketsOf({ priorPeriods: [g] } as LedgerStudent).reduce((s, b) => s + pendingOf(b), 0),
+                                    node: (
+                                      <PriorPeriodDetail
+                                        key={g.periodId}
+                                        group={g}
+                                        onAddPayment={() => setPaymentModal({ studentId: student.inscriptionId })}
+                                        onCorrectPayment={handleCorrectPayment}
+                                        onChanged={loadLedger}
+                                      />
+                                    ),
+                                  })),
+                                  ...((student.enrollment?.charges?.length || student.enrollment?.payments?.length) ? [{
+                                    key: 'enrollment',
+                                    pending: pendingOf(student.enrollment),
+                                    node: (
+                                      <MonthDetail
+                                        key="enrollment"
+                                        label="Inscripción"
+                                        month={OTHER}
+                                        data={student.enrollment}
+                                        monthlyFee={monthlyFee ? { amount: 0, currency: monthlyFee.currency } : null}
+                                        onAddPayment={() => setPaymentModal({ studentId: student.inscriptionId })}
+                                        onCorrectPayment={handleCorrectPayment}
+                                        onChanged={loadLedger}
+                                      />
+                                    ),
+                                  }] : []),
+                                  ...(student.months[openMonth] ? [{
+                                    key: 'month',
+                                    pending: pendingOf(student.months[openMonth]),
+                                    node: (
+                                      <MonthDetail
+                                        key="month"
+                                        month={openMonth}
+                                        data={student.months[openMonth]}
+                                        monthlyFee={monthlyFeeByMonth[openMonth] ?? monthlyFee}
+                                        onAddPayment={() => setPaymentModal({ studentId: student.inscriptionId })}
+                                        onCorrectPayment={handleCorrectPayment}
+                                        onChanged={loadLedger}
+                                      />
+                                    ),
+                                  }] : []),
+                                ]
+                                  .sort((a, b) => Number(b.pending > 0.005) - Number(a.pending > 0.005))
+                                  .map(b => b.node)}
                               </>
                             ) : (
                               <MonthDetail
