@@ -507,8 +507,25 @@ export interface PaymentReportRow {
   allocations: { amount: number; currency: string | null; description: string | null; month: string | null }[];
 }
 
+/** One item hand-over (units delivered of a bought sellable item). */
+export interface DeliveryReportRow {
+  id: number;
+  createdAt: string;
+  student: string;
+  document: string | null;
+  gradeName: string | null;
+  sectionName: string | null;
+  item: string;
+  quantity: number;
+  size: string | null;
+  note: string | null;
+  deliveredById: number | null;
+  deliveredBy: string | null;
+}
+
 export interface PaymentsReport {
   rows: PaymentReportRow[];
+  deliveries: DeliveryReportRow[];
   registrants: { id: number; name: string }[];
   /** True when the row cap was hit — narrow the date range. */
   truncated: boolean;

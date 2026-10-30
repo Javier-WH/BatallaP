@@ -1899,11 +1899,67 @@ export const getPaymentsReport = async (req: Request, res: Response) => {
       };
     });
 
-    const registrants = [...new Map(
-      rows.filter(r => r.registeredById != null).map(r => [r.registeredById, { id: r.registeredById, name: r.registeredBy }]),
-    ).values()].sort((a, b) => String(a.name).localeCompare(String(b.name), 'es'));
+    // Item hand-overs in the same window. Day bounds follow Venezuela time (UTC-4), since deliveries carry a real timestamp.
+    const deliveryWhere: any = {};
+    if (from || to) {
+      deliveryWhere.createdAt = {
+        ...(from ? { [Op.gte]: new Date(`${from}T00:00:00.000-04:00`) } : {}),
+        ...(to ? { [Op.lte]: new Date(`${to}T23:59:59.999-04:00`) } : {}),
+      };
+    }
+    const deliveryRows = await ChargeDelivery.findAll({
+      where: deliveryWhere,
+      include: [
+        { model: Person, as: 'deliveredBy', attributes: ['id', 'firstName', 'lastName'] },
+        {
+          model: Charge, as: 'charge', attributes: ['id', 'description', 'schoolPeriodId'],
+          ...(schoolPeriodId ? { where: { schoolPeriodId: Number(schoolPeriodId) } } : {}),
+          include: [
+            { model: SellableItem, as: 'sellableItem', attributes: ['id', 'name'] },
+            {
+              model: Inscription, as: 'inscription', attributes: ['id'],
+              include: [
+                { model: Person, as: 'student', attributes: ['id', 'firstName', 'lastName', 'document'] },
+                { model: Grade, as: 'grade', attributes: ['id', 'name'] },
+                { model: Section, as: 'section', attributes: ['id', 'name'] },
+              ],
+            },
+          ],
+        },
+      ],
+      order: [['createdAt', 'DESC'], ['id', 'DESC']],
+      limit: REPORT_ROW_LIMIT + 1,
+    });
+    const deliveriesTruncated = deliveryRows.length > REPORT_ROW_LIMIT;
+    const deliveries = deliveryRows.slice(0, REPORT_ROW_LIMIT).map((d: any) => {
+      const insc = d.charge?.inscription;
+      const student = insc?.student;
+      return {
+        id: d.id,
+        createdAt: d.createdAt,
+        student: student ? `${student.lastName}, ${student.firstName}` : '—',
+        document: student?.document ?? null,
+        gradeName: insc?.grade?.name ?? null,
+        sectionName: insc?.section?.name ?? null,
+        item: d.charge?.sellableItem?.name ?? d.charge?.description ?? 'Item',
+        quantity: d.quantity,
+        size: d.size ?? null,
+        note: d.note ?? null,
+        deliveredById: d.deliveredBy?.id ?? null,
+        deliveredBy: d.deliveredBy ? `${d.deliveredBy.firstName} ${d.deliveredBy.lastName}` : null,
+      };
+    });
 
-    return res.json({ rows, registrants, truncated, limit: REPORT_ROW_LIMIT });
+    // One staff dropdown for both: whoever registered a payment or handed over an item.
+    const registrants = [...new Map([
+      ...rows.filter(r => r.registeredById != null).map(r => [r.registeredById, { id: r.registeredById, name: r.registeredBy }] as const),
+      ...deliveries.filter(d => d.deliveredById != null).map(d => [d.deliveredById, { id: d.deliveredById, name: d.deliveredBy }] as const),
+    ]).values()].sort((a, b) => String(a.name).localeCompare(String(b.name), 'es'));
+
+    return res.json({
+      rows, deliveries, registrants,
+      truncated: truncated || deliveriesTruncated, limit: REPORT_ROW_LIMIT,
+    });
   } catch (error) {
     console.error('[getPaymentsReport] Error:', error);
     return res.status(500).json({ message: 'Error al generar el resumen de movimientos' });

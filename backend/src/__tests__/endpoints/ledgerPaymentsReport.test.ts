@@ -1,6 +1,6 @@
 import request from 'supertest';
 import app from '@/app';
-import { Role, PersonRole, Payment } from '@/models/index';
+import { Role, PersonRole, Payment, Charge, ChargeDelivery, SellableItem, ExchangeRateType } from '@/models/index';
 import { createTestUser, createAcademicStructure, createTestInscription } from '../helpers/testData';
 
 // "Resumen de movimientos": flat list of payments with date filter and the
@@ -56,6 +56,28 @@ describe('GET /api/ledger/payments/report', () => {
     const open = await agent.get('/api/ledger/payments/report?from=2026-09-16').expect(200);
     expect(open.body.rows).toHaveLength(1);
     expect(open.body.rows[0].paymentDate).toContain('2026-10-20');
+  });
+
+  it('also lists item deliveries with who handed them over, filtered by the same dates', async () => {
+    const type = await ExchangeRateType.create({ code: `USD_R${periodId}`, name: 'Dólar', currency: 'USD', isDefault: false, active: true } as any);
+    const item = await SellableItem.create({ name: 'Franela IPM', amount: 30, exchangeRateTypeId: type.id, active: true } as any);
+    const charge = await Charge.create({
+      inscriptionId, schoolPeriodId: periodId, sellableItemId: item.id, type: 'item', month: null,
+      description: 'Franela IPM', amount: 30, currency: 'USD', quantity: 3, active: true,
+    } as any);
+    await ChargeDelivery.create({ chargeId: charge.id, quantity: 1, size: 'M', deliveredByPersonId: adminId, createdAt: new Date('2026-08-10T15:00:00Z') } as any);
+    await ChargeDelivery.create({ chargeId: charge.id, quantity: 2, note: 'Retiró el representante', deliveredByPersonId: adminId } as any);
+
+    const all = await agent.get('/api/ledger/payments/report').expect(200);
+    expect(all.body.deliveries).toHaveLength(2);
+    const latest = all.body.deliveries[0];
+    expect(latest).toMatchObject({ item: 'Franela IPM', quantity: 2, deliveredBy: 'JAVIER MAESTRO', deliveredById: adminId });
+    expect(latest.gradeName).toBeTruthy();
+    expect(all.body.registrants.map((r: any) => r.id)).toEqual([adminId]);
+
+    const august = await agent.get('/api/ledger/payments/report?from=2026-08-01&to=2026-08-31').expect(200);
+    expect(august.body.deliveries).toHaveLength(1);
+    expect(august.body.deliveries[0].size).toBe('M');
   });
 
   it('rejects malformed dates', async () => {

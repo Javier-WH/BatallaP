@@ -2331,33 +2331,10 @@ export default function PaymentLedger() {
               <Stat label="Estudiantes" value={students.length} />
             </div>
           )}
-          {/* Wrapped onto its own row on narrow screens: left-aligned and full width (no blank gap); right-aligned when it shares the row. */}
-          <div className="flex items-stretch flex-1 min-w-full min-[1500px]:min-w-0 justify-start min-[1500px]:justify-end border-t border-[#E4E6EB] min-[1500px]:border-t-0">
-            <div className="flex items-center px-3 py-2 min-[1500px]:border-l border-[#E4E6EB]">
-              <button type="button" onClick={() => setWithdrawnModal(true)}
-                title="Registrar una deuda a un estudiante retirado (incluidas deudas históricas)"
-                className="flex items-center gap-1.5 text-xs font-semibold text-[#2F5EA8] hover:text-[#1E4478]">
-                <UserX size={14} /> Deuda a retirado…
-              </button>
-            </div>
-            <div className="flex items-center px-3 py-2 border-l border-[#E4E6EB]">
-              <button type="button" onClick={() => setReportModal(true)}
-                title="Resumen de todos los pagos registrados: filtrar por fecha o usuario, totales e impresión"
-                className="flex items-center gap-1.5 text-xs font-semibold text-[#2F5EA8] hover:text-[#1E4478]">
-                <FileText size={14} /> Resumen de movimientos
-              </button>
-            </div>
+          {/* Always right-aligned. Section-only tools (search, export) enter from the LEFT, so the two always-present buttons never move. */}
+          <div className="flex items-stretch flex-1 min-w-full min-[1500px]:min-w-0 justify-end border-t border-[#E4E6EB] min-[1500px]:border-t-0">
             {selectedSection && (
-              <div className="flex items-center px-3 py-2 border-l border-[#E4E6EB]">
-                <button type="button" onClick={handleExport} disabled={exporting || filteredStudents.length === 0}
-                  title="Descargar en Excel la lista de estudiantes (en el orden mostrado) con sus totales pagados y deudas hasta el mes elegido"
-                  className="flex items-center gap-1.5 text-xs font-semibold text-[#2F5EA8] hover:text-[#1E4478] disabled:opacity-50 disabled:cursor-not-allowed">
-                  <FileSpreadsheet size={14} /> {exporting ? 'Exportando…' : 'Exportar a Excel'}
-                </button>
-              </div>
-            )}
-            {selectedSection && (
-              <div className="flex items-center px-3 py-2 border-l border-[#E4E6EB] flex-1 min-[1500px]:flex-none">
+              <div className="flex items-center px-3 py-2 min-[1500px]:border-l border-[#E4E6EB] flex-1 min-[1500px]:flex-none">
                 <div className="relative w-full min-[1500px]:w-auto">
                   <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
                   <input
@@ -2370,6 +2347,29 @@ export default function PaymentLedger() {
                 </div>
               </div>
             )}
+            {selectedSection && (
+              <div className="flex items-center px-3 py-2 border-l border-[#E4E6EB]">
+                <button type="button" onClick={handleExport} disabled={exporting || filteredStudents.length === 0}
+                  title="Descargar en Excel la lista de estudiantes (en el orden mostrado) con sus totales pagados y deudas hasta el mes elegido"
+                  className="flex items-center gap-1.5 text-xs font-semibold text-[#2F5EA8] hover:text-[#1E4478] disabled:opacity-50 disabled:cursor-not-allowed">
+                  <FileSpreadsheet size={14} /> {exporting ? 'Exportando…' : 'Exportar a Excel'}
+                </button>
+              </div>
+            )}
+            <div className="flex items-center px-3 py-2 border-l border-[#E4E6EB]">
+              <button type="button" onClick={() => setWithdrawnModal(true)}
+                title="Registrar una deuda a un estudiante retirado (incluidas deudas históricas)"
+                className="flex items-center gap-1.5 text-xs font-semibold text-[#2F5EA8] hover:text-[#1E4478]">
+                <UserX size={14} /> Deuda a retirado…
+              </button>
+            </div>
+            <div className="flex items-center px-3 py-2 border-l border-[#E4E6EB]">
+              <button type="button" onClick={() => setReportModal(true)}
+                title="Resumen de pagos y entregas de items de todas las secciones: filtrar por fecha o usuario, totales e impresión"
+                className="flex items-center gap-1.5 text-xs font-semibold text-[#2F5EA8] hover:text-[#1E4478]">
+                <FileText size={14} /> Resumen de movimientos
+              </button>
+            </div>
           </div>
         </div>
 
