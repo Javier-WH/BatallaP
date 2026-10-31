@@ -32,11 +32,12 @@ interface PaymentAttributes {
   dedupeKey: string | null;            // fingerprint of the operation (unique) — blocks duplicates
   paymentGroupId: string | null;       // rows of one physical payment shared by several students
   paymentDate: Date;           // when the payment was made
+  allocationScope: string | null;      // how the payment was targeted: auto|tuition|item|charge|month|oneTime
   notes: string | null;
 }
 
 interface PaymentCreationAttributes
-  extends Optional<PaymentAttributes, 'id' | 'feeId' | 'sellableItemId' | 'chargeId' | 'month' | 'amountVES' | 'exchangeRate' | 'debtPeriodId' | 'equivalent' | 'equivalentCurrency' | 'atPar' | 'reference' | 'bank' | 'account' | 'registeredByPersonId' | 'clientRequestId' | 'dedupeKey' | 'paymentGroupId' | 'notes'> {}
+  extends Optional<PaymentAttributes, 'id' | 'feeId' | 'sellableItemId' | 'chargeId' | 'month' | 'amountVES' | 'exchangeRate' | 'debtPeriodId' | 'equivalent' | 'equivalentCurrency' | 'atPar' | 'reference' | 'bank' | 'account' | 'registeredByPersonId' | 'clientRequestId' | 'dedupeKey' | 'paymentGroupId' | 'allocationScope' | 'notes'> {}
 
 class Payment extends Model<PaymentAttributes, PaymentCreationAttributes>
   implements PaymentAttributes {
@@ -64,6 +65,7 @@ class Payment extends Model<PaymentAttributes, PaymentCreationAttributes>
   public dedupeKey!: string | null;
   public paymentGroupId!: string | null;
   public paymentDate!: Date;
+  public allocationScope!: string | null;
   public notes!: string | null;
 
   public readonly createdAt!: Date;
@@ -182,6 +184,10 @@ Payment.init(
       type: DataTypes.DATE,
       allowNull: false,
       defaultValue: DataTypes.NOW,
+    },
+    allocationScope: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
     },
     notes: {
       type: DataTypes.TEXT,

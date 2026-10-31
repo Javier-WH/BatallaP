@@ -287,6 +287,9 @@ function TransactionRow({ txn, index, onCorrect, bucketChargeIds }: {
           <button onClick={() => onCorrect('destination')} className="p-1 text-[#8A5A00] hover:bg-[#F8EBCF]" title="Cambiar destino (p. ej. de mensualidades a uniformes)">
             <Shirt size={14} />
           </button>
+          <button onClick={() => onCorrect('reshare')} className="p-1 text-[#6B4FA1] hover:bg-[#E9E2F5]" title="Cambiar reparto: compartir el pago entre estudiantes o ajustar las partes">
+            <Users size={14} />
+          </button>
           <button onClick={() => onCorrect('delete')} className="p-1 text-[#C0453A] hover:bg-[#FBE3E0]" title="Eliminar pago">
             <Trash2 size={14} />
           </button>

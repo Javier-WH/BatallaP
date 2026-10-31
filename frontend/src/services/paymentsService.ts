@@ -631,6 +631,15 @@ export type SharedPaymentPayload = Omit<PaymentPayload, 'inscriptionId' | 'charg
   portions?: { inscriptionId: number; amount: number }[];
 };
 
+/** Re-splits a payment: single→shared, reshuffled group, or group→single. Portions must add up to the operation total. */
+export async function reSharePayment(
+  id: number,
+  body: { portions: { inscriptionId: number; amount: number }[]; reason: string; applyTo?: 'single' | 'group' },
+): Promise<{ message: string }> {
+  const { data } = await api.post(`/ledger/payments/${id}/re-share`, body);
+  return data;
+}
+
 export async function getSharedStudents(inscriptionId: number, schoolPeriodId: number): Promise<SharedStudent[]> {
   const { data } = await api.get<SharedStudent[]>(`/ledger/inscriptions/${inscriptionId}/shared-students`, { params: { schoolPeriodId } });
   return data;

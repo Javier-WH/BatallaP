@@ -8,7 +8,7 @@ import {
 } from '@/models/index';
 import { DISCOUNT_KINDS, DISCOUNT_SCOPES } from '@/models/InscriptionDiscount';
 import { appliesAtPar, buildDedupeKey, normalizePaymentFields } from '@/services/paymentRulesService';
-import { distributePayment, checkTargetOrder, pendingByCharge, planSharedPayment, releaseOverpaidAllocations, rebalanceAllocations, AllocationPart, AllocationTarget } from '@/services/paymentAllocationService';
+import { distributePayment, checkTargetOrder, pendingByCharge, planSharedPayment, releaseOverpaidAllocations, rebalanceAllocations, rebuildAllocations, AllocationPart, AllocationTarget } from '@/services/paymentAllocationService';
 import { randomUUID } from 'crypto';
 import { applyDiscountsToCharges, DiscountRule } from '@/services/discountService';
 import { getBillingMonths, monthCodeFromDate, resolveEntryMonth } from '@/services/billingCalendarService';
@@ -305,7 +305,7 @@ export const getLedgerBySection = async (req: Request, res: Response) => {
         (p as any).setDataValue('sharedWith', (groupRows as any[])
           .filter(r => r.paymentGroupId === p.paymentGroupId && r.id !== p.id)
           .map(r => ({
-            paymentId: r.id, name: studentLabel(r.inscription), amount: Number(r.amount), currency: r.currency,
+            paymentId: r.id, inscriptionId: r.inscriptionId, name: studentLabel(r.inscription), amount: Number(r.amount), currency: r.currency,
             amountVES: r.amountVES == null ? null : Number(r.amountVES),
             equivalent: r.equivalent == null ? null : Number(r.equivalent),
             equivalentCurrency: r.equivalentCurrency ?? null,
@@ -966,6 +966,9 @@ export const createPayment = async (req: Request, res: Response) => {
       chargeId: chargeId ?? null,
       month: finalMonth,
       debtPeriodId: finalDebtPeriod,
+      allocationScope: scope === 'item' ? 'item' : scope === 'tuition' ? 'tuition'
+        : chargeId ? 'charge' : (month && month !== '__other') ? 'month'
+        : (nonMonthly || month === '__other') ? 'oneTime' : 'auto',
       amount: Number(amount),
       currency,
       amountVES: finalAmountVES,
@@ -987,8 +990,17 @@ export const createPayment = async (req: Request, res: Response) => {
     // Split the payment across the outstanding debts, each in its own currency.
     parts = await distributePayment(payment, target, { transaction: t });
     if (parts.length) await applyDistribution(payment, parts, t);
-    // Heals credit left on discounted debts (e.g. a discount granted after an earlier payment).
-    await releaseOverpaidAllocations(Number(inscriptionId), t);
+    // Heals credit left on discounted debts (e.g. a discount granted after an earlier payment)
+    // and closes any gap left by older edits: earlier debts keep priority over later paid ones.
+    await rebalanceAllocations(Number(inscriptionId), t);
+    // A payment dated BEFORE an existing one must spend its money first:
+    // replay every allocation in payment-date order so debts settle FIFO.
+    const laterPayment = await Payment.findOne({
+      where: { inscriptionId: Number(inscriptionId), paymentDate: { [Op.gt]: payDate }, id: { [Op.ne]: payment.id } },
+      attributes: ['id'],
+      transaction: t,
+    });
+    if (laterPayment) await rebuildAllocations(Number(inscriptionId), t);
     await t.commit();
     } catch (e) {
       await t.rollback();
@@ -1240,6 +1252,7 @@ export const createSharedPayment = async (req: Request, res: Response) => {
           dedupeKey: i === 0 ? dedupeKey : null,
           paymentGroupId: groupId,
           paymentDate: payDate,
+          allocationScope: scope ?? 'auto',
           notes: fields.notes,
         }, { transaction: t });
         const parts = await distributePayment(payment, target, { transaction: t });
@@ -1250,6 +1263,17 @@ export const createSharedPayment = async (req: Request, res: Response) => {
             : 'Un estudiante no tiene inscripción ni mensualidades pendientes'), { status: 400 });
         }
         created.push({ payment, parts });
+      }
+      // Shares placed out of the debt order (or pre-existing gaps) get re-compacted per student.
+      for (const insId of new Set(shares.map(s => s.inscriptionId))) {
+        await rebalanceAllocations(insId, t);
+        // A shared payment dated before an existing one must replay that student's payments FIFO, like single payments do.
+        const later = await Payment.findOne({
+          where: { inscriptionId: insId, paymentDate: { [Op.gt]: payDate }, id: { [Op.ne]: created.find(c => c.payment.inscriptionId === insId)?.payment.id ?? -1 } },
+          attributes: ['id'],
+          transaction: t,
+        });
+        if (later) await rebuildAllocations(insId, t);
       }
       await t.commit();
     } catch (e) {
@@ -1673,6 +1697,10 @@ export const deletePayment = async (req: Request, res: Response) => {
       await PaymentAllocation.destroy({ where: { paymentId: row.id }, transaction: t });
       await row.destroy({ transaction: t });
     }
+    // Replay chronologically: the freed debt is refilled by the remaining payments, oldest first.
+    for (const insId of new Set(resolved.rows.map(r => r.inscriptionId))) {
+      await rebuildAllocations(insId, t);
+    }
     await t.commit();
     // Deleting a payment may reopen a debt — the hold only lifts automatically.
     for (const row of resolved.rows) await clearPapersHoldIfSettled(row.inscriptionId);
@@ -1744,7 +1772,7 @@ export const movePayment = async (req: Request, res: Response) => {
       const snapshot = JSON.stringify(row.toJSON());
 
       // The old allocations belonged to the previous student's / destination's debts: clear them and distribute again.
-      await row.update({ inscriptionId: target.id, chargeId: null, month: null, debtPeriodId: null, equivalent: null, equivalentCurrency: null, atPar: false }, { transaction: t });
+      await row.update({ inscriptionId: target.id, chargeId: null, month: null, debtPeriodId: null, equivalent: null, equivalentCurrency: null, atPar: false, allocationScope: scope ?? 'auto' }, { transaction: t });
       await PaymentAllocation.destroy({ where: { paymentId: row.id }, transaction: t });
       const allocTarget: AllocationTarget = scope === 'item' ? { kind: 'item', chargeId: chargeId ?? undefined }
         : scope === 'tuition' ? { kind: 'tuition' } : { kind: 'auto' };
@@ -1786,6 +1814,10 @@ export const movePayment = async (req: Request, res: Response) => {
       touched.add(target.id);
       touched.add(fromInscriptionId);
     }
+    // Both sides must stay gap-free: the origin lost money, the destination may have shifted debts.
+    for (const insId of touched) {
+      await rebuildAllocations(insId, t);
+    }
     await t.commit();
 
     for (const id of touched) await clearPapersHoldIfSettled(id);
@@ -1795,6 +1827,118 @@ export const movePayment = async (req: Request, res: Response) => {
     if (error?.status === 400) return res.status(400).json({ message: error.message });
     console.error('[movePayment] Error:', error);
     return res.status(500).json({ message: 'Error al corregir el pago' });
+  }
+};
+
+/**
+ * POST /payments/:id/re-share  body { portions: [{inscriptionId, amount}], reason, applyTo? } —
+ * re-splits a payment: turns a single payment into a shared one, changes who shares a group
+ * payment, or collapses a group into fewer students. Portions must add up to the operation
+ * total (this row's amount, or the whole group's when applyTo='group'). Existing rows are
+ * reused for the first portions; extra rows are created or surplus ones deleted, everything
+ * audited, and every touched inscription is rebuilt FIFO.
+ */
+export const reSharePayment = async (req: Request, res: Response) => {
+  const t = await sequelize.transaction();
+  try {
+    const payment = await Payment.findByPk(Number(req.params.id), { transaction: t });
+    if (!payment) {
+      await t.rollback();
+      return res.status(404).json({ message: 'Pago no encontrado' });
+    }
+    const reason = correctionReason(req.body?.reason);
+    if (!reason) {
+      await t.rollback();
+      return res.status(400).json({ message: 'Indique el motivo del cambio de reparto' });
+    }
+    const resolved = await resolveSharedScope(payment, req.body?.applyTo, t);
+    if ('conflict' in resolved) {
+      await t.rollback();
+      return res.status(409).json({
+        code: 'SHARED_PAYMENT',
+        message: 'Este pago se registró de forma compartida con otros estudiantes',
+        others: await Promise.all(resolved.conflict.map(describeDuplicate)),
+      });
+    }
+    const portions = (req.body?.portions ?? []) as { inscriptionId: number; amount: number }[];
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const total = r2(resolved.rows.reduce((s, r) => s + Number(r.amount), 0));
+    const sum = r2(portions.reduce((s, p) => s + Number(p.amount), 0));
+    const fail = async (status: number, message: string) => { await t.rollback(); return res.status(status).json({ message }); };
+    if (!portions.length) return fail(400, 'Indique el reparto del pago');
+    if (Math.abs(sum - total) >= 0.005) {
+      return fail(400, `El reparto (${sum.toFixed(2)}) no coincide con el total del pago (${total.toFixed(2)})`);
+    }
+    if (portions.some(p => !(p.amount > 0))) return fail(400, 'Cada parte debe tener un monto mayor a 0');
+    const targets = await Inscription.findAll({ where: { id: portions.map(p => Number(p.inscriptionId)) }, attributes: ['id', 'schoolPeriodId'], transaction: t });
+    if (targets.length !== portions.length) return fail(400, 'Uno de los estudiantes del reparto no existe');
+    if (targets.some(x => x.schoolPeriodId !== payment.schoolPeriodId)) {
+      return fail(400, 'Todos los estudiantes del reparto deben ser del mismo período escolar');
+    }
+
+    const groupId = portions.length > 1 ? (payment.paymentGroupId ?? randomUUID()) : null;
+    const rate = Number(payment.exchangeRate ?? 0) || null;
+    const performer = (req.session as any)?.user?.personId ?? null;
+    const touched = new Set<number>(resolved.rows.map(r => r.inscriptionId));
+    const replayIds: number[] = [];
+    const source = resolved.rows[0];
+
+    // Reuse existing rows for the first portions; create the extra ones, delete the surplus.
+    const rows = resolved.rows;
+    for (let i = 0; i < Math.max(rows.length, portions.length); i++) {
+      const portion = portions[i];
+      const row = rows[i];
+      if (portion && row) {
+        const fromInscriptionId = row.inscriptionId;
+        const snapshot = JSON.stringify(row.toJSON());
+        await row.update({
+          inscriptionId: Number(portion.inscriptionId),
+          amount: portion.amount,
+          amountVES: rate != null ? r2(portion.amount * rate) : null,
+          chargeId: null, month: null, debtPeriodId: null, equivalent: null, equivalentCurrency: null, atPar: false,
+          paymentGroupId: groupId, dedupeKey: null, clientRequestId: i === 0 ? row.clientRequestId : null,
+        }, { transaction: t });
+        replayIds.push(row.id);
+        await PaymentAuditLog.create({
+          paymentId: row.id, action: 'moved', fromInscriptionId, toInscriptionId: Number(portion.inscriptionId),
+          performedByPersonId: performer, reason: `[Reparto de pago] ${reason}`.slice(0, 500), snapshot,
+        }, { transaction: t });
+        touched.add(Number(portion.inscriptionId));
+      } else if (portion) {
+        const created = await Payment.create({
+          inscriptionId: Number(portion.inscriptionId), schoolPeriodId: source.schoolPeriodId,
+          amount: portion.amount, currency: source.currency,
+          amountVES: rate != null ? r2(portion.amount * rate) : null, exchangeRate: rate,
+          method: source.method, reference: source.reference, bank: source.bank, account: source.account,
+          registeredByPersonId: source.registeredByPersonId, paymentGroupId: groupId,
+          paymentDate: source.paymentDate, notes: source.notes, allocationScope: source.allocationScope ?? 'auto',
+        } as any, { transaction: t });
+        replayIds.push(created.id);
+        await PaymentAuditLog.create({
+          paymentId: created.id, action: 'moved', fromInscriptionId: source.inscriptionId,
+          toInscriptionId: Number(portion.inscriptionId), performedByPersonId: performer,
+          reason: `[Reparto de pago: nueva parte] ${reason}`.slice(0, 500), snapshot: JSON.stringify(source.toJSON()),
+        }, { transaction: t });
+        touched.add(Number(portion.inscriptionId));
+      } else if (row) {
+        await PaymentAllocation.destroy({ where: { paymentId: row.id }, transaction: t });
+        await PaymentAuditLog.create({
+          paymentId: row.id, action: 'deleted', fromInscriptionId: row.inscriptionId,
+          performedByPersonId: performer, reason: `[Reparto de pago: parte eliminada] ${reason}`.slice(0, 500),
+          snapshot: JSON.stringify(row.toJSON()),
+        }, { transaction: t });
+        await row.destroy({ transaction: t });
+      }
+    }
+
+    for (const insId of touched) await rebuildAllocations(insId, t, replayIds);
+    await t.commit();
+    for (const insId of touched) await clearPapersHoldIfSettled(insId);
+    return res.json({ message: 'Reparto del pago actualizado' });
+  } catch (error) {
+    await t.rollback();
+    console.error('[reSharePayment] Error:', error);
+    return res.status(500).json({ message: 'Error al cambiar el reparto del pago' });
   }
 };
 

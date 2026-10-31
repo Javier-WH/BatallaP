@@ -108,6 +108,8 @@ export async function distributePayment(
     keepExisting?: boolean;
     /** Never park an excess on a debt: report it in `out.leftover` instead. */
     noExcess?: boolean;
+    /** Payments whose legacy (allocation-less) credit should not count while placing this one (payments being replayed). */
+    excludePaymentIds?: number[];
     out?: { leftover: number };
   } = {}
 ): Promise<AllocationPart[]> {
@@ -116,7 +118,12 @@ export async function distributePayment(
   const payDate = payment.paymentDate;
   const rate = async (currency: string) => (await resolver.vesPerUnit(currency, payDate)) ?? 1;
 
-  const ctx = await orderedContext(payment.inscriptionId, options.keepExisting ? -1 : payment.id, transaction);
+  const ctx = await orderedContext(
+    payment.inscriptionId,
+    options.keepExisting ? [] : [payment.id],
+    options.excludePaymentIds ?? [],
+    transaction,
+  );
   if (!ctx) return [];
   const { ordered: allOrdered, periodById, remaining } = ctx;
 
@@ -300,7 +307,7 @@ export async function fillUnderpaidAllocations(inscriptionId: number, transactio
   const resolver = makeRateResolver(transaction);
   const skipped = new Set<string>();
   for (let guard = 0; guard < 500; guard++) {
-    const ctx = await orderedContext(inscriptionId, -1, transaction);
+    const ctx = await orderedContext(inscriptionId, [], [], transaction);
     if (!ctx) return;
     const academic = ctx.ordered.filter(o => !EXTRA_TYPES.has(o.charge.type ?? ''));
     const gapIdx = academic.findIndex(o => (ctx.remaining.get(o.charge.id) ?? 0) > EPS);
@@ -350,6 +357,51 @@ export async function rebalanceAllocations(inscriptionId: number, transaction?: 
   await fillUnderpaidAllocations(inscriptionId, transaction);
 }
 
+/**
+ * Rebuilds an inscription's whole allocation map in payment-date order (FIFO):
+ * every payment is re-distributed, oldest first, each keeping its own exchange
+ * rate and its recorded target (`allocationScope`): item purchases stay on
+ * items, tuition-only payments never touch items, and targeted charge/month
+ * payments go back to the debt they were registered for. Payments that never
+ * produced allocations (plain month records / advances) are left alone.
+ * Used when a payment is inserted with an earlier date, deleted or moved, so
+ * the money always lands as if it had arrived chronologically.
+ */
+export async function rebuildAllocations(inscriptionId: number, transaction?: Transaction, forcePaymentIds: number[] = []): Promise<void> {
+  const payments = await Payment.findAll({
+    where: { inscriptionId },
+    order: [['paymentDate', 'ASC'], ['id', 'ASC']],
+    transaction,
+  });
+  if (payments.length === 0) return;
+  const paymentIds = payments.map(p => p.id);
+  const existing = await PaymentAllocation.findAll({ where: { paymentId: paymentIds }, attributes: ['paymentId'], transaction });
+  // `forcePaymentIds` replays even payments that never produced allocations (e.g. a plain
+  // record just re-shared): the caller already decided that money must land on debts.
+  const hadAllocations = new Set([...existing.map(a => a.paymentId), ...forcePaymentIds]);
+  await PaymentAllocation.destroy({ where: { paymentId: paymentIds }, transaction });
+
+  const targetFor = (p: Payment): AllocationTarget => {
+    const scope = p.allocationScope
+      ?? (p.sellableItemId ? 'item' : p.chargeId ? 'charge' : 'auto'); // payments before the scope column
+    switch (scope) {
+      case 'item': return { kind: 'item', chargeId: p.chargeId ?? undefined };
+      case 'charge': return p.chargeId ? { kind: 'charge', chargeId: p.chargeId } : { kind: 'auto' };
+      case 'month': return p.month ? { kind: 'month', periodId: p.debtPeriodId ?? p.schoolPeriodId, month: p.month } : { kind: 'auto' };
+      case 'oneTime': return { kind: 'oneTime', periodId: p.debtPeriodId ?? p.schoolPeriodId };
+      case 'tuition': return { kind: 'tuition' };
+      default: return { kind: 'auto' };
+    }
+  };
+  // Replayed payments must not count as paid through their stored month/chargeId
+  // (the legacy credit) while an earlier payment is being placed.
+  const replayIds = payments.filter(p => hadAllocations.has(p.id)).map(p => p.id);
+  for (const p of payments) {
+    if (!hadAllocations.has(p.id)) continue;
+    await distributePayment(p, targetFor(p), { transaction, excludePaymentIds: replayIds });
+  }
+}
+
 export interface SharedPortion {
   inscriptionId: number;
   /** Share of the payment, in the payment's own currency. */
@@ -389,7 +441,7 @@ export async function planSharedPayment(args: {
   type Entry = { insIdx: number; charge: Charge; key: SortKey; rem: number; par: boolean };
   const entries: Entry[] = [];
   for (let insIdx = 0; insIdx < inscriptionIds.length; insIdx++) {
-    const ctx = await orderedContext(inscriptionIds[insIdx], -1, transaction);
+    const ctx = await orderedContext(inscriptionIds[insIdx], [], [], transaction);
     if (!ctx) continue;
     for (const { charge } of ctx.ordered) {
       if (scope === 'item' && charge.type !== 'item') continue;
@@ -445,7 +497,8 @@ export async function planSharedPayment(args: {
 async function remainingByCharge(
   inscriptionId: number,
   net: Awaited<ReturnType<typeof loadNetCharges>>,
-  excludePaymentId: number,
+  skipAllocPaymentIds: number[],
+  suppressLegacyPaymentIds: number[],
   resolver: RateResolver,
   transaction?: Transaction,
 ): Promise<Map<number, number>> {
@@ -458,13 +511,15 @@ async function remainingByCharge(
     transaction,
   });
 
+  const skipAlloc = new Set(skipAllocPaymentIds);
+  const suppressLegacy = new Set(suppressLegacyPaymentIds);
   const allocated = new Map<number, number>();
   const legacyCreditVES = new Map<string, number>();
   for (const p of payments as any[]) {
-    if (p.id === excludePaymentId) continue;
+    if (skipAlloc.has(p.id)) continue;
     if (p.allocations?.length) {
       for (const a of p.allocations) allocated.set(a.chargeId, (allocated.get(a.chargeId) ?? 0) + Number(a.amount));
-    } else {
+    } else if (!suppressLegacy.has(p.id)) {
       const key = `${paymentDebtPeriodId(p)}|${paymentBucketMonth(p) ?? ''}`;
       legacyCreditVES.set(key, (legacyCreditVES.get(key) ?? 0) + await paymentToVES(p, resolver));
     }
@@ -492,7 +547,7 @@ export async function pendingByCharge(
   inscriptionId: number,
   transaction?: Transaction,
 ): Promise<Array<{ charge: Charge; net: number; remaining: number }>> {
-  const ctx = await orderedContext(inscriptionId, -1, transaction);
+  const ctx = await orderedContext(inscriptionId, [], [], transaction);
   if (!ctx) return [];
   return ctx.ordered.map(o => ({ charge: o.charge, net: o.net, remaining: ctx.remaining.get(o.charge.id) ?? 0 }));
 }
@@ -509,7 +564,8 @@ interface OrderedContext {
 /** Debt order: earlier period first; inside a period — enrollment (matrícula > gastos), then items/'otro', then mensualidades. */
 async function orderedContext(
   inscriptionId: number,
-  excludePaymentId: number,
+  excludePaymentIds: number[],
+  suppressLegacyIds: number[],
   transaction?: Transaction,
 ): Promise<OrderedContext | null> {
   const all = await loadNetCharges(inscriptionId, transaction);
@@ -518,7 +574,7 @@ async function orderedContext(
   const periods = await SchoolPeriod.findAll({ where: { id: periodIds }, transaction });
   const periodById = new Map(periods.map(p => [p.id, p]));
   const resolver = makeRateResolver(transaction);
-  const remaining = await remainingByCharge(inscriptionId, all, excludePaymentId, resolver, transaction);
+  const remaining = await remainingByCharge(inscriptionId, all, excludePaymentIds, suppressLegacyIds, resolver, transaction);
 
   const ordered = [...all].sort((a, b) => cmpKey(sortKeyOf(a.charge, periodById), sortKeyOf(b.charge, periodById)));
   return { ordered, periodById, remaining };
@@ -546,7 +602,7 @@ export async function checkTargetOrder(
   if (target.kind !== 'charge' && target.kind !== 'month' && target.kind !== 'oneTime') {
     return { ok: true, blocking: [] };
   }
-  const ctx = await orderedContext(inscriptionId, excludePaymentId, transaction);
+  const ctx = await orderedContext(inscriptionId, [excludePaymentId], [], transaction);
   if (!ctx) return { ok: true, blocking: [] };
   const { ordered, periodById, remaining } = ctx;
 

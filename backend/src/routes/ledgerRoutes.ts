@@ -10,6 +10,7 @@ import {
   bulkCreateCharges,
   deletePayment,
   movePayment,
+  reSharePayment,
   listPaymentAudit,
   getPaymentsReport,
   deleteCharge,
@@ -79,6 +80,7 @@ router.delete('/payments/:id', deletePayment);
 
 // POST move a payment entered under the wrong student to the right one
 router.post('/payments/:id/move', movePayment);
+router.post('/payments/:id/re-share', reSharePayment);
 
 // GET corrections (deleted / moved payments) of a student
 router.get('/payments/audit', listPaymentAudit);

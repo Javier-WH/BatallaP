@@ -234,4 +234,39 @@ describe('Ledger: shared payment between students of the same representative', (
     const rows = await PaymentAllocation.findAll();
     expect(rows.map(r => [Number(r.amount), Number(r.bonus)])).toEqual([[100, 20], [100, 20]]);
   });
+
+  it('re-shares a group payment to a different split, rebuilding every student involved', async () => {
+    await enrollment(ins1, 100);
+    await enrollment(ins2, 100);
+    const res = await shared({ amount: 200 }).expect(201);
+    const first = res.body.payments[0];
+    const rs = await agent.post(`/api/ledger/payments/${first.id}/re-share`)
+      .send({ reason: 'Cambio de reparto', applyTo: 'group',
+        portions: [{ inscriptionId: ins1, amount: 150 }, { inscriptionId: ins2, amount: 50 }] })
+      .expect(200);
+    expect(rs.body.message).toContain('Reparto');
+    const pays = await Payment.findAll({ order: [['id','ASC']] });
+    expect(pays.map(p => [p.inscriptionId, Number(p.amount)])).toEqual([[ins1,150],[ins2,50]]);
+    const allocs = await PaymentAllocation.findAll();
+    expect(allocs.reduce((s,a)=>s+Number(a.amount),0)).toBe(200);
+  });
+
+  it('re-shares a single payment into a shared one', async () => {
+    await enrollment(ins1, 100);
+    await enrollment(ins2, 100);
+    const p = await Payment.create({
+      inscriptionId: ins1, schoolPeriodId: structure.period.id, amount: 120, currency: 'USD',
+      method: 'efectivo', paymentDate: new Date(), registeredByPersonId: null,
+    } as any);
+    await agent.post(`/api/ledger/payments/${p.id}/re-share`).send({
+      reason: 'Era para ambos', portions: [{ inscriptionId: ins1, amount: 60 }, { inscriptionId: ins2, amount: 60 }],
+    }).expect(200);
+    const pays = await Payment.findAll({ order: [['id','ASC']] });
+    expect(pays).toHaveLength(2);
+    expect(pays[0].paymentGroupId).toBeTruthy();
+    expect(pays[0].paymentGroupId).toBe(pays[1].paymentGroupId);
+    const allocs = await PaymentAllocation.findAll();
+    expect(allocs.map(a=>[a.paymentId,Number(a.amount)]).sort()).toEqual([[pays[0].id,60],[pays[1].id,60]].sort());
+  });
 });
+

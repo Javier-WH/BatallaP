@@ -323,6 +323,38 @@ describe('A discount granted after the payment', () => {
     expect(await allocationsOf(insc.id)).toEqual([100, 100, 50]);
   });
 
+  it('deleting an earlier payment refills its debt from the later one, keeping the order', async () => {
+    const { agent } = await login();
+    const { insc, period } = await setup();
+    await monthlyCharge(insc.id, period.id, 'Oct');
+    await monthlyCharge(insc.id, period.id, 'Nov');
+    const p1 = await pay(agent, insc.id, period.id, 100);
+    await pay(agent, insc.id, period.id, 100);
+    expect(await allocationsOf(insc.id)).toEqual([100, 100]);
+
+    await agent.delete(`/api/ledger/payments/${p1.body.id}`).send({ reason: 'Prueba' }).expect(200);
+    // The October gap is refilled from November's payment; November is left pending.
+    expect(await allocationsOf(insc.id)).toEqual([100, 0]);
+  });
+
+  it('an earlier-dated payment re-sequences the money: oldest payment covers the oldest debt', async () => {
+    const { agent } = await login();
+    const { insc, period } = await setup();
+    const oct = await monthlyCharge(insc.id, period.id, 'Oct');
+    const nov = await monthlyCharge(insc.id, period.id, 'Nov');
+    const payOn = (amount: number, date: string) => agent.post('/api/ledger/payments').send({
+      inscriptionId: insc.id, schoolPeriodId: period.id, method: 'efectivo', currency: 'USD',
+      amount, paymentDate: date, allowDuplicate: true, allowNoDebt: true,
+    }).expect(201);
+    const p1 = await payOn(100, '2026-10-02');
+    const p2 = await payOn(100, '2026-09-02');
+
+    const allocs = await PaymentAllocation.findAll({ where: { chargeId: [oct.id, nov.id] } });
+    // The September payment settled October; the October payment shifted to November.
+    expect(allocs.find(a => a.chargeId === oct.id)?.paymentId).toBe(p2.body.id);
+    expect(allocs.find(a => a.chargeId === nov.id)?.paymentId).toBe(p1.body.id);
+  });
+
   it('keeps the excess as credit when there is no other debt to take it', async () => {
     const { agent } = await login();
     const { insc, reason, period } = await setup();
